@@ -6,10 +6,10 @@
    looks broken.
    =================================================================== */
 window.AIRTABLE_CONFIG = {
-  baseId: "YOUR_BASE_ID",              // e.g. "appXXXXXXXXXXXXXX"
-  tableName: "Inventory",              // the table name in your base
-  token: "YOUR_PERSONAL_ACCESS_TOKEN", // read-only token, scope: data.records:read
-  cacheMinutes: 15,                    // how long visitors' browsers cache data before re-checking
+  baseId: "apptugvm4r5tm2OIt",
+  tableName: "Inventory",
+  token: "patvidXdY4WP6L1kw.ff2ac97dc5ee845f0d848d7434e9a321c56ed98b7168741dbe0a3dc728ccb56b",
+  cacheMinutes: 15,
 };
 
 const CACHE_KEY = "invicta_inventory_cache_v1";
