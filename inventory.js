@@ -8,7 +8,7 @@
 window.AIRTABLE_CONFIG = {
   baseId: "apptugvm4r5tm2OIt",
   tableName: "Inventory",
-  token: "patvidXdY4WP6L1kw.ff2ac97dc5ee845f0d848d7434e9a321c56ed98b7168741dbe0a3dc728ccb56b",
+  token: process.env.AIRTABLE_TOKEN_CLAUDE || "",
   cacheMinutes: 15,
 };
 
