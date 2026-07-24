@@ -84,10 +84,18 @@ header.site-header {
 }
 
 .brand {
+  display: flex;
+  align-items: center;
   font-family: 'Zilla Slab', Georgia, serif;
   font-size: 1.55rem;
   letter-spacing: 0.03em;
   text-transform: uppercase;
+}
+
+.brand img {
+  height: 46px;
+  width: auto;
+  display: block;
 }
 
 .brand span { color: var(--amber); font-style: italic; }
@@ -503,6 +511,7 @@ footer.site-footer {
 @media (max-width: 480px) {
   .category-grid, .product-grid { grid-template-columns: 1fr; }
   .nav-cta .btn-small { display: none; }
+  .brand img { height: 36px; }
 }
 
 /* ---------- Photo gallery / product card additions ---------- */
@@ -601,5 +610,3 @@ nav.primary-nav.open {
   padding: 20px 32px 28px;
   gap: 18px;
 }
-
-/* deploy trigger */
