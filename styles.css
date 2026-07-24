@@ -86,6 +86,7 @@ header.site-header {
 .brand {
   display: flex;
   align-items: center;
+  gap: 10px;
   font-family: 'Zilla Slab', Georgia, serif;
   font-size: 1.55rem;
   letter-spacing: 0.03em;
@@ -93,7 +94,7 @@ header.site-header {
 }
 
 .brand img {
-  height: 46px;
+  height: 34px;
   width: auto;
   display: block;
 }
@@ -511,7 +512,7 @@ footer.site-footer {
 @media (max-width: 480px) {
   .category-grid, .product-grid { grid-template-columns: 1fr; }
   .nav-cta .btn-small { display: none; }
-  .brand img { height: 36px; }
+  .brand img { height: 26px; }
 }
 
 /* ---------- Photo gallery / product card additions ---------- */
