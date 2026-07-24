@@ -1,17 +1,19 @@
 /* ===================================================================
    Invicta Home Supply — shared stylesheet
+   "Deal Stamp" theme — sage/pine + rust accent
    =================================================================== */
 
 :root {
-  --charcoal: #1c1a17;
-  --charcoal-soft: #2a2622;
-  --cream: #f7f4ef;
-  --cream-dim: #ece7de;
-  --amber: #b5813f;
-  --amber-dark: #8f652f;
-  --line: #ddd6c8;
-  --text-muted: #6b6357;
-  --radius: 2px;
+  --charcoal: #24352a;
+  --charcoal-soft: #34493a;
+  --cream: #eef1ea;
+  --cream-dim: #e2e8da;
+  --amber: #c14a26;
+  --amber-dark: #9c3a1c;
+  --line: #d7ddd0;
+  --text-muted: #667061;
+  --radius: 3px;
+  --radius-card: 4px;
   --max-width: 1200px;
   font-size: 16px;
 }
@@ -32,7 +34,7 @@ body {
 }
 
 h1, h2, h3, h4 {
-  font-family: 'Playfair Display', Georgia, serif;
+  font-family: 'Zilla Slab', Georgia, serif;
   font-weight: 600;
   letter-spacing: 0.01em;
   margin: 0 0 0.5em;
@@ -82,13 +84,22 @@ header.site-header {
 }
 
 .brand {
-  font-family: 'Playfair Display', Georgia, serif;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: 'Zilla Slab', Georgia, serif;
   font-size: 1.55rem;
   letter-spacing: 0.03em;
   text-transform: uppercase;
 }
 
-.brand span { color: var(--amber); }
+.brand img {
+  height: 34px;
+  width: auto;
+  display: block;
+}
+
+.brand span { color: var(--amber); font-style: italic; }
 
 nav.primary-nav {
   display: flex;
@@ -199,7 +210,7 @@ nav.primary-nav a.active {
   border-color: var(--cream-dim);
 }
 .hero .btn-outline:hover { background: var(--cream); color: var(--charcoal); }
-.hero .btn-dark { background: var(--amber); border-color: var(--amber); color: var(--charcoal); }
+.hero .btn-dark { background: var(--amber); border-color: var(--amber); color: var(--cream); }
 .hero .btn-dark:hover { background: var(--amber-dark); border-color: var(--amber-dark); color: var(--cream); }
 
 /* ---------- Section headings ---------- */
@@ -233,13 +244,14 @@ nav.primary-nav a.active {
 .category-card {
   background: #fff;
   border: 1px solid var(--line);
+  border-radius: var(--radius-card);
   padding: 40px 24px;
   text-align: center;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 .category-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 14px 30px rgba(28,26,23,0.08);
+  box-shadow: 0 14px 30px rgba(36,53,42,0.1);
 }
 .category-card .icon {
   width: 46px;
@@ -268,6 +280,8 @@ nav.primary-nav a.active {
 .product-card {
   background: #fff;
   border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -304,7 +318,7 @@ nav.primary-nav a.active {
 }
 
 .product-price {
-  font-family: 'Playfair Display', Georgia, serif;
+  font-family: 'Zilla Slab', Georgia, serif;
   font-size: 1.15rem;
   margin-top: auto;
   padding-top: 10px;
@@ -350,7 +364,7 @@ nav.primary-nav a.active {
 /* ---------- Strip / banner ---------- */
 .strip {
   background: var(--amber);
-  color: var(--charcoal);
+  color: var(--cream);
   padding: 20px 32px;
   text-align: center;
   font-size: 0.85rem;
@@ -380,7 +394,7 @@ nav.primary-nav a.active {
   align-items: center;
   justify-content: center;
   margin: 0 auto 18px;
-  font-family: 'Playfair Display', serif;
+  font-family: 'Zilla Slab', serif;
 }
 .step p { color: var(--text-muted); font-size: 0.92rem; }
 
@@ -414,6 +428,7 @@ nav.primary-nav a.active {
 .contact-card {
   background: #fff;
   border: 1px solid var(--line);
+  border-radius: var(--radius-card);
   padding: 36px;
 }
 .contact-card h3 { font-size: 1.1rem; margin-bottom: 18px; }
@@ -497,6 +512,7 @@ footer.site-footer {
 @media (max-width: 480px) {
   .category-grid, .product-grid { grid-template-columns: 1fr; }
   .nav-cta .btn-small { display: none; }
+  .brand img { height: 26px; }
 }
 
 /* ---------- Photo gallery / product card additions ---------- */
@@ -534,12 +550,14 @@ footer.site-footer {
   font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  border-radius: 999px;
+  border-radius: 3px;
   color: #fff;
+  border: 1.5px solid rgba(255,255,255,0.4);
+  transform: rotate(-3deg);
 }
 .badge-new { background: var(--amber-dark); }
-.badge-reserved { background: #6b6357; }
-.badge-sold { background: #3a3630; }
+.badge-reserved { background: var(--text-muted); }
+.badge-sold { background: var(--charcoal); }
 
 /* ---------- SMS opt-in ---------- */
 .optin {
@@ -557,7 +575,7 @@ footer.site-footer {
 .optin .btn-dark {
   background: var(--amber);
   border-color: var(--amber);
-  color: var(--charcoal);
+  color: var(--cream);
 }
 .optin .btn-dark:hover { background: var(--amber-dark); border-color: var(--amber-dark); color: var(--cream); }
 
