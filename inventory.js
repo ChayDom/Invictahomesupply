@@ -1,21 +1,21 @@
 /* ===================================================================
    Invicta Home Supply — inventory (Airtable-backed catalog)
 
-   EDIT THIS BLOCK once you've created your Airtable base (see README).
-   Until you do, the site automatically shows sample items so it never
-   looks broken.
+   Inventory data is fetched from the /api/inventory serverless function,
+   which holds the Airtable credentials server-side (Netlify environment
+   variables) — nothing sensitive lives in this file or in git.
+   Until that function returns data, the site shows sample items so it
+   never looks broken.
    =================================================================== */
 window.AIRTABLE_CONFIG = {
-  baseId: "apptugvm4r5tm2OIt",
-  tableName: "Inventory",
-  token: "patvidXdY4WP6L1kw.ff2ac97dc5ee845f0d848d7434e9a321c56ed98b7168741dbe0a3dc728ccb56b",
   cacheMinutes: 15,
 };
 
 const CACHE_KEY = "invicta_inventory_cache_v1";
+const INVENTORY_ENDPOINT = "/api/inventory";
 
-// Shown automatically until AIRTABLE_CONFIG is filled in — replace by
-// adding real rows in Airtable, not by editing this list.
+// Shown automatically until the Airtable function returns real records —
+// replace by adding real rows in Airtable, not by editing this list.
 const FALLBACK_ITEMS = [
   { id: "sample-1", name: "Waterproof Oak Plank Flooring", category: "Flooring", price: 34, wasPrice: 89, details: "Brand new, 20mil wear layer, clicklock, ~38 sq ft per box.", status: "In Stock", photos: [], isNew: true },
   { id: "sample-2", name: "Ripped Pine Clicklock Plank", category: "Flooring", price: 29, wasPrice: 80, details: "Brand new, 5.5mm, waterproof, pickup only.", status: "In Stock", photos: [], isNew: true },
@@ -26,11 +26,6 @@ const FALLBACK_ITEMS = [
   { id: "sample-7", name: "18V Cordless Drill Kit, 2 Batteries", category: "Tools", price: 55, wasPrice: 110, details: "Brand new, includes both batteries.", status: "In Stock", photos: [] },
   { id: "sample-8", name: "50-Quart Hard Cooler", category: "Tools", price: 130, wasPrice: 225, details: "Brand new, factory sealed.", status: "Sold Out", photos: [], daysAgo: 3 },
 ];
-
-function isConfigured() {
-  const c = window.AIRTABLE_CONFIG;
-  return c.baseId && !c.baseId.startsWith("YOUR_") && c.token && !c.token.startsWith("YOUR_");
-}
 
 function daysAgoLabel(days) {
   if (days === 0) return "today";
@@ -47,21 +42,11 @@ async function fetchInventory() {
     } catch (e) { /* ignore bad cache */ }
   }
 
-  if (!isConfigured()) return FALLBACK_ITEMS;
-
   try {
-    const { baseId, tableName, token } = window.AIRTABLE_CONFIG;
-    let records = [];
-    let offset;
-    do {
-      const url = new URL(`https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}`);
-      if (offset) url.searchParams.set("offset", offset);
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-      if (!res.ok) throw new Error(`Airtable request failed: ${res.status}`);
-      const json = await res.json();
-      records = records.concat(json.records);
-      offset = json.offset;
-    } while (offset);
+    const res = await fetch(INVENTORY_ENDPOINT);
+    if (!res.ok) throw new Error(`Inventory request failed: ${res.status}`);
+    const json = await res.json();
+    const records = json.records || [];
 
     const now = Date.now();
     const items = records.map(r => {
