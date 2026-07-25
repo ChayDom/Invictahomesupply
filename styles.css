@@ -536,6 +536,12 @@ footer.site-footer {
 }
 .thumb.active, .thumb:hover { opacity: 1; border-color: var(--amber); }
 
+.product-desc {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
 .product-details {
   font-size: 0.85rem;
   color: var(--text-muted);
