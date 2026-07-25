@@ -17,14 +17,14 @@ const INVENTORY_ENDPOINT = "/api/inventory";
 // Shown automatically until the Airtable function returns real records —
 // replace by adding real rows in Airtable, not by editing this list.
 const FALLBACK_ITEMS = [
-  { id: "sample-1", name: "Waterproof Oak Plank Flooring", category: "Flooring", price: 34, wasPrice: 89, details: "Brand new, 20mil wear layer, clicklock, ~38 sq ft per box.", status: "In Stock", photos: [], isNew: true },
-  { id: "sample-2", name: "Ripped Pine Clicklock Plank", category: "Flooring", price: 29, wasPrice: 80, details: "Brand new, 5.5mm, waterproof, pickup only.", status: "In Stock", photos: [], isNew: true },
-  { id: "sample-3", name: "Undermount Kitchen Sink, Stainless", category: "Renovation Supplies", price: 120, wasPrice: 240, details: "Brand new, includes mounting hardware.", status: "In Stock", photos: [] },
-  { id: "sample-4", name: "Butcher Block Countertop, 6ft", category: "Renovation Supplies", price: 95, wasPrice: 210, details: "Brand new, solid wood, unfinished.", status: "In Stock", photos: [] },
-  { id: "sample-5", name: "Cordless Pet Stick Vacuum, HEPA", category: "Appliances", price: 95, wasPrice: 160, details: "Brand new, sealed box, all attachments included.", status: "In Stock", photos: [], isNew: true },
-  { id: "sample-6", name: "Robotic 2-in-1 Vacuum & Mop", category: "Appliances", price: 200, wasPrice: 380, details: "Brand new, sealed box.", status: "Reserved", photos: [], daysAgo: 1 },
-  { id: "sample-7", name: "18V Cordless Drill Kit, 2 Batteries", category: "Tools", price: 55, wasPrice: 110, details: "Brand new, includes both batteries.", status: "In Stock", photos: [] },
-  { id: "sample-8", name: "50-Quart Hard Cooler", category: "Tools", price: 130, wasPrice: 225, details: "Brand new, factory sealed.", status: "Sold Out", photos: [], daysAgo: 3 },
+  { id: "sample-1", name: "Waterproof Oak Plank Flooring", category: "Flooring", price: 34, wasPrice: 89, details: "Brand new, never used.", highlights: "20mil wear layer\nClicklock installation\n~38 sq ft per box", status: "In Stock", photos: [], isNew: true },
+  { id: "sample-2", name: "Ripped Pine Clicklock Plank", category: "Flooring", price: 29, wasPrice: 80, details: "Brand new, never used.", highlights: "5.5mm thickness\nWaterproof core\nPickup only", status: "In Stock", photos: [], isNew: true },
+  { id: "sample-3", name: "Undermount Kitchen Sink, Stainless", category: "Renovation Supplies", price: 120, wasPrice: 240, details: "Brand new, never used.", highlights: "Includes mounting hardware", status: "In Stock", photos: [] },
+  { id: "sample-4", name: "Butcher Block Countertop, 6ft", category: "Renovation Supplies", price: 95, wasPrice: 210, details: "Brand new, never used.", highlights: "Solid wood\nUnfinished", status: "In Stock", photos: [] },
+  { id: "sample-5", name: "Cordless Pet Stick Vacuum, HEPA", category: "Appliances", price: 95, wasPrice: 160, details: "Brand new, never used.", highlights: "Sealed box\nAll attachments included", status: "In Stock", photos: [], isNew: true },
+  { id: "sample-6", name: "Robotic 2-in-1 Vacuum & Mop", category: "Appliances", price: 200, wasPrice: 380, details: "Brand new, never used.", highlights: "Sealed box", status: "Reserved", photos: [], daysAgo: 1 },
+  { id: "sample-7", name: "18V Cordless Drill Kit, 2 Batteries", category: "Tools", price: 55, wasPrice: 110, details: "Brand new, never used.", highlights: "Includes both batteries", status: "In Stock", photos: [] },
+  { id: "sample-8", name: "50-Quart Hard Cooler", category: "Tools", price: 130, wasPrice: 225, details: "Brand new, never used.", highlights: "Factory sealed", status: "Sold Out", photos: [], daysAgo: 3 },
 ];
 
 function daysAgoLabel(days) {
@@ -60,6 +60,7 @@ async function fetchInventory() {
         price: f["Price"],
         wasPrice: f["Was Price"],
         details: f["Details"] || "",
+        highlights: f["Highlights"] || "",
         status: f["Status"] || "In Stock",
         photos: (f["Photos"] || []).map(p => p.url),
         isNew: dateAdded ? (now - dateAdded.getTime()) / 86400000 <= 7 : false,
@@ -99,8 +100,16 @@ function statusBadge(item) {
   return `<span class="badge ${cls}">${item.status}</span>`;
 }
 
+function highlightBullets(highlights) {
+  if (!highlights) return [];
+  return highlights.split(/\r?\n/)
+    .map(s => s.trim().replace(/^[•●◦∙\-*]\s*/, ""))
+    .filter(Boolean);
+}
+
 function productCard(item) {
   const disabled = item.status !== "In Stock";
+  const bullets = highlightBullets(item.highlights);
   return `
   <div class="product-card" data-category="${item.category}">
     <div class="photo-wrap">
@@ -110,13 +119,14 @@ function productCard(item) {
     <div class="product-info">
       <span class="product-cat">${item.category}</span>
       <h4>${item.name}</h4>
-      ${item.details ? `<p class="product-details">${item.details}</p>` : ""}
+      ${item.details ? `<p class="product-desc">${item.details}</p>` : ""}
+      ${bullets.length ? `<ul class="product-details">${bullets.map(b => `<li>${b}</li>`).join("")}</ul>` : ""}
       <div class="product-price">${money(item.price)} ${item.wasPrice ? `<span class="was">${money(item.wasPrice)}</span>` : ""}</div>
     </div>
     <div class="product-actions">
       ${disabled
         ? `<span class="btn btn-outline btn-small" style="opacity:.5; cursor:default;">${item.status}</span>`
-        : `<a href="sms:" data-sms-link data-item="${item.name}" class="btn btn-dark btn-small">Text to Reserve</a>`}
+        : `<a href="sms:" data-sms-link data-item="${item.name}" class="btn btn-dark btn-small">Check Availability</a>`}
     </div>
   </div>`;
 }
@@ -142,7 +152,7 @@ function renderGrid(items, containerId) {
   if (window.SITE_CONFIG) {
     el.querySelectorAll("a[data-sms-link]").forEach(link => {
       const item = link.getAttribute("data-item") || "";
-      const body = `Hi! I'd like to reserve: ${item}`;
+      const body = `Hi! I'd like to check availability for: ${item}`;
       link.href = `sms:${window.SITE_CONFIG.phoneHref}?&body=${encodeURIComponent(body)}`;
     });
   }
