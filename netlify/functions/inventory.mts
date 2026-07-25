@@ -23,7 +23,10 @@ export default async (req: Request, context: Context) => {
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error(`Airtable request failed: ${res.status}`);
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`Airtable request failed: ${res.status} ${body}`);
+      }
 
       const json = await res.json();
       records = records.concat(json.records);
@@ -38,7 +41,7 @@ export default async (req: Request, context: Context) => {
       },
     });
   } catch (err) {
-    return new Response(JSON.stringify({ error: "Failed to fetch inventory" }), {
+    return new Response(JSON.stringify({ error: "Failed to fetch inventory", detail: err instanceof Error ? err.message : String(err) }), {
       status: 502,
       headers: { "Content-Type": "application/json" },
     });
