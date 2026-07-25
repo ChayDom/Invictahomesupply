@@ -10,7 +10,7 @@ window.SITE_CONFIG = {
   phoneHref: "+15138000533",           // <-- same number, digits only, with country code
   email: "hello@invictahomesupply.com", // <-- replace with your real email
   city: "Mckinney, TX",                // <-- replace with your pickup location/city
-  pickupAddress: "Pickup by appointment — exact address sent after you reserve",
+  pickupAddress: "Pickup by appointment — exact address sent once you check availability",
   hours: "Mon–Sat, 8am–8pm",
   facebookUrl: "https://www.facebook.com/invictahomesupply//", // <-- replace with your FB page/marketplace link
 };
@@ -29,7 +29,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll("a[data-tel-link]").forEach(el => el.href = `tel:${cfg.phoneHref}`);
   document.querySelectorAll("a[data-sms-link]").forEach(el => {
     const item = el.getAttribute("data-item") || "";
-    const body = item ? `Hi! I'd like to reserve: ${item}` : "Hi! I'd like to reserve an item from your site.";
+    const body = item ? `Hi! I'd like to check availability for: ${item}` : "Hi! I'd like to check availability on an item from your site.";
     el.href = `sms:${cfg.phoneHref}?&body=${encodeURIComponent(body)}`;
   });
   document.querySelectorAll("a[data-sms-optin]").forEach(el => {
