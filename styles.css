@@ -610,10 +610,9 @@ footer.site-footer {
   justify-content: center;
   gap: 12px;
   max-width: var(--max-width);
-  margin: -34px auto 0;
-  padding: 0 32px;
-  position: relative;
-  z-index: 1;
+  margin: 0 auto;
+  padding: 48px 32px;
+  background: var(--cream);
 }
 .trust-badge {
   display: flex;
