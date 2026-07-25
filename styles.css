@@ -495,7 +495,7 @@ footer.site-footer {
 @media (max-width: 900px) {
   .category-grid, .product-grid { grid-template-columns: repeat(2, 1fr); }
   .two-col, .contact-grid { grid-template-columns: 1fr; gap: 32px; }
-  .steps { grid-template-columns: 1fr; }
+  .steps, .audience-grid { grid-template-columns: 1fr; }
   .footer-grid { grid-template-columns: 1fr; gap: 24px; }
 }
 
@@ -578,6 +578,11 @@ footer.site-footer {
   color: var(--cream);
 }
 .optin .btn-dark:hover { background: var(--amber-dark); border-color: var(--amber-dark); color: var(--cream); }
+.optin .btn-outline {
+  color: var(--cream);
+  border-color: var(--cream-dim);
+}
+.optin .btn-outline:hover { background: var(--cream); color: var(--charcoal); }
 
 /* ---------- Recently reserved ticker ---------- */
 .ticker-wrap {
@@ -597,6 +602,66 @@ footer.site-footer {
   white-space: nowrap;
 }
 .ticker-item strong { color: var(--charcoal); }
+
+/* ---------- Trust badges ---------- */
+.trust-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  max-width: var(--max-width);
+  margin: -34px auto 0;
+  padding: 0 32px;
+  position: relative;
+  z-index: 1;
+}
+.trust-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 10px 20px;
+  font-size: 0.82rem;
+  color: var(--charcoal);
+  box-shadow: 0 10px 24px rgba(36,53,42,0.1);
+}
+.trust-badge svg {
+  width: 16px;
+  height: 16px;
+  color: var(--amber-dark);
+  flex-shrink: 0;
+}
+
+/* ---------- Audience grid ---------- */
+.audience-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  max-width: var(--max-width);
+  margin: 0 auto;
+}
+.audience-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: 36px 24px;
+  text-align: center;
+}
+.audience-card .emoji {
+  font-size: 2rem;
+  margin-bottom: 16px;
+}
+.audience-card h3 {
+  font-size: 1.05rem;
+  margin-bottom: 10px;
+}
+.audience-card p {
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  margin: 0;
+}
 
 /* Mobile nav drawer */
 nav.primary-nav.open {
