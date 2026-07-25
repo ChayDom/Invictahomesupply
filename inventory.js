@@ -99,8 +99,18 @@ function statusBadge(item) {
   return `<span class="badge ${cls}">${item.status}</span>`;
 }
 
+function detailBullets(details) {
+  if (!details) return [];
+  let lines = details.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  if (lines.length === 1) {
+    lines = lines[0].split(/,\s*/).map(s => s.trim()).filter(Boolean);
+  }
+  return lines;
+}
+
 function productCard(item) {
   const disabled = item.status !== "In Stock";
+  const bullets = detailBullets(item.details);
   return `
   <div class="product-card" data-category="${item.category}">
     <div class="photo-wrap">
@@ -110,13 +120,13 @@ function productCard(item) {
     <div class="product-info">
       <span class="product-cat">${item.category}</span>
       <h4>${item.name}</h4>
-      ${item.details ? `<p class="product-details">${item.details}</p>` : ""}
+      ${bullets.length ? `<ul class="product-details">${bullets.map(b => `<li>${b}</li>`).join("")}</ul>` : ""}
       <div class="product-price">${money(item.price)} ${item.wasPrice ? `<span class="was">${money(item.wasPrice)}</span>` : ""}</div>
     </div>
     <div class="product-actions">
       ${disabled
         ? `<span class="btn btn-outline btn-small" style="opacity:.5; cursor:default;">${item.status}</span>`
-        : `<a href="sms:" data-sms-link data-item="${item.name}" class="btn btn-dark btn-small">Text to Reserve</a>`}
+        : `<a href="sms:" data-sms-link data-item="${item.name}" class="btn btn-dark btn-small">Check Availability</a>`}
     </div>
   </div>`;
 }
@@ -142,7 +152,7 @@ function renderGrid(items, containerId) {
   if (window.SITE_CONFIG) {
     el.querySelectorAll("a[data-sms-link]").forEach(link => {
       const item = link.getAttribute("data-item") || "";
-      const body = `Hi! I'd like to reserve: ${item}`;
+      const body = `Hi! I'd like to check availability for: ${item}`;
       link.href = `sms:${window.SITE_CONFIG.phoneHref}?&body=${encodeURIComponent(body)}`;
     });
   }
