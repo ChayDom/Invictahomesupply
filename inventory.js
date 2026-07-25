@@ -102,7 +102,9 @@ function statusBadge(item) {
 
 function highlightBullets(highlights) {
   if (!highlights) return [];
-  return highlights.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  return highlights.split(/\r?\n/)
+    .map(s => s.trim().replace(/^[•●◦∙\-*]\s*/, ""))
+    .filter(Boolean);
 }
 
 function productCard(item) {
