@@ -59,6 +59,9 @@ async function fetchInventory() {
         category: f["Category"] || "Other",
         price: f["Price"],
         wasPrice: f["Was Price"],
+        boxPrice: f["Box Price"],
+        sqFtPerUnit: f["Sq Ft Per Unit"],
+        availableSqFt: f["Available Sq Ft"],
         details: f["Details"] || "",
         highlights: f["Highlights"] || "",
         status: f["Status"] || "In Stock",
@@ -78,6 +81,21 @@ async function fetchInventory() {
 
 function money(n) {
   return typeof n === "number" ? `$${n.toLocaleString()}` : "";
+}
+
+// 2-decimal currency, used only for the flooring per-sq-ft/per-box pricing block.
+function money2(n) {
+  return typeof n === "number" ? `$${n.toFixed(2)}` : "";
+}
+
+// Fixed 2-decimal sq ft figure (e.g. "24.03"), used for the per-box coverage.
+function sqFt2(n) {
+  return typeof n === "number" ? n.toFixed(2) : "";
+}
+
+// Thousands-separated sq ft total; only shows decimals when the value actually has them.
+function sqFtAvailable(n) {
+  return typeof n === "number" ? n.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "";
 }
 
 function photoBlock(item) {
@@ -107,6 +125,27 @@ function highlightBullets(highlights) {
     .filter(Boolean);
 }
 
+// Flooring gets a per-sq-ft / per-box / available-sq-ft breakdown instead of
+// a single price, but only when Airtable actually supplies all four fields —
+// otherwise it falls back to the normal single-price display below.
+function priceBlock(item) {
+  const isFlooring = item.category === "Flooring"
+    && typeof item.price === "number"
+    && typeof item.boxPrice === "number"
+    && typeof item.sqFtPerUnit === "number"
+    && typeof item.availableSqFt === "number";
+
+  if (isFlooring) {
+    return `<div class="product-price product-price-flooring">
+      <div class="price-line">${money2(item.price)} <span class="price-unit">/ sq ft</span></div>
+      <div class="price-sub">${money2(item.boxPrice)} / box &middot; ${sqFt2(item.sqFtPerUnit)} sq ft/box</div>
+      <div class="price-avail">${sqFtAvailable(item.availableSqFt)} sq ft available</div>
+    </div>`;
+  }
+
+  return `<div class="product-price">${money(item.price)} ${item.wasPrice ? `<span class="was">${money(item.wasPrice)}</span>` : ""}</div>`;
+}
+
 function productCard(item) {
   const disabled = item.status !== "In Stock";
   const bullets = highlightBullets(item.highlights);
@@ -121,7 +160,7 @@ function productCard(item) {
       <h4>${item.name}</h4>
       ${item.details ? `<p class="product-desc">${item.details}</p>` : ""}
       ${bullets.length ? `<ul class="product-details">${bullets.map(b => `<li>${b}</li>`).join("")}</ul>` : ""}
-      <div class="product-price">${money(item.price)} ${item.wasPrice ? `<span class="was">${money(item.wasPrice)}</span>` : ""}</div>
+      ${priceBlock(item)}
     </div>
     <div class="product-actions">
       ${disabled

@@ -332,6 +332,30 @@ nav.primary-nav a.active {
   margin-left: 8px;
 }
 
+.product-price-flooring {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.product-price-flooring .price-line {
+  font-family: 'Zilla Slab', Georgia, serif;
+  font-size: 1.15rem;
+}
+
+.product-price-flooring .price-unit {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.product-price-flooring .price-sub,
+.product-price-flooring .price-avail {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
 .product-actions {
   padding: 0 20px 20px;
 }
