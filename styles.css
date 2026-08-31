@@ -341,12 +341,14 @@ nav.primary-nav a.active {
 .product-price-flooring .price-line {
   font-family: 'Zilla Slab', Georgia, serif;
   font-size: 1.15rem;
+  font-weight: 700;
 }
 
 .product-price-flooring .price-unit {
   font-family: 'Inter', sans-serif;
   font-size: 0.85rem;
   color: var(--text-muted);
+  font-weight: 600;
 }
 
 .product-price-flooring .price-sub,
@@ -356,10 +358,31 @@ nav.primary-nav a.active {
   color: var(--text-muted);
 }
 
+.product-price-flooring .price-avail {
+  font-weight: 600;
+}
+
+.product-price-flooring .price-bold {
+  font-weight: 600;
+}
+
 .product-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   padding: 0 20px 20px;
 }
-.product-actions .btn { width: 100%; text-align: center; }
+.product-actions .btn { flex: 1 1 130px; text-align: center; }
+
+.catalog-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 44px;
+}
+.catalog-controls .filter-row { margin-bottom: 0; }
 
 .filter-row {
   display: flex;
@@ -383,6 +406,34 @@ nav.primary-nav a.active {
   background: var(--charcoal);
   color: var(--cream);
   border-color: var(--charcoal);
+}
+
+.sort-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sort-control label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.sort-control select {
+  padding: 9px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.78rem;
+  color: var(--charcoal);
+  cursor: pointer;
+}
+
+@media (max-width: 700px) {
+  .catalog-controls { flex-direction: column; align-items: stretch; }
+  .sort-control { justify-content: center; }
 }
 
 /* ---------- Strip / banner ---------- */
