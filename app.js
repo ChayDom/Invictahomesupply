@@ -45,21 +45,7 @@ document.addEventListener("DOMContentLoaded", () => {
     toggle.addEventListener("click", () => nav.classList.toggle("open"));
   }
 
-  // Shop page category filter — cards are injected later by inventory.js
-  // (async Airtable fetch), so re-query the DOM at click time rather than
-  // caching an empty NodeList here.
-  const filterBtns = document.querySelectorAll(".filter-btn");
-  if (filterBtns.length) {
-    filterBtns.forEach(btn => {
-      btn.addEventListener("click", () => {
-        filterBtns.forEach(b => b.classList.remove("active"));
-        btn.classList.add("active");
-        const cat = btn.getAttribute("data-filter");
-        document.querySelectorAll("[data-category]").forEach(card => {
-          const show = cat === "all" || card.getAttribute("data-category") === cat;
-          card.style.display = show ? "" : "none";
-        });
-      });
-    });
-  }
+  // Shop page category filter + sort is handled in inventory.js, since
+  // combining the two requires re-rendering from the fetched item array
+  // rather than just hiding/showing already-rendered cards.
 });

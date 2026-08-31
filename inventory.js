@@ -118,6 +118,39 @@ function statusBadge(item) {
   return `<span class="badge ${cls}">${item.status}</span>`;
 }
 
+// Builds the prefilled "Text Us" SMS body for a product. Flooring items get
+// the per-sq-ft/per-box wording; everything else gets the simpler single
+// price line. Never includes Available Sq Ft — inventory can change.
+function smsMessageForItem(item) {
+  const isFlooringPriced = item.category === "Flooring"
+    && typeof item.price === "number"
+    && typeof item.boxPrice === "number";
+
+  if (isFlooringPriced) {
+    return `Hi, I'm interested in ${item.name}. I saw it on your website for ${money2(item.price)}/sq ft (${money2(item.boxPrice)}/box). Please send me more information.`;
+  }
+
+  const priceText = typeof item.price === "number" ? ` listed for ${money(item.price)}` : "";
+  return `Hi, I'm interested in ${item.name}${priceText}. Please send me more information.`;
+}
+
+// Two CTAs for an in-stock item: "Get a Quote" (primary, opens the on-site
+// quote flow — not yet wired up pending the form/backend decision) and
+// "Text Us" (secondary, functional now — opens the visitor's SMS app with a
+// prefilled, product-specific message via the existing business phone
+// number in SITE_CONFIG). Out-of-stock items keep the old status pill.
+function actionButtons(item) {
+  if (item.status !== "In Stock") {
+    return `<span class="btn btn-outline btn-small" style="opacity:.5; cursor:default;">${item.status}</span>`;
+  }
+  const phoneHref = window.SITE_CONFIG ? window.SITE_CONFIG.phoneHref : "";
+  const smsHref = `sms:${phoneHref}?&body=${encodeURIComponent(smsMessageForItem(item))}`;
+  return `
+    <button type="button" class="btn btn-dark btn-small btn-quote" data-quote-item="${item.name}">Get a Quote</button>
+    <a href="${smsHref}" class="btn btn-outline btn-small">Text Us</a>
+  `;
+}
+
 function highlightBullets(highlights) {
   if (!highlights) return [];
   return highlights.split(/\r?\n/)
@@ -138,7 +171,7 @@ function priceBlock(item) {
   if (isFlooring) {
     return `<div class="product-price product-price-flooring">
       <div class="price-line">${money2(item.price)} <span class="price-unit">/ sq ft</span></div>
-      <div class="price-sub">${money2(item.boxPrice)} / box &middot; ${sqFt2(item.sqFtPerUnit)} sq ft/box</div>
+      <div class="price-sub"><span class="price-bold">${money2(item.boxPrice)} / box</span> &middot; ${sqFt2(item.sqFtPerUnit)} sq ft/box</div>
       <div class="price-avail">${sqFtAvailable(item.availableSqFt)} sq ft available</div>
     </div>`;
   }
@@ -147,7 +180,6 @@ function priceBlock(item) {
 }
 
 function productCard(item) {
-  const disabled = item.status !== "In Stock";
   const bullets = highlightBullets(item.highlights);
   return `
   <div class="product-card" data-category="${item.category}">
@@ -163,9 +195,7 @@ function productCard(item) {
       ${priceBlock(item)}
     </div>
     <div class="product-actions">
-      ${disabled
-        ? `<span class="btn btn-outline btn-small" style="opacity:.5; cursor:default;">${item.status}</span>`
-        : `<a href="sms:" data-sms-link data-item="${item.name}" class="btn btn-dark btn-small">Check Availability</a>`}
+      ${actionButtons(item)}
     </div>
   </div>`;
 }
@@ -188,13 +218,6 @@ function renderGrid(items, containerId) {
   if (!el) return;
   el.innerHTML = items.map(productCard).join("");
   bindThumbClicks(el);
-  if (window.SITE_CONFIG) {
-    el.querySelectorAll("a[data-sms-link]").forEach(link => {
-      const item = link.getAttribute("data-item") || "";
-      const body = `Hi! I'd like to check availability for: ${item}`;
-      link.href = `sms:${window.SITE_CONFIG.phoneHref}?&body=${encodeURIComponent(body)}`;
-    });
-  }
 }
 
 function renderReservedTicker(items, containerId) {
@@ -213,12 +236,106 @@ function renderReservedTicker(items, containerId) {
   ).join("");
 }
 
+// ---------------------------------------------------------------------
+// Shop page: category filter + sort. Sorting is client-side only, over
+// the array already fetched by fetchInventory() — no extra Airtable calls.
+// ---------------------------------------------------------------------
+let shopItems = [];
+let currentCategory = "all";
+let currentSort = "featured";
+
+const SQFT_SORT_OPTIONS = [
+  { value: "sqft-desc", label: "Sq Ft Available: High to Low" },
+  { value: "sqft-asc", label: "Sq Ft Available: Low to High" },
+];
+
+// Sorts by Price or Available Sq Ft. Items with a missing/non-numeric value
+// for the chosen field always sink to the bottom, regardless of direction,
+// and keep their relative order (stable) among themselves and on ties.
+function sortItems(items, sortKey) {
+  if (sortKey === "featured") return items.slice();
+
+  const field = sortKey.startsWith("price") ? "price" : "availableSqFt";
+  const desc = sortKey.endsWith("desc");
+
+  return items
+    .map((item, idx) => ({ item, idx, val: item[field] }))
+    .sort((a, b) => {
+      const aValid = typeof a.val === "number" && !isNaN(a.val);
+      const bValid = typeof b.val === "number" && !isNaN(b.val);
+      if (aValid !== bValid) return aValid ? -1 : 1;
+      if (!aValid) return a.idx - b.idx;
+      return desc ? b.val - a.val : a.val - b.val;
+    })
+    .map(entry => entry.item);
+}
+
+// Sq Ft Available sort options only make sense for Flooring — add/remove
+// them from the <select> based on the active category filter, and fall
+// back to Featured if an sqft sort was active when the category changed.
+function updateSortOptionsVisibility() {
+  const select = document.getElementById("sort-select");
+  if (!select) return;
+  const showSqft = currentCategory === "Flooring";
+  const hasSqftOptions = !!select.querySelector('option[value="sqft-desc"]');
+
+  if (showSqft && !hasSqftOptions) {
+    SQFT_SORT_OPTIONS.forEach(opt => {
+      const el = document.createElement("option");
+      el.value = opt.value;
+      el.textContent = opt.label;
+      select.appendChild(el);
+    });
+  } else if (!showSqft && hasSqftOptions) {
+    if (currentSort === "sqft-desc" || currentSort === "sqft-asc") {
+      currentSort = "featured";
+      select.value = "featured";
+    }
+    SQFT_SORT_OPTIONS.forEach(opt => {
+      select.querySelector(`option[value="${opt.value}"]`)?.remove();
+    });
+  }
+}
+
+function renderShopCatalog() {
+  const filtered = currentCategory === "all"
+    ? shopItems
+    : shopItems.filter(i => i.category === currentCategory);
+  renderGrid(sortItems(filtered, currentSort), "catalog-grid");
+}
+
+function initShopControls(items) {
+  shopItems = items;
+
+  const filterBtns = document.querySelectorAll(".filter-btn");
+  filterBtns.forEach(btn => {
+    btn.addEventListener("click", () => {
+      filterBtns.forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      currentCategory = btn.getAttribute("data-filter");
+      updateSortOptionsVisibility();
+      renderShopCatalog();
+    });
+  });
+
+  const sortSelect = document.getElementById("sort-select");
+  if (sortSelect) {
+    sortSelect.addEventListener("change", () => {
+      currentSort = sortSelect.value;
+      renderShopCatalog();
+    });
+  }
+
+  updateSortOptionsVisibility();
+  renderShopCatalog();
+}
+
 async function initInventory() {
   const items = await fetchInventory();
 
-  // Shop page: full catalog
+  // Shop page: full catalog (filtering + sorting handled together)
   if (document.getElementById("catalog-grid")) {
-    renderGrid(items, "catalog-grid");
+    initShopControls(items);
   }
 
   // Home page: New This Week
