@@ -348,7 +348,7 @@ nav.primary-nav a.active {
   font-family: 'Inter', sans-serif;
   font-size: 0.85rem;
   color: var(--text-muted);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .product-price-flooring .price-sub,
@@ -356,14 +356,15 @@ nav.primary-nav a.active {
   font-family: 'Inter', sans-serif;
   font-size: 0.8rem;
   color: var(--text-muted);
+  font-weight: 400;
 }
 
 .product-price-flooring .price-avail {
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .product-price-flooring .price-bold {
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .product-actions {
