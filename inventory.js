@@ -55,8 +55,12 @@ async function fetchInventory() {
       const dateReserved = f["Date Reserved"] ? new Date(f["Date Reserved"]) : null;
       return {
         id: r.id,
+        productKey: f["Product Key"] || "",
         name: f["Name"] || "Untitled item",
         category: f["Category"] || "Other",
+        brand: f["Brand"] || "",
+        model: f["Model"] || "",
+        retailer: f["Retailer"] || "",
         price: f["Price"],
         wasPrice: f["Was Price"],
         boxPrice: f["Box Price"],
@@ -134,19 +138,21 @@ function smsMessageForItem(item) {
   return `Hi, I'm interested in ${item.name}${priceText}. Please send me more information.`;
 }
 
-// Two CTAs for an in-stock item: "Get a Quote" (primary, opens the on-site
-// quote flow — not yet wired up pending the form/backend decision) and
-// "Text Us" (secondary, functional now — opens the visitor's SMS app with a
-// prefilled, product-specific message via the existing business phone
-// number in SITE_CONFIG). Out-of-stock items keep the old status pill.
+// Two CTAs for an in-stock item: "Get a Quote" (primary — for Flooring,
+// opens the on-site quote modal via data-quote-id; other categories keep
+// the plain button for now) and "Text Us" (secondary, functional — opens
+// the visitor's SMS app with a prefilled, product-specific message via the
+// existing business phone number in SITE_CONFIG). Out-of-stock items keep
+// the old status pill.
 function actionButtons(item) {
   if (item.status !== "In Stock") {
     return `<span class="btn btn-outline btn-small" style="opacity:.5; cursor:default;">${item.status}</span>`;
   }
   const phoneHref = window.SITE_CONFIG ? window.SITE_CONFIG.phoneHref : "";
   const smsHref = `sms:${phoneHref}?&body=${encodeURIComponent(smsMessageForItem(item))}`;
+  const quoteAttr = item.category === "Flooring" ? `data-quote-id="${item.id}"` : `data-quote-item="${item.name}"`;
   return `
-    <button type="button" class="btn btn-dark btn-small btn-quote" data-quote-item="${item.name}">Get a Quote</button>
+    <button type="button" class="btn btn-dark btn-small btn-quote" ${quoteAttr}>Get a Quote</button>
     <a href="${smsHref}" class="btn btn-outline btn-small">Text Us</a>
   `;
 }
@@ -241,8 +247,10 @@ function renderReservedTicker(items, containerId) {
 // the array already fetched by fetchInventory() — no extra Airtable calls.
 // ---------------------------------------------------------------------
 let shopItems = [];
+let itemsById = {};
 let currentCategory = "all";
 let currentSort = "featured";
+let currentSearch = "";
 
 const SQFT_SORT_OPTIONS = [
   { value: "sqft-desc", label: "Sq Ft Available: High to Low" },
@@ -297,15 +305,30 @@ function updateSortOptionsVisibility() {
   }
 }
 
+// Search matches Name, Brand, Model, Category and Retailer, case-insensitive.
+// Fields that are blank for a given item (Brand/Model/Retailer are optional
+// in Airtable) are simply skipped — no data means no match on that field.
+function searchMatches(item, query) {
+  if (!query) return true;
+  const haystack = [item.name, item.brand, item.model, item.category, item.retailer]
+    .filter(Boolean)
+    .join(" \n ")
+    .toLowerCase();
+  return haystack.includes(query);
+}
+
 function renderShopCatalog() {
-  const filtered = currentCategory === "all"
-    ? shopItems
-    : shopItems.filter(i => i.category === currentCategory);
+  const query = currentSearch.trim().toLowerCase();
+  const filtered = shopItems
+    .filter(i => currentCategory === "all" || i.category === currentCategory)
+    .filter(i => searchMatches(i, query));
   renderGrid(sortItems(filtered, currentSort), "catalog-grid");
 }
 
 function initShopControls(items) {
   shopItems = items;
+  itemsById = {};
+  items.forEach(i => { itemsById[i.id] = i; });
 
   const filterBtns = document.querySelectorAll(".filter-btn");
   filterBtns.forEach(btn => {
@@ -326,8 +349,138 @@ function initShopControls(items) {
     });
   }
 
+  const searchInput = document.getElementById("search-input");
+  const searchClear = document.getElementById("search-clear");
+  if (searchInput) {
+    searchInput.addEventListener("input", () => {
+      currentSearch = searchInput.value;
+      if (searchClear) searchClear.hidden = currentSearch.length === 0;
+      renderShopCatalog();
+    });
+  }
+  if (searchClear) {
+    searchClear.addEventListener("click", () => {
+      currentSearch = "";
+      if (searchInput) { searchInput.value = ""; searchInput.focus(); }
+      searchClear.hidden = true;
+      renderShopCatalog();
+    });
+  }
+
+  const catalogGrid = document.getElementById("catalog-grid");
+  if (catalogGrid) {
+    catalogGrid.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-quote-id]");
+      if (btn) openQuoteModal(itemsById[btn.getAttribute("data-quote-id")]);
+    });
+  }
+  bindQuoteModal();
+
   updateSortOptionsVisibility();
   renderShopCatalog();
+}
+
+// ---------------------------------------------------------------------
+// Get a Quote modal (Flooring products). Carries the selected product's
+// name/price into the modal and submits to the "quote-request" Netlify
+// Form via fetch, so the page never navigates away. See the static hidden
+// form in shop.html for the field list Netlify expects.
+// ---------------------------------------------------------------------
+function isFlooringPriced(item) {
+  return item.category === "Flooring" && typeof item.price === "number" && typeof item.boxPrice === "number";
+}
+
+function quotePriceText(item) {
+  if (isFlooringPriced(item)) {
+    return `${money2(item.price)} / sq ft · ${money2(item.boxPrice)} / box`;
+  }
+  return money(item.price);
+}
+
+function openQuoteModal(item) {
+  if (!item) return;
+  const overlay = document.getElementById("quote-modal-overlay");
+  const form = document.getElementById("quote-form");
+  if (!overlay || !form) return;
+
+  const nameEl = document.getElementById("quote-product-name");
+  const priceEl = document.getElementById("quote-product-price");
+  if (nameEl) nameEl.textContent = item.name;
+  if (priceEl) priceEl.textContent = quotePriceText(item);
+
+  form.reset();
+  document.getElementById("quote-field-product-name").value = item.name;
+  document.getElementById("quote-field-product-key").value = item.productKey || item.id;
+  document.getElementById("quote-field-price-per-sqft").value = typeof item.price === "number" ? money2(item.price) : "";
+  document.getElementById("quote-field-box-price").value = typeof item.boxPrice === "number" ? money2(item.boxPrice) : "";
+
+  const smsLink = document.getElementById("quote-text-us-link");
+  if (smsLink) {
+    const phoneHref = window.SITE_CONFIG ? window.SITE_CONFIG.phoneHref : "";
+    smsLink.href = `sms:${phoneHref}?&body=${encodeURIComponent(smsMessageForItem(item))}`;
+  }
+
+  document.getElementById("quote-modal-form-view").hidden = false;
+  document.getElementById("quote-modal-success-view").hidden = true;
+  document.getElementById("quote-form-error").hidden = true;
+
+  overlay.hidden = false;
+  document.body.classList.add("modal-open");
+  form.querySelector('[name="sqft-needed"]')?.focus();
+}
+
+function closeQuoteModal() {
+  const overlay = document.getElementById("quote-modal-overlay");
+  if (overlay) overlay.hidden = true;
+  document.body.classList.remove("modal-open");
+}
+
+function encodeFormData(data) {
+  return Object.keys(data).map(k => `${encodeURIComponent(k)}=${encodeURIComponent(data[k])}`).join("&");
+}
+
+function bindQuoteModal() {
+  const overlay = document.getElementById("quote-modal-overlay");
+  const form = document.getElementById("quote-form");
+  if (!overlay || !form) return;
+
+  document.getElementById("quote-modal-close")?.addEventListener("click", closeQuoteModal);
+  document.getElementById("quote-modal-done")?.addEventListener("click", closeQuoteModal);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) closeQuoteModal(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !overlay.hidden) closeQuoteModal(); });
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!form.checkValidity()) {
+      form.reportValidity();
+      return;
+    }
+
+    const submitBtn = document.getElementById("quote-submit-btn");
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Sending..."; }
+    document.getElementById("quote-form-error").hidden = true;
+
+    document.getElementById("quote-field-submitted-at").value = new Date().toLocaleString("en-US", { timeZone: "America/Chicago" });
+
+    const payload = {};
+    new FormData(form).forEach((value, key) => { payload[key] = value; });
+
+    try {
+      const res = await fetch("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: encodeFormData(payload),
+      });
+      if (!res.ok) throw new Error(`Submission failed: ${res.status}`);
+      document.getElementById("quote-modal-form-view").hidden = true;
+      document.getElementById("quote-modal-success-view").hidden = false;
+    } catch (err) {
+      console.warn("Invicta: quote submission failed —", err);
+      document.getElementById("quote-form-error").hidden = false;
+    } finally {
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Request Quote"; }
+    }
+  });
 }
 
 async function initInventory() {

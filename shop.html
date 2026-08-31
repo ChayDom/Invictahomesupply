@@ -38,6 +38,11 @@
 
 <section class="section" style="padding-top:56px;">
   <div class="catalog-controls">
+    <div class="search-control">
+      <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input type="search" id="search-input" class="search-input" placeholder="Search products..." autocomplete="off" aria-label="Search products">
+      <button type="button" id="search-clear" class="search-clear" aria-label="Clear search" hidden>&times;</button>
+    </div>
     <div class="filter-row">
       <button class="filter-btn active" data-filter="all">All</button>
       <button class="filter-btn" data-filter="Flooring">Flooring</button>
@@ -59,6 +64,80 @@
     <!-- populated automatically from your Airtable inventory — see inventory.js and README -->
   </div>
 </section>
+
+<!-- Get a Quote modal (flooring products) — populated/opened by inventory.js.
+     Submits to the "quote-request" Netlify Form declared statically below. -->
+<div class="modal-overlay" id="quote-modal-overlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="quote-product-name">
+    <button type="button" class="modal-close" id="quote-modal-close" aria-label="Close">&times;</button>
+
+    <div id="quote-modal-form-view">
+      <div class="eyebrow">Get A Quote</div>
+      <h3 class="quote-product-name" id="quote-product-name"></h3>
+      <div class="quote-product-price" id="quote-product-price"></div>
+
+      <form id="quote-form" class="quote-form">
+        <input type="hidden" name="form-name" value="quote-request">
+        <input type="hidden" name="product-name" id="quote-field-product-name">
+        <input type="hidden" name="product-key" id="quote-field-product-key">
+        <input type="hidden" name="price-per-sqft" id="quote-field-price-per-sqft">
+        <input type="hidden" name="box-price" id="quote-field-box-price">
+        <input type="hidden" name="submitted-at" id="quote-field-submitted-at">
+        <p class="hp-field" aria-hidden="true">
+          <label>Leave this field blank<input type="text" name="bot-field" tabindex="-1" autocomplete="off"></label>
+        </p>
+
+        <label class="form-field">
+          <span>Approx. Sq Ft Needed <em>*</em></span>
+          <input type="number" name="sqft-needed" min="1" step="any" required>
+        </label>
+        <label class="form-field">
+          <span>Name <em>*</em></span>
+          <input type="text" name="name" required autocomplete="name">
+        </label>
+        <label class="form-field">
+          <span>Phone <em>*</em></span>
+          <input type="tel" name="phone" required autocomplete="tel">
+        </label>
+        <label class="form-field">
+          <span>ZIP Code</span>
+          <input type="text" name="zip" inputmode="numeric" autocomplete="postal-code">
+        </label>
+        <label class="form-field form-field-checkbox">
+          <input type="checkbox" name="installation-needed" value="Yes">
+          <span>I also need installation</span>
+        </label>
+
+        <div class="quote-form-error" id="quote-form-error" hidden>Something went wrong sending your request — please try again, or text us instead.</div>
+
+        <button type="submit" class="btn btn-dark btn-block" id="quote-submit-btn">Request Quote</button>
+        <a href="sms:" data-sms-link class="btn btn-outline btn-block" id="quote-text-us-link">Text Us</a>
+      </form>
+    </div>
+
+    <div id="quote-modal-success-view" hidden>
+      <p class="quote-success-message">Thank you! We received your quote request and will contact you shortly.</p>
+      <button type="button" class="btn btn-dark" id="quote-modal-done">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Static form so Netlify detects "quote-request" at deploy time (Netlify
+     parses built HTML for forms, not JS-rendered ones). The real form above
+     is submitted via fetch — field names must match exactly. -->
+<form name="quote-request" data-netlify="true" netlify-honeypot="bot-field" hidden>
+  <input type="text" name="product-name">
+  <input type="text" name="product-key">
+  <input type="text" name="price-per-sqft">
+  <input type="text" name="box-price">
+  <input type="text" name="submitted-at">
+  <input type="text" name="sqft-needed">
+  <input type="text" name="name">
+  <input type="tel" name="phone">
+  <input type="text" name="zip">
+  <input type="text" name="installation-needed">
+  <input type="text" name="bot-field">
+</form>
 
 <footer class="site-footer">
   <div class="footer-grid">
