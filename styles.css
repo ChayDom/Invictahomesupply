@@ -564,6 +564,12 @@ nav.primary-nav a.active {
   max-width: var(--max-width);
   margin: 0 auto;
 }
+/* Grid items default to min-width:auto, so a wide row of buttons inside
+   .contact-card was refusing to shrink below its unwrapped content width,
+   blowing out the grid track and causing horizontal overflow on mobile —
+   pre-existing, unrelated to any content change. min-width:0 lets it wrap
+   and shrink to the actual available column width as intended. */
+.contact-card { min-width: 0; }
 .contact-card {
   background: #fff;
   border: 1px solid var(--line);
