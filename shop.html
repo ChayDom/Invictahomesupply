@@ -50,13 +50,19 @@
       <button class="filter-btn" data-filter="Appliances">Appliances</button>
       <button class="filter-btn" data-filter="Tools">Tools</button>
     </div>
-    <div class="sort-control">
-      <label for="sort-select">Sort by</label>
-      <select id="sort-select">
-        <option value="featured">Featured</option>
-        <option value="price-asc">Price: Low to High</option>
-        <option value="price-desc">Price: High to Low</option>
-      </select>
+    <div class="controls-right">
+      <div class="sort-control">
+        <label for="sort-select">Sort by</label>
+        <select id="sort-select">
+          <option value="featured">Featured</option>
+          <option value="price-asc">Price: Low to High</option>
+          <option value="price-desc">Price: High to Low</option>
+        </select>
+      </div>
+      <button type="button" id="calc-open-btn" class="btn btn-outline btn-small calc-trigger-btn">
+        <svg class="calc-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="11" x2="8" y2="11.01"/><line x1="12" y1="11" x2="12" y2="11.01"/><line x1="16" y1="11" x2="16" y2="11.01"/><line x1="8" y1="15" x2="8" y2="15.01"/><line x1="12" y1="15" x2="12" y2="15.01"/><line x1="16" y1="15" x2="16" y2="15.01"/><line x1="8" y1="19" x2="16" y2="19"/></svg>
+        Flooring Calculator
+      </button>
     </div>
   </div>
 
@@ -87,10 +93,13 @@
           <label>Leave this field blank<input type="text" name="bot-field" tabindex="-1" autocomplete="off"></label>
         </p>
 
-        <label class="form-field">
-          <span>Approx. Sq Ft Needed <em>*</em></span>
-          <input type="number" name="sqft-needed" min="1" step="any" required>
-        </label>
+        <div class="form-field">
+          <div class="form-field-label-row">
+            <label for="quote-sqft-input">Approx. Sq Ft Needed <em>*</em></label>
+            <button type="button" class="calc-link" id="quote-calc-link">Calculate Sq Ft</button>
+          </div>
+          <input type="number" name="sqft-needed" id="quote-sqft-input" min="1" step="any" required>
+        </div>
         <label class="form-field">
           <span>Name <em>*</em></span>
           <input type="text" name="name" required autocomplete="name">
@@ -118,6 +127,50 @@
     <div id="quote-modal-success-view" hidden>
       <p class="quote-success-message">Thank you! We received your quote request and will contact you shortly.</p>
       <button type="button" class="btn btn-dark" id="quote-modal-done">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Flooring Calculator modal — entirely client-side, no Airtable/Netlify Functions/
+     Netlify Forms involved. Can be opened from the Shop page directly, or from the
+     Get a Quote modal's "Calculate Sq Ft" link (which hides the quote modal without
+     resetting it, so its fields are preserved when the calculator closes). -->
+<div class="modal-overlay" id="calc-modal-overlay" hidden>
+  <div class="modal modal-lg" role="dialog" aria-modal="true" aria-labelledby="calc-modal-title">
+    <button type="button" class="modal-close" id="calc-modal-close" aria-label="Close">&times;</button>
+
+    <div class="eyebrow">Flooring Calculator</div>
+    <h3 class="quote-product-name" id="calc-modal-title">Flooring Calculator</h3>
+    <p class="calc-subtitle">Enter your room dimensions to estimate how much flooring you need.</p>
+
+    <div id="calc-rooms"></div>
+
+    <button type="button" class="btn btn-outline btn-block calc-add-room-btn" id="calc-add-room">+ Add Another Room</button>
+
+    <div class="calc-totals">
+      <div class="calc-total-row">
+        <span>Total Room Area</span>
+        <strong id="calc-total-area">0 sq ft</strong>
+      </div>
+
+      <div class="calc-waste-label">Add extra for cuts &amp; waste</div>
+      <div class="calc-waste-row" role="group" aria-label="Extra for cuts and waste">
+        <button type="button" class="calc-waste-btn" data-waste="0">0%</button>
+        <button type="button" class="calc-waste-btn" data-waste="5">5%</button>
+        <button type="button" class="calc-waste-btn active" data-waste="10">10%</button>
+        <button type="button" class="calc-waste-btn" data-waste="15">15%</button>
+      </div>
+
+      <div class="calc-total-row calc-total-row-primary">
+        <span>Recommended Flooring</span>
+        <strong id="calc-recommended">0 sq ft</strong>
+      </div>
+      <p class="calc-disclaimer">This is an estimate only. Actual material needs may vary based on room layout, cuts, installation pattern, and installer recommendations.</p>
+    </div>
+
+    <div class="calc-actions">
+      <button type="button" class="btn btn-dark btn-block" id="calc-use-for-quote" hidden>Use This For My Quote</button>
+      <button type="button" class="btn btn-outline btn-block" id="calc-done">Done</button>
     </div>
   </div>
 </div>

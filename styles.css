@@ -138,6 +138,11 @@ nav.primary-nav a.active {
   cursor: pointer;
   background: none;
 }
+/* .btn/.btn-block both set their own `display`, which otherwise beats the
+   browser's default [hidden]{display:none} on specificity — so any button
+   toggled via the `hidden` property (e.g. calc-use-for-quote/calc-done)
+   would stay visible. This wins on specificity regardless of source order. */
+.btn[hidden] { display: none; }
 
 .btn-dark {
   background: var(--charcoal);
@@ -474,10 +479,25 @@ nav.primary-nav a.active {
   cursor: pointer;
 }
 
+.controls-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.calc-trigger-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.calc-icon { width: 15px; height: 15px; flex-shrink: 0; }
+
 @media (max-width: 700px) {
   .catalog-controls { flex-direction: column; align-items: stretch; }
   .catalog-controls .search-control { max-width: none; }
   .sort-control { justify-content: center; }
+  .controls-right { justify-content: center; }
 }
 
 /* ---------- Strip / banner ---------- */
@@ -860,6 +880,27 @@ body.modal-open { overflow: hidden; }
 .form-field { display: flex; flex-direction: column; gap: 6px; font-size: 0.8rem; }
 .form-field span { font-weight: 600; color: var(--charcoal); }
 .form-field em { color: var(--amber); font-style: normal; }
+
+.form-field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.form-field-label-row label { font-weight: 600; color: var(--charcoal); }
+.calc-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--amber-dark);
+  font-size: 0.76rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-transform: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.calc-link:hover { color: var(--amber); }
 .form-field input[type="text"],
 .form-field input[type="tel"],
 .form-field input[type="number"] {
@@ -898,8 +939,147 @@ body.modal-open { overflow: hidden; }
   overflow: hidden;
 }
 
+/* ---------- Flooring Calculator modal ---------- */
+.modal.modal-lg { max-width: 520px; }
+
+.calc-subtitle {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  margin: 0 0 20px;
+}
+
+.calc-room {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.calc-room-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.calc-room-label {
+  font-family: 'Zilla Slab', Georgia, serif;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.calc-room-remove {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 50%;
+}
+.calc-room-remove:hover { background: var(--cream-dim); color: var(--amber-dark); }
+.calc-room-remove[hidden] { display: none; }
+
+.calc-dim-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.calc-dim-row:last-of-type { margin-bottom: 0; }
+.calc-dim-label {
+  width: 56px;
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.calc-input {
+  width: 64px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.88rem;
+  color: var(--charcoal);
+}
+.calc-input-narrow { width: 52px; }
+.calc-input:focus { outline: none; border-color: var(--charcoal); }
+.calc-unit {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-right: 6px;
+}
+
+.calc-room-area {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+.calc-room-area strong { color: var(--charcoal); }
+
+.calc-add-room-btn { margin-bottom: 22px; }
+.calc-add-room-btn:disabled { opacity: 0.5; cursor: default; }
+
+.calc-totals {
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+.calc-total-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.92rem;
+  padding: 6px 0;
+}
+.calc-total-row-primary {
+  font-size: 1.05rem;
+  padding-top: 12px;
+  margin-top: 6px;
+  border-top: 1px solid var(--line);
+}
+.calc-total-row-primary strong { color: var(--amber-dark); }
+
+.calc-waste-label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-top: 10px;
+  margin-bottom: 8px;
+}
+.calc-waste-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.calc-waste-btn {
+  flex: 1;
+  padding: 8px 0;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.calc-waste-btn.active,
+.calc-waste-btn:hover {
+  background: var(--charcoal);
+  color: var(--cream);
+  border-color: var(--charcoal);
+}
+
+.calc-disclaimer {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  margin: 12px 0 0;
+}
+
+.calc-actions { margin-top: 22px; display: flex; flex-direction: column; gap: 10px; }
+
 @media (max-width: 480px) {
   .modal { padding: 24px 20px; }
+  .calc-dim-label { width: 100%; margin-bottom: 2px; }
+  .calc-input { width: 56px; }
 }
 
 /* Mobile nav drawer */

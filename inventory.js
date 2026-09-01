@@ -305,6 +305,15 @@ function updateSortOptionsVisibility() {
   }
 }
 
+// The Flooring Calculator is primarily useful for flooring — keep it visible
+// whenever Flooring items are in view (the "All" filter included) and hide
+// it for categories where a sq ft estimate doesn't apply.
+function updateCalcButtonVisibility() {
+  const btn = document.getElementById("calc-open-btn");
+  if (!btn) return;
+  btn.style.display = (currentCategory === "all" || currentCategory === "Flooring") ? "" : "none";
+}
+
 // Search matches Name, Brand, Model, Category and Retailer, case-insensitive.
 // Fields that are blank for a given item (Brand/Model/Retailer are optional
 // in Airtable) are simply skipped — no data means no match on that field.
@@ -337,6 +346,7 @@ function initShopControls(items) {
       btn.classList.add("active");
       currentCategory = btn.getAttribute("data-filter");
       updateSortOptionsVisibility();
+      updateCalcButtonVisibility();
       renderShopCatalog();
     });
   });
@@ -375,8 +385,10 @@ function initShopControls(items) {
     });
   }
   bindQuoteModal();
+  bindCalculatorModal();
 
   updateSortOptionsVisibility();
+  updateCalcButtonVisibility();
   renderShopCatalog();
 }
 
@@ -449,6 +461,11 @@ function bindQuoteModal() {
   overlay.addEventListener("click", (e) => { if (e.target === overlay) closeQuoteModal(); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !overlay.hidden) closeQuoteModal(); });
 
+  document.getElementById("quote-calc-link")?.addEventListener("click", () => {
+    overlay.hidden = true;
+    openCalculatorModal(true);
+  });
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     if (!form.checkValidity()) {
@@ -480,6 +497,223 @@ function bindQuoteModal() {
     } finally {
       if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Request Quote"; }
     }
+  });
+}
+
+// ---------------------------------------------------------------------
+// Flooring Calculator — entirely client-side (no Airtable/Netlify Functions/
+// Netlify Forms). Estimates total square footage across one or more rooms
+// from feet+inches dimensions, plus a waste percentage.
+//
+// The calculator can be opened two ways:
+//   - Directly from the Shop page ("Flooring Calculator" button): shows
+//     Total Room Area / Recommended Flooring with a plain Done action.
+//   - From the Get a Quote modal ("Calculate Sq Ft" link): the quote modal
+//     is hidden (not reset, so its fields survive) while the calculator is
+//     open, and "Use This For My Quote" writes the rounded-up recommended
+//     amount into Approx. Sq Ft Needed, then re-shows the quote modal.
+// Product-independent by design (no box-count math yet — see README/task).
+// ---------------------------------------------------------------------
+const CALC_MAX_ROOMS = 20;
+let calcRoomCounter = 0;
+let calcWasteRate = 0.10;
+let calcOpenedFromQuote = false;
+let calcLastRecommended = 0;
+
+// Clamps/defaults a feet+inches pair into a safe non-negative decimal-feet
+// value: blank or non-numeric input becomes 0, negative feet become 0, and
+// inches are clamped to 0-11 — so a stray typo can never produce NaN or a
+// negative room dimension.
+function calcParseFeetInches(feetRaw, inchesRaw) {
+  let feet = parseFloat(feetRaw);
+  if (!isFinite(feet) || isNaN(feet) || feet < 0) feet = 0;
+  let inches = parseFloat(inchesRaw);
+  if (!isFinite(inches) || isNaN(inches)) inches = 0;
+  inches = Math.min(11, Math.max(0, inches));
+  return feet + inches / 12;
+}
+
+// Rounds to at most 2 decimal places for display, trimming trailing zeros
+// (100 -> "100", 138.6 -> "138.6", 434.69 -> "434.69") — never rounds the
+// values used in the underlying math, only what's shown on screen.
+function calcRound2(n) {
+  return (Math.round((n + Number.EPSILON) * 100) / 100).toString();
+}
+
+function calcRoomTemplate(n) {
+  calcRoomCounter += 1;
+  const id = calcRoomCounter;
+  return `
+  <div class="calc-room" data-room-id="${id}">
+    <div class="calc-room-header">
+      <span class="calc-room-label">Room ${n}</span>
+      <button type="button" class="calc-room-remove" data-remove-room="${id}" aria-label="Remove Room ${n}">&times;</button>
+    </div>
+    <div class="calc-dim-row">
+      <span class="calc-dim-label">Length</span>
+      <input type="number" inputmode="decimal" min="0" step="any" class="calc-input" data-dim="length-ft" aria-label="Room ${n} length, feet" placeholder="0">
+      <span class="calc-unit">ft</span>
+      <input type="number" inputmode="numeric" min="0" max="11" step="1" class="calc-input calc-input-narrow" data-dim="length-in" aria-label="Room ${n} length, inches" placeholder="0">
+      <span class="calc-unit">in</span>
+    </div>
+    <div class="calc-dim-row">
+      <span class="calc-dim-label">Width</span>
+      <input type="number" inputmode="decimal" min="0" step="any" class="calc-input" data-dim="width-ft" aria-label="Room ${n} width, feet" placeholder="0">
+      <span class="calc-unit">ft</span>
+      <input type="number" inputmode="numeric" min="0" max="11" step="1" class="calc-input calc-input-narrow" data-dim="width-in" aria-label="Room ${n} width, inches" placeholder="0">
+      <span class="calc-unit">in</span>
+    </div>
+    <div class="calc-room-area" data-room-area>Room area: <strong>0 sq ft</strong></div>
+  </div>`;
+}
+
+function calcRelabelRooms() {
+  document.querySelectorAll("#calc-rooms .calc-room").forEach((roomEl, idx) => {
+    const n = idx + 1;
+    const label = roomEl.querySelector(".calc-room-label");
+    if (label) label.textContent = `Room ${n}`;
+    const removeBtn = roomEl.querySelector(".calc-room-remove");
+    if (removeBtn) removeBtn.setAttribute("aria-label", `Remove Room ${n}`);
+  });
+}
+
+// Hides the remove button when only one room is left (Room 1 can't be
+// removed if it's the only room) and disables adding past the room cap.
+function calcUpdateRoomChrome() {
+  const rooms = document.querySelectorAll("#calc-rooms .calc-room");
+  const onlyOne = rooms.length <= 1;
+  rooms.forEach(roomEl => {
+    const removeBtn = roomEl.querySelector(".calc-room-remove");
+    if (removeBtn) removeBtn.hidden = onlyOne;
+  });
+  const addBtn = document.getElementById("calc-add-room");
+  if (addBtn) {
+    const atMax = rooms.length >= CALC_MAX_ROOMS;
+    addBtn.disabled = atMax;
+    addBtn.textContent = atMax ? `Maximum ${CALC_MAX_ROOMS} rooms reached` : "+ Add Another Room";
+  }
+}
+
+// Recomputes every room's area, the total, and the recommended (with waste)
+// amount from whatever is currently in the DOM inputs. Rooms are summed at
+// full precision — only the displayed strings are rounded to 2 decimals.
+function calcRecalculate() {
+  let totalArea = 0;
+  document.querySelectorAll("#calc-rooms .calc-room").forEach(roomEl => {
+    const length = calcParseFeetInches(
+      roomEl.querySelector('[data-dim="length-ft"]')?.value,
+      roomEl.querySelector('[data-dim="length-in"]')?.value
+    );
+    const width = calcParseFeetInches(
+      roomEl.querySelector('[data-dim="width-ft"]')?.value,
+      roomEl.querySelector('[data-dim="width-in"]')?.value
+    );
+    const area = length * width;
+    totalArea += area;
+    const areaEl = roomEl.querySelector("[data-room-area]");
+    if (areaEl) areaEl.innerHTML = `Room area: <strong>${calcRound2(area)} sq ft</strong>`;
+  });
+
+  const totalEl = document.getElementById("calc-total-area");
+  if (totalEl) totalEl.textContent = `${calcRound2(totalArea)} sq ft`;
+
+  const recommended = totalArea * (1 + calcWasteRate);
+  calcLastRecommended = recommended;
+  const recEl = document.getElementById("calc-recommended");
+  if (recEl) recEl.textContent = `${calcRound2(recommended)} sq ft`;
+}
+
+// Resets the calculator back to a single empty room and the default waste
+// rate every time it's opened — it doesn't need to remember a prior session.
+function calcResetState() {
+  calcWasteRate = 0.10;
+  calcRoomCounter = 0;
+  const container = document.getElementById("calc-rooms");
+  if (container) container.innerHTML = calcRoomTemplate(1);
+  document.querySelectorAll(".calc-waste-btn").forEach(b => {
+    b.classList.toggle("active", b.getAttribute("data-waste") === "10");
+  });
+  calcUpdateRoomChrome();
+  calcRecalculate();
+}
+
+function openCalculatorModal(fromQuote) {
+  calcOpenedFromQuote = !!fromQuote;
+  calcResetState();
+  const useForQuoteBtn = document.getElementById("calc-use-for-quote");
+  const doneBtn = document.getElementById("calc-done");
+  if (useForQuoteBtn) useForQuoteBtn.hidden = !calcOpenedFromQuote;
+  if (doneBtn) doneBtn.hidden = calcOpenedFromQuote;
+
+  const overlay = document.getElementById("calc-modal-overlay");
+  if (overlay) overlay.hidden = false;
+  document.body.classList.add("modal-open");
+}
+
+// Closing always hides the calculator; if it was opened from Get a Quote,
+// the (never-reset) quote modal is shown again instead of leaving the
+// customer with nothing open.
+function closeCalculatorModal() {
+  const overlay = document.getElementById("calc-modal-overlay");
+  if (overlay) overlay.hidden = true;
+
+  if (calcOpenedFromQuote) {
+    const quoteOverlay = document.getElementById("quote-modal-overlay");
+    if (quoteOverlay) quoteOverlay.hidden = false;
+  } else {
+    document.body.classList.remove("modal-open");
+  }
+  calcOpenedFromQuote = false;
+}
+
+function bindCalculatorModal() {
+  const overlay = document.getElementById("calc-modal-overlay");
+  const roomsContainer = document.getElementById("calc-rooms");
+  if (!overlay || !roomsContainer) return;
+
+  document.getElementById("calc-open-btn")?.addEventListener("click", () => openCalculatorModal(false));
+  document.getElementById("calc-modal-close")?.addEventListener("click", closeCalculatorModal);
+  document.getElementById("calc-done")?.addEventListener("click", closeCalculatorModal);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) closeCalculatorModal(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !overlay.hidden) closeCalculatorModal(); });
+
+  roomsContainer.addEventListener("input", (e) => {
+    if (e.target.matches(".calc-input")) calcRecalculate();
+  });
+
+  roomsContainer.addEventListener("click", (e) => {
+    const removeBtn = e.target.closest("[data-remove-room]");
+    if (!removeBtn) return;
+    if (roomsContainer.querySelectorAll(".calc-room").length <= 1) return;
+    removeBtn.closest(".calc-room")?.remove();
+    calcRelabelRooms();
+    calcUpdateRoomChrome();
+    calcRecalculate();
+  });
+
+  document.getElementById("calc-add-room")?.addEventListener("click", () => {
+    const count = roomsContainer.querySelectorAll(".calc-room").length;
+    if (count >= CALC_MAX_ROOMS) return;
+    roomsContainer.insertAdjacentHTML("beforeend", calcRoomTemplate(count + 1));
+    calcUpdateRoomChrome();
+    calcRecalculate();
+  });
+
+  document.querySelectorAll(".calc-waste-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".calc-waste-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      calcWasteRate = parseFloat(btn.getAttribute("data-waste")) / 100;
+      calcRecalculate();
+    });
+  });
+
+  document.getElementById("calc-use-for-quote")?.addEventListener("click", () => {
+    const roundedUp = Math.max(0, Math.ceil(calcLastRecommended));
+    const sqftInput = document.getElementById("quote-sqft-input");
+    if (sqftInput) sqftInput.value = roundedUp > 0 ? String(roundedUp) : "";
+    closeCalculatorModal();
+    sqftInput?.focus();
   });
 }
 
