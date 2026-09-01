@@ -6,13 +6,14 @@
    =================================================================== */
 window.SITE_CONFIG = {
   businessName: "Invicta Home Supply",
-  phoneDisplay: "(513) 800-0533",     // <-- replace with your real number
-  phoneHref: "+15138000533",           // <-- same number, digits only, with country code
+  phoneDisplay: "(214) 552-2145",     // <-- replace with your real number
+  phoneHref: "+12145522145",           // <-- same number, digits only, with country code
   email: "hello@invictahomesupply.com", // <-- replace with your real email
-  city: "Mckinney, TX",                // <-- replace with your pickup location/city
-  pickupAddress: "Pickup by appointment — exact address sent once you check availability",
+  city: "McKinney, TX",                // <-- replace with your pickup location/city
+  pickupAddress: "Pickup by appointment — we'll send you the exact location after confirming your order.",
   hours: "Mon–Sat, 8am–8pm",
-  facebookUrl: "https://www.facebook.com/invictahomesupply//", // <-- replace with your FB page/marketplace link
+  facebookUrl: "https://www.facebook.com/invictahomesupply/", // <-- replace with your FB page/marketplace link
+  instagramUrl: "https://www.instagram.com/invictahomesupplydfw/", // <-- replace with your Instagram profile link
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -29,7 +30,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll("a[data-tel-link]").forEach(el => el.href = `tel:${cfg.phoneHref}`);
   document.querySelectorAll("a[data-sms-link]").forEach(el => {
     const item = el.getAttribute("data-item") || "";
-    const body = item ? `Hi! I'd like to check availability for: ${item}` : "Hi! I'd like to check availability on an item from your site.";
+    const body = item ? `Hi! I'd like to check availability for: ${item}` : "Hi! I have a question about a product I saw on the Invicta Home Supply website.";
     el.href = `sms:${cfg.phoneHref}?&body=${encodeURIComponent(body)}`;
   });
   document.querySelectorAll("a[data-sms-optin]").forEach(el => {
@@ -37,6 +38,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   document.querySelectorAll("a[data-mail-link]").forEach(el => el.href = `mailto:${cfg.email}`);
   document.querySelectorAll("a[data-fb-link]").forEach(el => el.href = cfg.facebookUrl);
+  document.querySelectorAll("a[data-ig-link]").forEach(el => el.href = cfg.instagramUrl);
 
   // Mobile nav toggle
   const toggle = document.querySelector(".menu-toggle");
