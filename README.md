@@ -41,35 +41,78 @@ Airtable — see the three sections below for the exact spec.
 
 The site is mid-migration to the new field set. **`Post to Website`
 (existing checkbox) is still the only publish gate** — not `Web Category`,
-not `Web Status`. Until Product Catalog has been updated and re-synced:
+not `Web Status`. The new fields add display and filtering information;
+they never replace or weaken the existing publishing safeguards (see the
+next section). Until Product Catalog has been updated and re-synced:
 
-- A row with a blank `Web Category` is **not hidden**. It's assigned a
-  fallback web category automatically: the existing `Category` field maps
-  `Flooring` → Flooring, `Appliances` → Appliances, `Tools` → Tools;
-  anything else (including blank) falls back to the broadest catch-all,
-  **Home Improvement**, until it's explicitly re-categorized upstream.
-- A row with a blank `Web Status` is **not hidden either** — the existing
-  `Status` field (`In Stock` / `Reserved` / `Sold Out`) is used instead.
-  Reserved/Sold items still render on the site, just with a disabled status
-  pill in place of the "Text About This Item" button (this matches the
-  site's pre-migration behavior).
-- A row with a blank `Sell Unit` is inferred: `sq ft` if it fell back to
+- A row with a blank `Web Category` falls back to the existing `Category`
+  field, but **only through an explicit allowlist — this is not a
+  catch-all**:
+
+  | Legacy `Category` | Falls back to |
+  |---|---|
+  | `Flooring` | Flooring |
+  | `Appliances` | Appliances |
+  | `Tools` | Tools |
+  | `Water Heaters` | Water Heaters |
+  | Contains "Plumbing" or "Sinks" | Plumbing & Bath |
+  | Contains "Lawn" or "Outdoor" | Lawn & Outdoor |
+  | Contains "Lighting", "Windows & Doors", "Blinds", or "Shutters" | Home Improvement |
+  | Anything else, or blank | **Not published** — see below |
+
+  `Electronics`, `Gaming`, `Toys`, `Collectibles`, `Health & Personal
+  Care`, blank categories, and any other unrecognized value are
+  **deliberately not auto-categorized and not published**, even if
+  `Post to Website` is `TRUE` — those product lines are out of scope for
+  this home-improvement storefront and must never be guessed into a tab.
+  If one of these needs to go live, it has to get a real `Web Category`
+  from Product Catalog first.
+- A row with a blank `Web Status` is **not hidden** — the existing
+  `Status` field (`In Stock` / `Reserved` / `Sold Out`) is used instead,
+  and this stays true until Product Catalog's rollout is far enough along
+  to switch over; `Web Status` does not replace the existing status field
+  yet, it's additive/optional. Reserved/Sold items still render on the
+  site, just with a disabled status pill in place of the "Text About This
+  Item" button (this matches the site's pre-migration behavior).
+- A row with a blank `Sell Unit` is inferred: `sq ft` if it resolved to
   the Flooring category, `each` otherwise.
 - A row with blank `Specs` just shows no spec chips. A row with blank
   `Quantity Available` just omits the "N available" line. Neither hides
   the product.
 
-This fallback logic lives in `mapAirtableRecord()` /
-`resolveWebCategory()` / `resolveWebStatus()` in `inventory.js` — once
-every row has real `Web Category` and `Web Status` values from Product
-Catalog, that function can be simplified to drop the legacy fallbacks (the
-code comments say so at each fallback).
+This logic lives in `mapAirtableRecord()` / `resolveWebCategory()` /
+`resolveWebStatus()` / `LEGACY_CATEGORY_RULES` in `inventory.js` — once
+every row has a real `Web Category` and `Web Status` from Product Catalog,
+these can be simplified to drop the legacy fallbacks (the code comments
+say so at each one).
 
 **The Netlify function's Airtable filter is currently
 `{Post to Website} = TRUE()`** (not Web Category/Web Status) for the same
 reason — see `netlify/functions/inventory.mts`. Don't change that filter
 until Web Category/Web Status are populated and verified for every
 in-scope row.
+
+## Publishing safeguards — do not weaken these
+
+The 5 new fields are additive display/filtering information. They must
+never become a way to publish something that wouldn't otherwise qualify.
+Whatever sets `Post to Website = TRUE` during the Product Catalog →
+Website Export → Airtable sync must keep requiring **all** of:
+
+- `Post to Website = TRUE`
+- Available inventory greater than 0
+- Website Price filled in
+- Image approved/available
+- Enrichment status is not `NEEDS REVIEW`
+- For Flooring rows specifically: the flooring quantity and sq-ft fields
+  are filled in
+
+This site's code has no way to independently verify "available inventory"
+or "enrichment status" — it only ever sees what the Netlify function reads
+from Airtable, gated by `Post to Website`. So these checks have to keep
+happening upstream, in whatever logic currently sets `Post to Website`;
+adding `Web Category`/`Sell Unit`/`Specs`/`Web Status`/`Quantity Available`
+to the export must not bypass or loosen any of them.
 
 ## Product Catalog columns to add (do this first, in the Sheet)
 
@@ -81,7 +124,7 @@ position.
 
 | Product Catalog column | Type / allowed values | Notes |
 |---|---|---|
-| `Web Category` | Dropdown (data validation), one of: `Flooring`, `Water Heaters`, `Appliances`, `Plumbing & Bath`, `Lawn & Outdoor`, `Tools`, `Home Improvement` | Leave blank during migration — the site falls back safely (see above). Fill in over time, cheapest to do while also filling `Sell Unit`/`Specs`. |
+| `Web Category` | Dropdown (data validation), one of: `Flooring`, `Water Heaters`, `Appliances`, `Plumbing & Bath`, `Lawn & Outdoor`, `Tools`, `Home Improvement` | Leave blank during migration only for rows whose existing `Category` matches the allowlist in "Staged migration" above (Flooring/Appliances/Tools/Water Heaters/Plumbing/Sinks/Lawn/Outdoor/Lighting/Windows & Doors/Blinds/Shutters). Anything else (Electronics, Gaming, Toys, Collectibles, Health & Personal Care, etc.) needs `Web Category` filled in explicitly before it can go live — it will not be published otherwise. |
 | `Sell Unit` | Dropdown: `each`, `box`, `sq ft` | Leave blank to let the site infer it. |
 | `Specs` | Free text | Up to 3 short specs separated by `\|`, e.g. `40 gal\|Natural gas\|Rheem` or `22 MIL\|Waterproof\|Click-lock`. Keep each segment short — it renders as a pill chip. |
 | `Web Status` | Dropdown: `In Stock`, `Reserved`, `Sold`, `Coming Soon` | Leave blank during migration — the site falls back to your existing stock/status column. |
@@ -187,7 +230,7 @@ first time connecting Airtable at all:
    |---|---|
    | Name | Single line text |
    | Category | Single select — your own internal reporting categories (see above), as broad or granular as you like |
-   | Web Category | Single select — **exactly one of:** `Flooring`, `Water Heaters`, `Appliances`, `Plumbing & Bath`, `Lawn & Outdoor`, `Tools`, `Home Improvement`. Blank does **not** hide the item during the staged migration — see "Staged migration" above for the fallback category it gets instead. |
+   | Web Category | Single select — **exactly one of:** `Flooring`, `Water Heaters`, `Appliances`, `Plumbing & Bath`, `Lawn & Outdoor`, `Tools`, `Home Improvement`. Blank falls back to the legacy `Category` field only via the explicit allowlist in "Staged migration" above — anything outside that allowlist (Electronics, Gaming, Toys, Collectibles, Health & Personal Care, unrecognized, or blank `Category` too) is **not published** until `Web Category` is filled in. |
    | Sell Unit | Single select — `each`, `box`, or `sq ft`. Controls the price format shown (e.g. flooring is priced `sq ft`; a water heater or appliance is `each`). |
    | Specs | Single line text — up to three short specs separated by `\|`, e.g. `22 MIL\|Waterproof\|Click-lock` or `40 gal\|Natural gas\|Rheem`. Shown as chips on the product card. |
    | Price | Number |

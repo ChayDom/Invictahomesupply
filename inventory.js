@@ -10,10 +10,15 @@
    them. See README for the exact Sheet columns and export mapping.
 
    Until every row has been migrated, "Post to Website" (not Web Category
-   or Web Status) is the publish gate, and every field below has a
-   fallback so a row missing the new columns still displays instead of
-   disappearing — see resolveWebCategory()/resolveWebStatus() and the
-   Sell Unit inference below.
+   or Web Status) remains the primary publish gate, and Sell Unit/Specs/
+   Web Status/Quantity Available all have fallbacks so a row missing them
+   still displays instead of disappearing. Web Category is the one
+   deliberate exception: it only resolves through an explicit allowlist
+   (see LEGACY_CATEGORY_RULES) — a legacy Category that isn't recognized
+   (Electronics, Gaming, Toys, Collectibles, Health & Personal Care,
+   blank, or anything else out of scope for this storefront) is NOT
+   guessed into a tab and is not published, even if Post to Website is
+   TRUE upstream. See resolveWebCategory()/resolveWebStatus() below.
 
    Inventory data is fetched from the /api/inventory serverless function,
    which holds the Airtable credentials server-side (Netlify environment
@@ -28,10 +33,9 @@ window.AIRTABLE_CONFIG = {
 const CACHE_KEY = "invicta_inventory_cache_v3";
 const INVENTORY_ENDPOINT = "/api/inventory";
 
-// The 7 public-facing website categories. Every item is resolved to one of
-// these (see resolveWebCategory) even when Web Category is still blank, so
-// a not-yet-migrated row never vanishes — it just lands in a fallback tab
-// until it's explicitly categorized upstream in Product Catalog.
+// The 7 public-facing website categories. An item is only resolved to one
+// of these when Web Category is already set, or its legacy Category
+// matches one of the explicit rules below — see resolveWebCategory().
 const WEB_CATEGORIES = [
   "Flooring",
   "Water Heaters",
@@ -42,21 +46,34 @@ const WEB_CATEGORIES = [
   "Home Improvement",
 ];
 
-// Legacy internal Category values (pre-migration) mapped to their closest
-// new web category. Anything not listed here (including blank) falls back
-// to "Home Improvement" — the broadest catch-all — rather than being hidden.
+// Explicit allowlist only — this is NOT a catch-all. A legacy internal
+// Category only resolves to a web category if it matches one of these
+// rules; anything else (Electronics, Gaming, Toys, Collectibles, Health &
+// Personal Care, blank, or any other unrecognized value) is deliberately
+// left unresolved and the item is not published, even if Post to Website
+// is TRUE upstream — those product lines are out of scope for this
+// home-improvement storefront and must not be guessed into a tab.
 // Temporary: remove once every row has a real Web Category from Product Catalog.
-const LEGACY_CATEGORY_FALLBACK = {
-  "Flooring": "Flooring",
-  "Appliances": "Appliances",
-  "Tools": "Tools",
-};
+const LEGACY_CATEGORY_RULES = [
+  { test: /^flooring$/i, category: "Flooring" },
+  { test: /^appliances$/i, category: "Appliances" },
+  { test: /^tools$/i, category: "Tools" },
+  { test: /^water heaters?$/i, category: "Water Heaters" },
+  { test: /plumbing|sinks?/i, category: "Plumbing & Bath" },
+  { test: /lawn|outdoor/i, category: "Lawn & Outdoor" },
+  { test: /lighting|windows\s*&?\s*doors|blinds|shutters/i, category: "Home Improvement" },
+];
 
+// Returns a valid web category, or null if the item should not be
+// published (see LEGACY_CATEGORY_RULES comment above — null is a
+// deliberate "do not show" signal, not a bug).
 function resolveWebCategory(f) {
   const webCategory = (f["Web Category"] || "").trim();
   if (WEB_CATEGORIES.includes(webCategory)) return webCategory;
   const legacy = (f["Category"] || "").trim();
-  return LEGACY_CATEGORY_FALLBACK[legacy] || "Home Improvement";
+  if (!legacy) return null;
+  const rule = LEGACY_CATEGORY_RULES.find(r => r.test.test(legacy));
+  return rule ? rule.category : null;
 }
 
 // Legacy internal Status values mapped onto the new Web Status vocabulary.
@@ -79,13 +96,16 @@ function isAvailable(item) {
   return item.webStatus === "In Stock";
 }
 
-// Maps one raw Airtable record into the shape the rest of this file uses.
-// Every new field has a fallback so a row that predates the Web
-// Category/Sell Unit/Specs/Web Status/Quantity Available migration still
-// renders correctly instead of disappearing or crashing.
+// Maps one raw Airtable record into the shape the rest of this file uses,
+// or returns null if the item should not be published (see
+// resolveWebCategory). Every other new field has a fallback so a row that
+// predates the Sell Unit/Specs/Web Status/Quantity Available migration
+// still renders correctly instead of disappearing or crashing — category
+// is the one field that can legitimately mean "don't show this."
 function mapAirtableRecord(id, f) {
-  const dateAdded = f["Date Added"] ? new Date(f["Date Added"]) : null;
   const webCategory = resolveWebCategory(f);
+  if (!webCategory) return null;
+  const dateAdded = f["Date Added"] ? new Date(f["Date Added"]) : null;
   return {
     id,
     productKey: f["Product Key"] || "",
@@ -114,9 +134,12 @@ function mapAirtableRecord(id, f) {
 // replace by adding real rows in the Product Catalog sheet, not by editing
 // this list. Deliberately spans multiple categories so the mixed layouts
 // (New This Week, category tiles, shop tabs) all have something to show.
-// The first 8 represent the fully-migrated future state; the last 2 are
-// raw, pre-migration-shaped records run through mapAirtableRecord() so the
-// staged-migration fallbacks are visibly exercised, not just unit logic.
+// The first 8 represent the fully-migrated future state; the rest are raw,
+// pre-migration-shaped records run through mapAirtableRecord() so the
+// staged-migration fallbacks (and the "unrecognized category is not
+// published" rule) are visibly exercised, not just unit logic. .filter(Boolean)
+// drops "legacy-3" (Electronics), which mapAirtableRecord deliberately
+// returns null for — that's the point of including it here.
 const FALLBACK_ITEMS = [
   { id: "sample-1", name: "Waterproof Oak Plank Flooring", webCategory: "Flooring", brand: "Invicta Floors", sellUnit: "sq ft", price: 2.01, boxPrice: 42.11, sqFtPerUnit: 20.94, availableSqFt: 1026, specs: "22 MIL|Waterproof|Click-lock", details: "Brand new, never used.", highlights: "22mil wear layer\nClicklock installation\n~20.94 sq ft per box", webStatus: "In Stock", photos: [], isNew: true },
   { id: "sample-2", name: "Rustic Pine Waterproof Plank", webCategory: "Flooring", brand: "Invicta Floors", sellUnit: "sq ft", price: 1.79, boxPrice: 38.36, sqFtPerUnit: 21.43, availableSqFt: 815, specs: "12 MIL|Waterproof|Click-lock", details: "Brand new, never used.", highlights: "12mil wear layer\nWaterproof core\nPickup only", webStatus: "In Stock", photos: [], isNew: true },
@@ -127,12 +150,17 @@ const FALLBACK_ITEMS = [
   { id: "sample-7", name: "18V Cordless Drill Kit, 2 Batteries", webCategory: "Tools", brand: "DeWalt", sellUnit: "each", price: 89, wasPrice: 149, qtyAvailable: 6, specs: "18V|2 batteries|Brushless", details: "Brand new, never used.", highlights: "Includes both batteries + charger", webStatus: "In Stock", photos: [] },
   { id: "sample-8", name: "Matte Black Barn Door Hardware Kit", webCategory: "Home Improvement", brand: "", sellUnit: "each", price: 65, wasPrice: 120, qtyAvailable: 5, specs: "6.6 ft track|Matte black|Soft-close", details: "Brand new, factory sealed.", highlights: "Fits doors up to 36 in wide", webStatus: "In Stock", photos: [] },
   // Pre-migration rows: no Web Category/Sell Unit/Specs/Web Status/Quantity
-  // Available yet, only the legacy Category/Status fields — proves these
-  // still show up (Flooring fallback, sq ft inferred; Reserved shown with
-  // a disabled pill, not hidden).
+  // Available yet, only the legacy Category/Status fields.
+  // legacy-1: exact-match legacy Category -> still shows (Flooring, sq ft inferred).
   mapAirtableRecord("legacy-1", { "Name": "Legacy Oak Laminate (unmigrated row)", "Category": "Flooring", "Price": 1.65, "Status": "In Stock" }),
-  mapAirtableRecord("legacy-2", { "Name": "Legacy Cordless Trimmer (unmigrated row)", "Category": "Renovation Supplies", "Price": 45, "Status": "Reserved" }),
-];
+  // legacy-2: keyword-matched legacy Category ("Plumbing" substring) -> Plumbing & Bath,
+  // Reserved -> shown with a disabled pill, not hidden.
+  mapAirtableRecord("legacy-2", { "Name": "Legacy Plumbing Fixture Kit (unmigrated row)", "Category": "Plumbing Fixtures", "Price": 45, "Status": "Reserved" }),
+  // legacy-3: out-of-scope legacy Category with no keyword match -> resolveWebCategory
+  // returns null -> mapAirtableRecord returns null -> dropped by .filter(Boolean)
+  // below. This is the "must not be auto-categorized or newly published" case.
+  mapAirtableRecord("legacy-3", { "Name": "Legacy Game Console (should not publish)", "Category": "Electronics", "Price": 199, "Status": "In Stock" }),
+].filter(Boolean);
 
 async function fetchInventory() {
   const cached = localStorage.getItem(CACHE_KEY);
@@ -148,7 +176,10 @@ async function fetchInventory() {
     if (!res.ok) throw new Error(`Inventory request failed: ${res.status}`);
     const json = await res.json();
     const records = json.records || [];
-    const items = records.map(r => mapAirtableRecord(r.id, r.fields || {}));
+    // .filter(Boolean) drops records whose legacy Category doesn't match
+    // any rule in LEGACY_CATEGORY_RULES (see resolveWebCategory) — those
+    // are deliberately not published, not a mapping bug.
+    const items = records.map(r => mapAirtableRecord(r.id, r.fields || {})).filter(Boolean);
 
     localStorage.setItem(CACHE_KEY, JSON.stringify({ data: items, ts: Date.now() }));
     return items;
