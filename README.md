@@ -58,15 +58,27 @@ next section). Until Product Catalog has been updated and re-synced:
   | Contains "Plumbing" or "Sinks" | Plumbing & Bath |
   | Contains "Lawn" or "Outdoor" | Lawn & Outdoor |
   | Contains "Lighting", "Windows & Doors", "Blinds", or "Shutters" | Home Improvement |
-  | Anything else, or blank | **Not published** — see below |
+  | **Blank**, and the row has a flooring-specific attribute (`Sq Ft Per Unit`, `Box Price`, or `Available Sq Ft` is a positive number) | **Flooring** — see note below |
+  | Blank, with none of those attributes | **Not published** — see below |
+  | Anything else (non-blank, unrecognized) | **Not published** — see below |
 
   `Electronics`, `Gaming`, `Toys`, `Collectibles`, `Health & Personal
-  Care`, blank categories, and any other unrecognized value are
+  Care`, and any other unrecognized *non-blank* Category value are
   **deliberately not auto-categorized and not published**, even if
   `Post to Website` is `TRUE` — those product lines are out of scope for
   this home-improvement storefront and must never be guessed into a tab.
   If one of these needs to go live, it has to get a real `Web Category`
   from Product Catalog first.
+
+  A **blank** Category is a special case: this site was flooring-only
+  before this migration, so a blank-Category row that already has
+  flooring-specific numbers filled in is treated as an existing flooring
+  listing whose Category field simply never got filled in — it falls back
+  to Flooring rather than disappearing. This inference is flooring-only
+  and never applies to a row with a non-blank Category (however
+  unrecognized) or to a blank-Category row with no flooring attributes —
+  those stay unpublished, same as any other unrecognized value, until they
+  get a real `Web Category`.
 - A row with a blank `Web Status` is **not hidden** — the existing
   `Status` field (`In Stock` / `Reserved` / `Sold Out`) is used instead,
   and this stays true until Product Catalog's rollout is far enough along
@@ -124,7 +136,7 @@ position.
 
 | Product Catalog column | Type / allowed values | Notes |
 |---|---|---|
-| `Web Category` | Dropdown (data validation), one of: `Flooring`, `Water Heaters`, `Appliances`, `Plumbing & Bath`, `Lawn & Outdoor`, `Tools`, `Home Improvement` | Leave blank during migration only for rows whose existing `Category` matches the allowlist in "Staged migration" above (Flooring/Appliances/Tools/Water Heaters/Plumbing/Sinks/Lawn/Outdoor/Lighting/Windows & Doors/Blinds/Shutters). Anything else (Electronics, Gaming, Toys, Collectibles, Health & Personal Care, etc.) needs `Web Category` filled in explicitly before it can go live — it will not be published otherwise. |
+| `Web Category` | Dropdown (data validation), one of: `Flooring`, `Water Heaters`, `Appliances`, `Plumbing & Bath`, `Lawn & Outdoor`, `Tools`, `Home Improvement` | Leave blank during migration only for rows whose existing `Category` matches the allowlist in "Staged migration" above (Flooring/Appliances/Tools/Water Heaters/Plumbing/Sinks/Lawn/Outdoor/Lighting/Windows & Doors/Blinds/Shutters), or whose `Category` is itself blank but flooring fields (Sq Ft Per Unit/Box Price/Available Sq Ft) are filled in. Anything else (Electronics, Gaming, Toys, Collectibles, Health & Personal Care, a blank Category with no flooring fields, etc.) needs `Web Category` filled in explicitly before it can go live — it will not be published otherwise. |
 | `Sell Unit` | Dropdown: `each`, `box`, `sq ft` | Leave blank to let the site infer it. |
 | `Specs` | Free text | Up to 3 short specs separated by `\|`, e.g. `40 gal\|Natural gas\|Rheem` or `22 MIL\|Waterproof\|Click-lock`. Keep each segment short — it renders as a pill chip. |
 | `Web Status` | Dropdown: `In Stock`, `Reserved`, `Sold`, `Coming Soon` | Leave blank during migration — the site falls back to your existing stock/status column. |
@@ -230,7 +242,7 @@ first time connecting Airtable at all:
    |---|---|
    | Name | Single line text |
    | Category | Single select — your own internal reporting categories (see above), as broad or granular as you like |
-   | Web Category | Single select — **exactly one of:** `Flooring`, `Water Heaters`, `Appliances`, `Plumbing & Bath`, `Lawn & Outdoor`, `Tools`, `Home Improvement`. Blank falls back to the legacy `Category` field only via the explicit allowlist in "Staged migration" above — anything outside that allowlist (Electronics, Gaming, Toys, Collectibles, Health & Personal Care, unrecognized, or blank `Category` too) is **not published** until `Web Category` is filled in. |
+   | Web Category | Single select — **exactly one of:** `Flooring`, `Water Heaters`, `Appliances`, `Plumbing & Bath`, `Lawn & Outdoor`, `Tools`, `Home Improvement`. Blank falls back to the legacy `Category` field only via the explicit allowlist in "Staged migration" above, plus one special case: a blank `Category` with flooring fields filled in (Sq Ft Per Unit/Box Price/Available Sq Ft) falls back to Flooring. Anything else — unrecognized non-blank Category, or blank Category with no flooring fields — is **not published** until `Web Category` is filled in. |
    | Sell Unit | Single select — `each`, `box`, or `sq ft`. Controls the price format shown (e.g. flooring is priced `sq ft`; a water heater or appliance is `each`). |
    | Specs | Single line text — up to three short specs separated by `\|`, e.g. `22 MIL\|Waterproof\|Click-lock` or `40 gal\|Natural gas\|Rheem`. Shown as chips on the product card. |
    | Price | Number |

@@ -49,10 +49,12 @@ const WEB_CATEGORIES = [
 // Explicit allowlist only — this is NOT a catch-all. A legacy internal
 // Category only resolves to a web category if it matches one of these
 // rules; anything else (Electronics, Gaming, Toys, Collectibles, Health &
-// Personal Care, blank, or any other unrecognized value) is deliberately
-// left unresolved and the item is not published, even if Post to Website
-// is TRUE upstream — those product lines are out of scope for this
-// home-improvement storefront and must not be guessed into a tab.
+// Personal Care, or any other unrecognized non-blank value) is
+// deliberately left unresolved and the item is not published, even if
+// Post to Website is TRUE upstream — those product lines are out of scope
+// for this home-improvement storefront and must not be guessed into a
+// tab. A genuinely blank Category is handled separately in
+// resolveWebCategory (see hasFlooringAttributes) rather than here.
 // Temporary: remove once every row has a real Web Category from Product Catalog.
 const LEGACY_CATEGORY_RULES = [
   { test: /^flooring$/i, category: "Flooring" },
@@ -64,6 +66,15 @@ const LEGACY_CATEGORY_RULES = [
   { test: /lighting|windows\s*&?\s*doors|blinds|shutters/i, category: "Home Improvement" },
 ];
 
+// A row is treated as flooring-shaped if any of its flooring-specific
+// numeric fields are present and positive — used only for the blank-
+// Category fallback below, never to reclassify a row that already has an
+// explicit (even if unrecognized) Category.
+function hasFlooringAttributes(f) {
+  const isPositiveNumber = v => typeof v === "number" && !isNaN(v) && v > 0;
+  return isPositiveNumber(f["Sq Ft Per Unit"]) || isPositiveNumber(f["Box Price"]) || isPositiveNumber(f["Available Sq Ft"]);
+}
+
 // Returns a valid web category, or null if the item should not be
 // published (see LEGACY_CATEGORY_RULES comment above — null is a
 // deliberate "do not show" signal, not a bug).
@@ -71,7 +82,18 @@ function resolveWebCategory(f) {
   const webCategory = (f["Web Category"] || "").trim();
   if (WEB_CATEGORIES.includes(webCategory)) return webCategory;
   const legacy = (f["Category"] || "").trim();
-  if (!legacy) return null;
+  if (!legacy) {
+    // Blank Category on a row that's already live (Post to Website = TRUE
+    // is the only way it reaches here at all): this site was flooring-only
+    // before this migration, so a blank-Category row with flooring
+    // attributes is almost certainly an existing flooring listing whose
+    // Category just never got filled in — infer Flooring rather than
+    // silently unpublishing something that's live today. Never extend
+    // this inference to non-flooring rows: a blank-Category row with no
+    // flooring attributes stays excluded, same as any other unrecognized
+    // Category, until it gets a real Web Category from Product Catalog.
+    return hasFlooringAttributes(f) ? "Flooring" : null;
+  }
   const rule = LEGACY_CATEGORY_RULES.find(r => r.test.test(legacy));
   return rule ? rule.category : null;
 }
@@ -160,6 +182,14 @@ const FALLBACK_ITEMS = [
   // returns null -> mapAirtableRecord returns null -> dropped by .filter(Boolean)
   // below. This is the "must not be auto-categorized or newly published" case.
   mapAirtableRecord("legacy-3", { "Name": "Legacy Game Console (should not publish)", "Category": "Electronics", "Price": 199, "Status": "In Stock" }),
+  // legacy-4: blank Category but has flooring attributes (Box Price/Sq Ft
+  // Per Unit/Available Sq Ft) -> inferred as Flooring rather than
+  // silently unpublished, since this site was flooring-only pre-migration.
+  mapAirtableRecord("legacy-4", { "Name": "Legacy Vinyl Plank, No Category Set (unmigrated row)", "Price": 1.95, "Box Price": 41.5, "Sq Ft Per Unit": 21.28, "Available Sq Ft": 640 }),
+  // legacy-5: blank Category AND no flooring attributes -> stays excluded,
+  // same as any other unrecognized Category. Proves the inference above
+  // is flooring-only, not a general blank-Category catch-all.
+  mapAirtableRecord("legacy-5", { "Name": "Legacy Unknown Item, No Category (should not publish)", "Price": 25 }),
 ].filter(Boolean);
 
 async function fetchInventory() {
