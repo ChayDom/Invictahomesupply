@@ -424,6 +424,13 @@ nav.primary-nav a.active {
 }
 .product-more ul { padding-left: 18px; }
 .product-more li { margin-bottom: 2px; }
+.product-ref-link {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--amber-dark);
+  text-decoration: underline;
+  font-weight: 600;
+}
 
 .product-info {
   padding: 20px;

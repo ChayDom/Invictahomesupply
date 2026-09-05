@@ -17,8 +17,8 @@ percentage.
 is:
 
 ```
-Google Sheet "Product Catalog"  (you edit here)
-        │  Apps Script: Website Export sheet is built from Product Catalog
+Google Sheet "Product Catalog"  (you edit here — permanent identity, merchandising, price, publish controls)
+        │  Apps Script: Website Export is combined from Product Catalog + live stock quantities
         ▼
 Google Sheet "Website Export"   (generated — don't hand-edit)
         │  Apps Script sync pushes Website Export rows into Airtable
@@ -29,25 +29,64 @@ Airtable "Inventory" table      (synced mirror the site reads from)
 This website
 ```
 
-**Never add or fill in a new field directly in Airtable.** Anything typed
-straight into Airtable is not in Product Catalog, so the next Apps Script
-sync run can silently overwrite or ignore it. Every new field (`Web
-Category`, `Sell Unit`, `Specs`, `Web Status`, `Quantity Available`) has to
-originate as a **Product Catalog column**, get carried through **Website
-Export**, and get added to the **Apps Script payload** that writes to
-Airtable — see the three sections below for the exact spec.
+**Never add or fill in a field directly in Airtable** — it's not in
+Product Catalog, so the next Apps Script sync can silently overwrite or
+ignore it.
 
-## Staged migration — how the site behaves right now
+### This site reuses real fields — it does not invent duplicates
 
-The site is mid-migration to the new field set. **`Post to Website`
-(existing checkbox) is still the only publish gate** — not `Web Category`,
-not `Web Status`. The new fields add display and filtering information;
-they never replace or weaken the existing publishing safeguards (see the
-next section). Until Product Catalog has been updated and re-synced:
+An earlier pass through this migration proposed 4 new fields (Web
+Category, Sell Unit, Specs, Web Status) plus a Product-Catalog-side
+Quantity Available. Those were reconsidered and removed after reviewing
+the real schema — they duplicated fields that already exist. The site now
+reads the real Product Catalog / Website Export fields instead:
 
-- A row with a blank `Web Category` falls back to the existing `Category`
-  field, but **only through an explicit allowlist — this is not a
-  catch-all**:
+| This site's concept | Real field it reads | Notes |
+|---|---|---|
+| Website navigation category | `Website Category` | The only genuinely new field, already retained in Product Catalog. Must reach Website Export/Airtable — **please confirm it's actually mapped through**, it wasn't listed among the "add/map to Website Export" items. |
+| Second-level category | `Web Subcategory` | New, optional (e.g. Flooring → LVP/Laminate/Tile/Sheet Vinyl). Works fine blank. |
+| Stable upsert identity | `Product Key` | Permanent — never use Product ID for this, a legacy product can get a new standardized Product ID while keeping the same Product Key. |
+| Product title | `Display Name` | |
+| Sell unit | `Unit Type` | Existing field, values `Box`/`Each`/`Sq Ft`/`Roll` (site compares case-insensitively). Blank infers `Sq Ft` for Flooring, `Each` otherwise. |
+| Asking price | `Website Price` | |
+| Retail/comparison price | `Retail Price` | Passed through Website Export rather than duplicated into Product Catalog. Powers the "Retail $1,049" line. |
+| Stock count | `Quantity Available` (Website Export) | Combines Product Catalog with live Product Inventory — never duplicated back into Product Catalog. |
+| Availability | `In Stock` (Website Export) | Falls back to `Quantity Available > 0` if `In Stock` isn't present. |
+| Publish gate | `Post to Website` | Unchanged — see "Publishing safeguards" below. |
+| Long description | `Description` | Shown in the card's collapsed "More details" section. |
+| Chips / bullets | `Highlights` | First 3 short lines double as the card's compact chips; the rest of Highlights still shows in full in "More details". No dedicated Specs field. |
+| Product photo | `Stock Image Url` | Single URL, not a multi-photo attachment field — the card shows one image, no gallery/thumbnail row. |
+| Reference link | `Product Url` | Optional "View manufacturer page" link in "More details". |
+| Brand / Model / Retailer / Retail SKU | same names | Unchanged, already existed. |
+| Flooring math | `Box Price`, `Sq Ft Per Unit`, `Available Sq Ft` | Unchanged, already existed — boxes available is still computed client-side as `Available Sq Ft ÷ Sq Ft Per Unit`. |
+| "New this week" | `Date Added` | Derived automatically (last 7 days) — no manual New flag. |
+
+**Field-name-casing assumption to confirm:** the Sheet headers were shared
+in ALL CAPS (`WEBSITE CATEGORY`, `UNIT TYPE`, ...); this codebase's
+existing Airtable convention is Title Case (`Website Category`,
+`Unit Type`, ...), which is what `inventory.js` currently reads. Airtable
+field names are case-sensitive — if the real Airtable fields end up named
+differently, those fields will silently read as blank (the site's
+fallbacks keep it from breaking, but confirm the exact names before
+relying on this in production).
+
+**Hosting-path assumption to confirm:** this repo is built for and
+currently deployed on **Netlify** — there's a `netlify.toml`, and
+`netlify/functions/inventory.mts` is a Netlify serverless function holding
+the Airtable credentials server-side. So the actual path today is Website
+Export → Airtable → **Netlify function** → website, not Cloudflare Pages.
+If a move to Cloudflare Pages is planned, that's a separate infrastructure
+change (the serverless proxy would need to be rewritten for Cloudflare's
+runtime) — flag it explicitly before assuming it.
+
+## How the site behaves during migration (nothing currently live disappears)
+
+`Post to Website` remains the only publish gate — not `Website Category`.
+Until every row has `Website Category` filled in:
+
+- A row with a blank `Website Category` falls back to the existing broad
+  `Category` field, but **only through an explicit allowlist — this is
+  not a catch-all**:
 
   | Legacy `Category` | Falls back to |
   |---|---|
@@ -58,62 +97,37 @@ next section). Until Product Catalog has been updated and re-synced:
   | Contains "Plumbing" or "Sinks" | Plumbing & Bath |
   | Contains "Lawn" or "Outdoor" | Lawn & Outdoor |
   | Contains "Lighting", "Windows & Doors", "Blinds", or "Shutters" | Home Improvement |
-  | **Blank**, and the row has a flooring-specific attribute (`Sq Ft Per Unit`, `Box Price`, or `Available Sq Ft` is a positive number) | **Flooring** — see note below |
-  | Blank, with none of those attributes | **Not published** — see below |
-  | Anything else (non-blank, unrecognized) | **Not published** — see below |
+  | **Blank**, and `Unit Type` = `Sq Ft` or a flooring-specific field (`Sq Ft Per Unit`, `Box Price`, `Available Sq Ft`) is a positive number | **Flooring** — this site was flooring-only pre-migration, so a blank-Category row with flooring attributes is almost certainly an existing flooring listing whose Category never got filled in |
+  | Blank, with none of those attributes | **Not published** |
+  | Anything else (non-blank, unrecognized — e.g. Electronics, Gaming, Toys, Collectibles, Health & Personal Care) | **Not published**, even if `Post to Website` is `TRUE` — those product lines are out of scope for this storefront and are never guessed into a tab |
 
-  `Electronics`, `Gaming`, `Toys`, `Collectibles`, `Health & Personal
-  Care`, and any other unrecognized *non-blank* Category value are
-  **deliberately not auto-categorized and not published**, even if
-  `Post to Website` is `TRUE` — those product lines are out of scope for
-  this home-improvement storefront and must never be guessed into a tab.
-  If one of these needs to go live, it has to get a real `Web Category`
-  from Product Catalog first.
+  This logic lives in `resolveWebCategory()` / `LEGACY_CATEGORY_RULES` /
+  `hasFlooringAttributes()` in `inventory.js`.
+- Availability (`isAvailable()`/`resolveInStock()`) reads `In Stock` (or
+  falls back to `Quantity Available > 0`, or defaults to available if
+  neither is present). A not-in-stock item is never hidden here — it
+  renders with a disabled "Out of Stock" pill instead of the Text button.
+  In practice, once the Apps Script export rule below is in place, most
+  such rows won't reach this site at all; the client-side fallback is just
+  a safety net.
 
-  A **blank** Category is a special case: this site was flooring-only
-  before this migration, so a blank-Category row that already has
-  flooring-specific numbers filled in is treated as an existing flooring
-  listing whose Category field simply never got filled in — it falls back
-  to Flooring rather than disappearing. This inference is flooring-only
-  and never applies to a row with a non-blank Category (however
-  unrecognized) or to a blank-Category row with no flooring attributes —
-  those stay unpublished, same as any other unrecognized value, until they
-  get a real `Web Category`.
-- A row with a blank `Web Status` is **not hidden** — the existing
-  `Status` field (`In Stock` / `Reserved` / `Sold Out`) is used instead,
-  and this stays true until Product Catalog's rollout is far enough along
-  to switch over; `Web Status` does not replace the existing status field
-  yet, it's additive/optional. Reserved/Sold items still render on the
-  site, just with a disabled status pill in place of the "Text About This
-  Item" button (this matches the site's pre-migration behavior).
-- A row with a blank `Sell Unit` is inferred: `sq ft` if it resolved to
-  the Flooring category, `each` otherwise.
-- A row with blank `Specs` just shows no spec chips. A row with blank
-  `Quantity Available` just omits the "N available" line. Neither hides
-  the product.
-
-This logic lives in `mapAirtableRecord()` / `resolveWebCategory()` /
-`resolveWebStatus()` / `LEGACY_CATEGORY_RULES` in `inventory.js` — once
-every row has a real `Web Category` and `Web Status` from Product Catalog,
-these can be simplified to drop the legacy fallbacks (the code comments
-say so at each one).
-
-**The Netlify function's Airtable filter is currently
-`{Post to Website} = TRUE()`** (not Web Category/Web Status) for the same
-reason — see `netlify/functions/inventory.mts`. Don't change that filter
-until Web Category/Web Status are populated and verified for every
+**The Netlify function's Airtable filter is `{Post to Website} = TRUE()`**
+— see `netlify/functions/inventory.mts`. Don't change that filter to key
+off `Website Category` until it's populated and verified for every
 in-scope row.
 
 ## Publishing safeguards — do not weaken these
 
-The 5 new fields are additive display/filtering information. They must
-never become a way to publish something that wouldn't otherwise qualify.
-Whatever sets `Post to Website = TRUE` during the Product Catalog →
-Website Export → Airtable sync must keep requiring **all** of:
+`Website Category`/`Web Subcategory` and the reused display fields are
+additive information. They must never become a way to publish something
+that wouldn't otherwise qualify. Whatever sets `Post to Website = TRUE`
+during the Product Catalog → Website Export → Airtable sync must keep
+requiring **all** of:
 
 - `Post to Website = TRUE`
-- Available inventory greater than 0
-- Website Price filled in
+- Available inventory greater than 0 (the discussed rule: `Post to Website
+  = Yes AND Quantity Available > 0`)
+- `Website Price` filled in
 - Image approved/available
 - Enrichment status is not `NEEDS REVIEW`
 - For Flooring rows specifically: the flooring quantity and sq-ft fields
@@ -122,160 +136,40 @@ Website Export → Airtable sync must keep requiring **all** of:
 This site's code has no way to independently verify "available inventory"
 or "enrichment status" — it only ever sees what the Netlify function reads
 from Airtable, gated by `Post to Website`. So these checks have to keep
-happening upstream, in whatever logic currently sets `Post to Website`;
-adding `Web Category`/`Sell Unit`/`Specs`/`Web Status`/`Quantity Available`
-to the export must not bypass or loosen any of them.
-
-## Product Catalog columns to add (do this first, in the Sheet)
-
-Add these columns to **Product Catalog** (not Website Export, not
-Airtable — those are downstream). Suggested position: anywhere after your
-existing columns: **do not insert columns in the middle of the existing
-retailer-tab columns**, since the current automation reads those by
-position.
-
-| Product Catalog column | Type / allowed values | Notes |
-|---|---|---|
-| `Web Category` | Dropdown (data validation), one of: `Flooring`, `Water Heaters`, `Appliances`, `Plumbing & Bath`, `Lawn & Outdoor`, `Tools`, `Home Improvement` | Leave blank during migration only for rows whose existing `Category` matches the allowlist in "Staged migration" above (Flooring/Appliances/Tools/Water Heaters/Plumbing/Sinks/Lawn/Outdoor/Lighting/Windows & Doors/Blinds/Shutters), or whose `Category` is itself blank but flooring fields (Sq Ft Per Unit/Box Price/Available Sq Ft) are filled in. Anything else (Electronics, Gaming, Toys, Collectibles, Health & Personal Care, a blank Category with no flooring fields, etc.) needs `Web Category` filled in explicitly before it can go live — it will not be published otherwise. |
-| `Sell Unit` | Dropdown: `each`, `box`, `sq ft` | Leave blank to let the site infer it. |
-| `Specs` | Free text | Up to 3 short specs separated by `\|`, e.g. `40 gal\|Natural gas\|Rheem` or `22 MIL\|Waterproof\|Click-lock`. Keep each segment short — it renders as a pill chip. |
-| `Web Status` | Dropdown: `In Stock`, `Reserved`, `Sold`, `Coming Soon` | Leave blank during migration — the site falls back to your existing stock/status column. |
-| `Quantity Available` | Number | Optional. Units (or boxes, for `box` Sell Unit) currently in stock. Blank just omits the "N available" line, never hides the item. |
-
-Also confirm these **already exist** and are populated for every row you
-want on the site (the site depends on them and they aren't new):
-`Product Key` (permanent, stable — used to update the matching Airtable
-record so re-syncing never creates a duplicate), `Name`, `Price`,
-`Post to Website`, and your existing stock-status column.
-
-## Website Export mapping
-
-Website Export should carry the 5 new columns straight through under the
-**exact same header names** Airtable expects (case- and spacing-sensitive,
-since the Apps Script payload keys off these headers):
-
-| Website Export column (exact header) | Sourced from Product Catalog | Airtable field it becomes |
-|---|---|---|
-| `Web Category` | `Web Category` | `Web Category` |
-| `Sell Unit` | `Sell Unit` | `Sell Unit` |
-| `Specs` | `Specs` | `Specs` |
-| `Web Status` | `Web Status` | `Web Status` |
-| `Quantity Available` | `Quantity Available` | `Quantity Available` |
-
-No transformation needed — pass the values through as-is, including blanks
-(don't default them in Website Export; let the site's fallback logic
-handle blanks, so you can see in Airtable exactly which rows still need
-attention).
-
-## Apps Script payload changes
-
-In whatever function builds the Airtable `fields` object for each row
-(the create/update payload), add the 5 new keys the same way the existing
-fields are added — e.g. if the script currently does something like:
-
-```js
-const fields = {
-  "Name": row.name,
-  "Price": row.price,
-  "Post to Website": row.postToWebsite,
-  // ...
-};
-```
-
-add:
-
-```js
-fields["Web Category"] = row.webCategory || undefined;       // omit key if blank, don't send ""
-fields["Sell Unit"] = row.sellUnit || undefined;
-fields["Specs"] = row.specs || undefined;
-fields["Web Status"] = row.webStatus || undefined;
-fields["Quantity Available"] = row.quantityAvailable === "" ? undefined : row.quantityAvailable;
-```
-
-Three things that matter for safety here:
-
-1. **Upsert by `Product Key`, never by row position or by creating new
-   records.** Look up the existing Airtable record with that `Product Key`
-   and update it; only create a new record if no match exists. This is
-   almost certainly already how the sync works for existing fields —
-   just don't change that behavior for the new ones.
-2. **Never send a blank/empty value for the `Photos` field.** If a row's
-   photo column is empty, omit `Photos` from the payload entirely rather
-   than sending `""` or `[]` — Airtable attachment fields interpret a
-   payload key as "replace with this," so sending blank wipes out photos
-   someone already uploaded directly in Airtable.
-3. **Omit the key rather than sending an empty string** for the 5 new
-   fields too, for the same reason and so blank vs. "explicitly cleared"
-   stays distinguishable in Airtable while you're spot-checking the
-   migration.
+happening upstream; nothing about the display fields above should bypass
+or loosen any of them.
 
 ## Rollout plan
 
-1. Add the 5 columns to Product Catalog (above) and set up the dropdown
-   validations for `Web Category`/`Sell Unit`/`Web Status`.
-2. Populate a **small test set** (5-10 rows spanning a few categories).
-3. Run Website Export, confirm the 5 columns appear with the exact header
-   names above and correct values (including intentionally-blank ones).
-4. Run the Apps Script sync, then open Airtable and verify those specific
-   records got the right values and existing Photos weren't touched.
-5. Only then consider flipping the Netlify function's filter from
-   `Post to Website` to `Web Category`/`Web Status`, and only after every
-   row you want published has both set — otherwise items disappear (see
-   the "Staged migration" section above for exactly what happens either
-   way).
-6. Use a deploy preview to sanity-check before merging/deploying live.
+1. Confirm `Website Category` is actually included in the Website
+   Export → Airtable mapping (flagged above — it wasn't in the explicit
+   "add/map" list).
+2. Confirm the exact Airtable field names/casing (flagged above).
+3. Populate a **small test set** in Product Catalog (5-10 rows spanning a
+   few categories, with `Website Category`/`Web Subcategory` filled in).
+4. Run Website Export, then the Apps Script sync, then check the actual
+   Airtable records against the table above.
+5. Use a deploy preview to sanity-check before merging/deploying live.
+6. Only after every row you want published has a real `Website Category`
+   should the Netlify function's filter be reconsidered — see "How the
+   site behaves during migration" above for what happens either way.
 
-## Airtable field reference
+### Marking items out of stock, sold, or new
 
-These are the exact Airtable field names the sync above should write to —
-already present or need adding to the **Inventory** table if this is your
-first time connecting Airtable at all:
-
-### Set up your Airtable base (one-time, ~10 minutes)
-
-1. Go to [airtable.com](https://airtable.com) and create a free account.
-2. Create a new base. Name the table **Inventory** (must match exactly, or
-   update `tableName` in `inventory.js`).
-3. Add these fields, matching these exact names and types:
-
-   | Field name | Type |
-   |---|---|
-   | Name | Single line text |
-   | Category | Single select — your own internal reporting categories (see above), as broad or granular as you like |
-   | Web Category | Single select — **exactly one of:** `Flooring`, `Water Heaters`, `Appliances`, `Plumbing & Bath`, `Lawn & Outdoor`, `Tools`, `Home Improvement`. Blank falls back to the legacy `Category` field only via the explicit allowlist in "Staged migration" above, plus one special case: a blank `Category` with flooring fields filled in (Sq Ft Per Unit/Box Price/Available Sq Ft) falls back to Flooring. Anything else — unrecognized non-blank Category, or blank Category with no flooring fields — is **not published** until `Web Category` is filled in. |
-   | Sell Unit | Single select — `each`, `box`, or `sq ft`. Controls the price format shown (e.g. flooring is priced `sq ft`; a water heater or appliance is `each`). |
-   | Specs | Single line text — up to three short specs separated by `\|`, e.g. `22 MIL\|Waterproof\|Click-lock` or `40 gal\|Natural gas\|Rheem`. Shown as chips on the product card. |
-   | Price | Number |
-   | Was Price | Number (optional — the retail/comparison price shown as "Retail $X" for `each`/`box` items; leave blank if you don't have one) |
-   | Quantity Available | Number (optional — units/boxes in stock; shown as "N available" for `each`/`box` items) |
-   | Brand | Single line text (optional) |
-   | Model | Single line text (optional) |
-   | Details | Long text (shown in the card's collapsed "More details" section, not up front) |
-   | Highlights | Long text, one line per bullet (also shown in "More details") |
-   | Web Status | Single select — `In Stock`, `Reserved`, `Sold`, `Coming Soon`. Once the site's publish gate is switched over to this field (see "Rollout plan" above), only `In Stock` items will be exported; until then, blank falls back to the existing stock/status field and `Post to Website` remains the actual gate. |
-   | Photos | Attachment (supports multiple photos per row — drag them all in) |
-   | Date Added | Date (used to mark items "New" for 7 days automatically) |
-
-   Flooring-specific fields (used only when Sell Unit is `sq ft`):
-
-   | Field name | Type |
-   |---|---|
-   | Box Price | Number |
-   | Sq Ft Per Unit | Number (sq ft covered per box) |
-   | Available Sq Ft | Number (total sq ft in stock — boxes available is calculated automatically as Available Sq Ft ÷ Sq Ft Per Unit) |
-
-4. Add a few rows to test — drag 2-3 photos into the Photos field per item.
-   Since everything you sell is brand new (overstock/discontinued, not
-   open-box or used), it's worth starting every **Details** entry with
-   "Brand new —" for consistency, e.g. "Brand new, 20mil wear layer,
-   clicklock, ~38 sq ft per box."
+- Zero out `Quantity Available` (or set `In Stock` to false, once that
+  field is wired through) to show a disabled "Out of Stock" pill instead
+  of the Text button — the item stays visible, it isn't removed. Uncheck
+  `Post to Website` if you actually want it gone from the site.
+- Anything with a **Date Added** within the last 7 days is automatically
+  tagged "New" on the site — no extra field to manage, and "New This
+  Week" on the homepage is derived from this, never a manual flag.
 
 ### Connect it to the site
 
 The site never talks to Airtable directly from the browser — it calls its
-own `/api/inventory` Netlify serverless function (`netlify/functions/inventory.mts`),
-which holds the Airtable credentials server-side. Nothing Airtable-related
-lives in `inventory.js` itself.
+own `/api/inventory` Netlify serverless function
+(`netlify/functions/inventory.mts`), which holds the Airtable credentials
+server-side. Nothing Airtable-related lives in `inventory.js` itself.
 
 1. In Airtable, open your profile icon → **Builder/Developer hub** →
    **Personal access tokens** → create a new token.
@@ -288,17 +182,7 @@ lives in `inventory.js` itself.
    - `AIRTABLE_BASE_ID` — your Base ID
    - `AIRTABLE_TABLE_NAME` — `Inventory` (optional; defaults to `Inventory` if unset)
 5. Redeploy. The site will now show your real inventory through the
-   function, filtered by `Post to Website` (see "Staged migration" above).
-
-### Marking items sold, reserved, or new
-
-- Setting **Web Status** to `Reserved`, `Sold`, or `Coming Soon` (or the
-  legacy **Status** field, while Web Status is still blank — see "Staged
-  migration") keeps the item visible with a disabled status pill instead of
-  the Text button; it does not remove the item from the site. Uncheck
-  **Post to Website** if you actually want it gone.
-- Anything with a **Date Added** within the last 7 days is automatically
-  tagged "New" on the site — no extra field to manage.
+   function, filtered by `Post to Website`.
 
 ## Before you go live
 
@@ -370,5 +254,5 @@ and we can walk through it live using a browser tool.
 - `styles.css` — shared styles
 - `app.js` — contact-info config + mobile menu + filter logic + SMS links
 - `inventory.js` — Airtable config + fetch/cache + product card & flooring table rendering
-- `netlify/functions/inventory.mts` — serverless proxy to Airtable (holds the API token server-side; only exports items with a Web Category set and Web Status = In Stock)
+- `netlify/functions/inventory.mts` — serverless proxy to Airtable (holds the API token server-side; filters on `Post to Website = TRUE`)
 - `marketplace-post-templates.md` — copy-paste posts for Marketplace/FB groups

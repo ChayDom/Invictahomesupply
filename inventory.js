@@ -1,24 +1,43 @@
 /* ===================================================================
    Invicta Home Supply — inventory (Airtable-backed catalog)
 
-   STAGED MIGRATION IN PROGRESS. Source of truth for product data is the
-   Google Sheet Product Catalog -> Website Export -> Airtable -> this site.
-   Airtable is a synced mirror, not the source of truth — new fields (Web
-   Category, Sell Unit, Specs, Web Status, Quantity Available) must be
-   added in Product Catalog and carried through Website Export and the
-   Apps Script/Airtable payload, or the next sync can overwrite/ignore
-   them. See README for the exact Sheet columns and export mapping.
+   Source of truth for product data is the Google Sheet Product Catalog ->
+   Website Export -> Airtable -> this site. Airtable is a synced mirror,
+   not the source of truth. Per the schema-cleanup pass, this site reuses
+   real existing fields instead of inventing duplicates — no more Web
+   Category/Sell Unit/Specs/Web Status/Product-Catalog-side Quantity
+   Available. The fields this file actually reads are:
 
-   Until every row has been migrated, "Post to Website" (not Web Category
-   or Web Status) remains the primary publish gate, and Sell Unit/Specs/
-   Web Status/Quantity Available all have fallbacks so a row missing them
-   still displays instead of disappearing. Web Category is the one
-   deliberate exception: it only resolves through an explicit allowlist
-   (see LEGACY_CATEGORY_RULES) — a legacy Category that isn't recognized
-   (Electronics, Gaming, Toys, Collectibles, Health & Personal Care,
-   blank, or anything else out of scope for this storefront) is NOT
-   guessed into a tab and is not published, even if Post to Website is
-   TRUE upstream. See resolveWebCategory()/resolveWebStatus() below.
+     Website Category, Web Subcategory (new, optional), Category (legacy
+     broad/internal — used only as a fallback), Product Key, Display Name,
+     Brand, Model, Retail SKU, Retailer, Website Price, Retail Price
+     (-> "was"/retail-comparison price), Unit Type (Box/Each/Sq Ft/Roll),
+     Quantity Available, In Stock, Box Price, Sq Ft Per Unit,
+     Available Sq Ft, Description, Highlights, Product Url,
+     Stock Image Url, Post to Website (server-side gate only), Date Added.
+
+   ASSUMPTION FLAGGED: the field name strings below use Title Case
+   ("Website Category", "Unit Type", ...) matching this codebase's existing
+   Airtable convention. The Google Sheet headers were shared in ALL CAPS
+   ("WEBSITE CATEGORY", "UNIT TYPE", ...) — Airtable field names are
+   case-sensitive and must match exactly, so confirm the real Airtable
+   field names before relying on this in production; a mismatch means that
+   field silently reads as blank (falls back gracefully, but silently).
+
+   Category resolution still needs a fallback because Website Category
+   won't be backfilled on every row on day one: resolveWebCategory() below
+   checks Website Category first, then the legacy Category field through
+   an explicit allowlist, then (only for a genuinely blank Category) infers
+   Flooring from flooring-shaped attributes. Anything else is not
+   published — see the comments on LEGACY_CATEGORY_RULES/hasFlooringAttributes.
+
+   Availability now comes from Website Export's In Stock field (falling
+   back to Quantity Available > 0 if In Stock isn't present) rather than a
+   dedicated status field — see resolveInStock()/isAvailable(). Not-in-
+   stock items still render with a disabled "Out of Stock" pill rather
+   than being hidden here; per the Apps Script rule discussed
+   (Post to Website = Yes AND Quantity Available > 0), most such rows
+   likely won't even reach this site, but the fallback costs nothing.
 
    Inventory data is fetched from the /api/inventory serverless function,
    which holds the Airtable credentials server-side (Netlify environment
@@ -30,11 +49,11 @@ window.AIRTABLE_CONFIG = {
   cacheMinutes: 15,
 };
 
-const CACHE_KEY = "invicta_inventory_cache_v3";
+const CACHE_KEY = "invicta_inventory_cache_v4";
 const INVENTORY_ENDPOINT = "/api/inventory";
 
 // The 7 public-facing website categories. An item is only resolved to one
-// of these when Web Category is already set, or its legacy Category
+// of these when Website Category is already set, or its legacy Category
 // matches one of the explicit rules below — see resolveWebCategory().
 const WEB_CATEGORIES = [
   "Flooring",
@@ -55,7 +74,7 @@ const WEB_CATEGORIES = [
 // for this home-improvement storefront and must not be guessed into a
 // tab. A genuinely blank Category is handled separately in
 // resolveWebCategory (see hasFlooringAttributes) rather than here.
-// Temporary: remove once every row has a real Web Category from Product Catalog.
+// Temporary: remove once every row has a real Website Category from Product Catalog.
 const LEGACY_CATEGORY_RULES = [
   { test: /^flooring$/i, category: "Flooring" },
   { test: /^appliances$/i, category: "Appliances" },
@@ -66,12 +85,13 @@ const LEGACY_CATEGORY_RULES = [
   { test: /lighting|windows\s*&?\s*doors|blinds|shutters/i, category: "Home Improvement" },
 ];
 
-// A row is treated as flooring-shaped if any of its flooring-specific
-// numeric fields are present and positive — used only for the blank-
-// Category fallback below, never to reclassify a row that already has an
-// explicit (even if unrecognized) Category.
+// A row is treated as flooring-shaped if it's explicitly priced by the
+// sq ft, or any flooring-specific numeric field is present and positive —
+// used only for the blank-Category fallback below, never to reclassify a
+// row that already has an explicit (even if unrecognized) Category.
 function hasFlooringAttributes(f) {
   const isPositiveNumber = v => typeof v === "number" && !isNaN(v) && v > 0;
+  if ((f["Unit Type"] || "").trim().toLowerCase() === "sq ft") return true;
   return isPositiveNumber(f["Sq Ft Per Unit"]) || isPositiveNumber(f["Box Price"]) || isPositiveNumber(f["Available Sq Ft"]);
 }
 
@@ -79,7 +99,7 @@ function hasFlooringAttributes(f) {
 // published (see LEGACY_CATEGORY_RULES comment above — null is a
 // deliberate "do not show" signal, not a bug).
 function resolveWebCategory(f) {
-  const webCategory = (f["Web Category"] || "").trim();
+  const webCategory = (f["Website Category"] || "").trim();
   if (WEB_CATEGORIES.includes(webCategory)) return webCategory;
   const legacy = (f["Category"] || "").trim();
   if (!legacy) {
@@ -91,39 +111,44 @@ function resolveWebCategory(f) {
     // silently unpublishing something that's live today. Never extend
     // this inference to non-flooring rows: a blank-Category row with no
     // flooring attributes stays excluded, same as any other unrecognized
-    // Category, until it gets a real Web Category from Product Catalog.
+    // Category, until it gets a real Website Category from Product Catalog.
     return hasFlooringAttributes(f) ? "Flooring" : null;
   }
   const rule = LEGACY_CATEGORY_RULES.find(r => r.test.test(legacy));
   return rule ? rule.category : null;
 }
 
-// Legacy internal Status values mapped onto the new Web Status vocabulary.
-// Temporary: remove once every row has a real Web Status from Product Catalog.
-const LEGACY_STATUS_FALLBACK = {
-  "In Stock": "In Stock",
-  "Reserved": "Reserved",
-  "Sold Out": "Sold",
-  "Sold": "Sold",
-};
+// Unit Type's real values are Box/Each/Sq Ft/Roll (case as typed in the
+// sheet is unknown, so this compares case-insensitively). Blank/
+// unrecognized falls back to the pre-existing convention: sq ft for
+// Flooring, each otherwise.
+function resolveSellUnit(f, webCategory) {
+  const v = (f["Unit Type"] || "").trim().toLowerCase();
+  if (v === "box") return "box";
+  if (v === "roll") return "roll";
+  if (v === "sq ft" || v === "sqft") return "sq ft";
+  if (v === "each") return "each";
+  return webCategory === "Flooring" ? "sq ft" : "each";
+}
 
-function resolveWebStatus(f) {
-  const webStatus = (f["Web Status"] || "").trim();
-  if (webStatus) return webStatus;
-  const legacy = (f["Status"] || "").trim();
-  return LEGACY_STATUS_FALLBACK[legacy] || "In Stock";
+// Availability now comes from Website Export's In Stock field; Quantity
+// Available > 0 is the fallback if In Stock isn't present (e.g. a cached
+// record from before that field existed). Neither present defaults to
+// available rather than hiding an item over a missing field.
+function resolveInStock(f) {
+  if (typeof f["In Stock"] === "boolean") return f["In Stock"];
+  if (typeof f["Quantity Available"] === "number") return f["Quantity Available"] > 0;
+  return true;
 }
 
 function isAvailable(item) {
-  return item.webStatus === "In Stock";
+  return item.inStock;
 }
 
 // Maps one raw Airtable record into the shape the rest of this file uses,
 // or returns null if the item should not be published (see
-// resolveWebCategory). Every other new field has a fallback so a row that
-// predates the Sell Unit/Specs/Web Status/Quantity Available migration
-// still renders correctly instead of disappearing or crashing — category
-// is the one field that can legitimately mean "don't show this."
+// resolveWebCategory) — category is the one field that can legitimately
+// mean "don't show this." Everything else has a graceful fallback.
 function mapAirtableRecord(id, f) {
   const webCategory = resolveWebCategory(f);
   if (!webCategory) return null;
@@ -131,23 +156,25 @@ function mapAirtableRecord(id, f) {
   return {
     id,
     productKey: f["Product Key"] || "",
-    name: f["Name"] || "Untitled item",
+    name: f["Display Name"] || "Untitled item",
     webCategory,
-    sellUnit: f["Sell Unit"] || (webCategory === "Flooring" ? "sq ft" : "each"),
-    specs: f["Specs"] || "",
+    webSubcategory: f["Web Subcategory"] || "",
+    sellUnit: resolveSellUnit(f, webCategory),
     brand: f["Brand"] || "",
     model: f["Model"] || "",
+    retailSku: f["Retail SKU"] || "",
     retailer: f["Retailer"] || "",
-    price: f["Price"],
-    wasPrice: f["Was Price"],
+    price: f["Website Price"],
+    wasPrice: f["Retail Price"],
     qtyAvailable: f["Quantity Available"],
     boxPrice: f["Box Price"],
     sqFtPerUnit: f["Sq Ft Per Unit"],
     availableSqFt: f["Available Sq Ft"],
-    details: f["Details"] || "",
+    description: f["Description"] || "",
     highlights: f["Highlights"] || "",
-    webStatus: resolveWebStatus(f),
-    photos: (f["Photos"] || []).map(p => p.url),
+    productUrl: f["Product Url"] || "",
+    inStock: resolveInStock(f),
+    photos: f["Stock Image Url"] ? [f["Stock Image Url"]] : [],
     isNew: dateAdded ? (Date.now() - dateAdded.getTime()) / 86400000 <= 7 : false,
   };
 }
@@ -156,40 +183,41 @@ function mapAirtableRecord(id, f) {
 // replace by adding real rows in the Product Catalog sheet, not by editing
 // this list. Deliberately spans multiple categories so the mixed layouts
 // (New This Week, category tiles, shop tabs) all have something to show.
-// The first 8 represent the fully-migrated future state; the rest are raw,
-// pre-migration-shaped records run through mapAirtableRecord() so the
-// staged-migration fallbacks (and the "unrecognized category is not
-// published" rule) are visibly exercised, not just unit logic. .filter(Boolean)
-// drops "legacy-3" (Electronics), which mapAirtableRecord deliberately
-// returns null for — that's the point of including it here.
+// The first 8 represent the fully-migrated future state (already in the
+// mapAirtableRecord() output shape); the rest are raw, Website-Export-
+// shaped records run through mapAirtableRecord() so the fallback rules
+// (blank-Category inference, unrecognized-category exclusion, out-of-
+// stock handling) are visibly exercised, not just unit logic.
+// .filter(Boolean) drops "legacy-3" (Electronics), which mapAirtableRecord
+// deliberately returns null for — that's the point of including it here.
 const FALLBACK_ITEMS = [
-  { id: "sample-1", name: "Waterproof Oak Plank Flooring", webCategory: "Flooring", brand: "Invicta Floors", sellUnit: "sq ft", price: 2.01, boxPrice: 42.11, sqFtPerUnit: 20.94, availableSqFt: 1026, specs: "22 MIL|Waterproof|Click-lock", details: "Brand new, never used.", highlights: "22mil wear layer\nClicklock installation\n~20.94 sq ft per box", webStatus: "In Stock", photos: [], isNew: true },
-  { id: "sample-2", name: "Rustic Pine Waterproof Plank", webCategory: "Flooring", brand: "Invicta Floors", sellUnit: "sq ft", price: 1.79, boxPrice: 38.36, sqFtPerUnit: 21.43, availableSqFt: 815, specs: "12 MIL|Waterproof|Click-lock", details: "Brand new, never used.", highlights: "12mil wear layer\nWaterproof core\nPickup only", webStatus: "In Stock", photos: [], isNew: true },
-  { id: "sample-3", name: "50-Gallon Gas Water Heater", webCategory: "Water Heaters", brand: "Rheem", sellUnit: "each", price: 649, wasPrice: 1049, qtyAvailable: 2, specs: "50 gal|Natural gas|Rheem", details: "Brand new, factory sealed.", highlights: "6-year tank warranty\nEnergy Star rated", webStatus: "In Stock", photos: [], isNew: true },
-  { id: "sample-4", name: "Stainless French Door Refrigerator", webCategory: "Appliances", brand: "Samsung", sellUnit: "each", price: 1350, wasPrice: 2199, qtyAvailable: 1, specs: "27 cu ft|French door|Stainless", details: "Brand new, minor box damage only.", highlights: "Ice maker included\nManufacturer warranty applies", webStatus: "In Stock", photos: [] },
-  { id: "sample-5", name: "Undermount Kitchen Sink, Stainless", webCategory: "Plumbing & Bath", brand: "Kraus", sellUnit: "each", price: 120, wasPrice: 240, qtyAvailable: 4, specs: "Stainless|Undermount|32 in", details: "Brand new, never used.", highlights: "Includes mounting hardware", webStatus: "In Stock", photos: [] },
-  { id: "sample-6", name: "Self-Propelled Gas Mower, 21 in", webCategory: "Lawn & Outdoor", brand: "Honda", sellUnit: "each", price: 429, wasPrice: 599, qtyAvailable: 3, specs: "21 in|Self-propelled|Gas", details: "Brand new, factory sealed.", highlights: "Mulch/bag/side-discharge 3-in-1", webStatus: "In Stock", photos: [] },
-  { id: "sample-7", name: "18V Cordless Drill Kit, 2 Batteries", webCategory: "Tools", brand: "DeWalt", sellUnit: "each", price: 89, wasPrice: 149, qtyAvailable: 6, specs: "18V|2 batteries|Brushless", details: "Brand new, never used.", highlights: "Includes both batteries + charger", webStatus: "In Stock", photos: [] },
-  { id: "sample-8", name: "Matte Black Barn Door Hardware Kit", webCategory: "Home Improvement", brand: "", sellUnit: "each", price: 65, wasPrice: 120, qtyAvailable: 5, specs: "6.6 ft track|Matte black|Soft-close", details: "Brand new, factory sealed.", highlights: "Fits doors up to 36 in wide", webStatus: "In Stock", photos: [] },
-  // Pre-migration rows: no Web Category/Sell Unit/Specs/Web Status/Quantity
-  // Available yet, only the legacy Category/Status fields.
+  { id: "sample-1", name: "Waterproof Oak Plank Flooring", webCategory: "Flooring", webSubcategory: "LVP", brand: "Invicta Floors", sellUnit: "sq ft", price: 2.01, boxPrice: 42.11, sqFtPerUnit: 20.94, availableSqFt: 1026, highlights: "22mil wear layer\nWaterproof\nClicklock installation", inStock: true, photos: [], isNew: true },
+  { id: "sample-2", name: "Rustic Pine Waterproof Plank", webCategory: "Flooring", webSubcategory: "LVP", brand: "Invicta Floors", sellUnit: "sq ft", price: 1.79, boxPrice: 38.36, sqFtPerUnit: 21.43, availableSqFt: 815, highlights: "12mil wear layer\nWaterproof core\nPickup only", inStock: true, photos: [], isNew: true },
+  { id: "sample-3", name: "50-Gallon Gas Water Heater", webCategory: "Water Heaters", webSubcategory: "Gas", brand: "Rheem", sellUnit: "each", price: 649, wasPrice: 1049, qtyAvailable: 2, highlights: "50 gal\nNatural gas\n6-year tank warranty", inStock: true, photos: [], isNew: true },
+  { id: "sample-4", name: "Stainless French Door Refrigerator", webCategory: "Appliances", webSubcategory: "Refrigerator", brand: "Samsung", sellUnit: "each", price: 1350, wasPrice: 2199, qtyAvailable: 1, highlights: "27 cu ft\nFrench door\nIce maker included", inStock: true, photos: [] },
+  { id: "sample-5", name: "Undermount Kitchen Sink, Stainless", webCategory: "Plumbing & Bath", webSubcategory: "Sinks", brand: "Kraus", sellUnit: "each", price: 120, wasPrice: 240, qtyAvailable: 4, highlights: "Stainless\nUndermount, 32 in\nIncludes mounting hardware", inStock: true, photos: [] },
+  { id: "sample-6", name: "Self-Propelled Gas Mower, 21 in", webCategory: "Lawn & Outdoor", brand: "Honda", sellUnit: "each", price: 429, wasPrice: 599, qtyAvailable: 0, highlights: "21 in\nSelf-propelled\nMulch/bag/side-discharge 3-in-1", inStock: false, photos: [] },
+  { id: "sample-7", name: "18V Cordless Drill Kit, 2 Batteries", webCategory: "Tools", webSubcategory: "Power Tools", brand: "DeWalt", sellUnit: "each", price: 89, wasPrice: 149, qtyAvailable: 6, highlights: "18V\n2 batteries + charger\nBrushless", inStock: true, photos: [] },
+  { id: "sample-8", name: "Matte Black Barn Door Hardware Kit", webCategory: "Home Improvement", brand: "", sellUnit: "each", price: 65, wasPrice: 120, qtyAvailable: 5, highlights: "6.6 ft track\nMatte black\nSoft-close, fits doors up to 36 in", inStock: true, photos: [] },
+  // Pre-migration-shaped rows: no Website Category/Web Subcategory/Unit
+  // Type/In Stock yet, only the legacy Category/Quantity Available fields.
   // legacy-1: exact-match legacy Category -> still shows (Flooring, sq ft inferred).
-  mapAirtableRecord("legacy-1", { "Name": "Legacy Oak Laminate (unmigrated row)", "Category": "Flooring", "Price": 1.65, "Status": "In Stock" }),
+  mapAirtableRecord("legacy-1", { "Display Name": "Legacy Oak Laminate (unmigrated row)", "Category": "Flooring", "Website Price": 1.65, "Quantity Available": 30 }),
   // legacy-2: keyword-matched legacy Category ("Plumbing" substring) -> Plumbing & Bath,
-  // Reserved -> shown with a disabled pill, not hidden.
-  mapAirtableRecord("legacy-2", { "Name": "Legacy Plumbing Fixture Kit (unmigrated row)", "Category": "Plumbing Fixtures", "Price": 45, "Status": "Reserved" }),
+  // Quantity Available = 0 -> shown with a disabled "Out of Stock" pill, not hidden.
+  mapAirtableRecord("legacy-2", { "Display Name": "Legacy Plumbing Fixture Kit (unmigrated row)", "Category": "Plumbing Fixtures", "Website Price": 45, "Quantity Available": 0 }),
   // legacy-3: out-of-scope legacy Category with no keyword match -> resolveWebCategory
   // returns null -> mapAirtableRecord returns null -> dropped by .filter(Boolean)
   // below. This is the "must not be auto-categorized or newly published" case.
-  mapAirtableRecord("legacy-3", { "Name": "Legacy Game Console (should not publish)", "Category": "Electronics", "Price": 199, "Status": "In Stock" }),
-  // legacy-4: blank Category but has flooring attributes (Box Price/Sq Ft
-  // Per Unit/Available Sq Ft) -> inferred as Flooring rather than
-  // silently unpublished, since this site was flooring-only pre-migration.
-  mapAirtableRecord("legacy-4", { "Name": "Legacy Vinyl Plank, No Category Set (unmigrated row)", "Price": 1.95, "Box Price": 41.5, "Sq Ft Per Unit": 21.28, "Available Sq Ft": 640 }),
+  mapAirtableRecord("legacy-3", { "Display Name": "Legacy Game Console (should not publish)", "Category": "Electronics", "Website Price": 199, "Quantity Available": 3 }),
+  // legacy-4: blank Category but Unit Type = "Sq Ft" -> inferred as Flooring
+  // rather than silently unpublished, since this site was flooring-only
+  // pre-migration.
+  mapAirtableRecord("legacy-4", { "Display Name": "Legacy Vinyl Plank, No Category Set (unmigrated row)", "Website Price": 1.95, "Unit Type": "Sq Ft", "Box Price": 41.5, "Sq Ft Per Unit": 21.28, "Available Sq Ft": 640 }),
   // legacy-5: blank Category AND no flooring attributes -> stays excluded,
   // same as any other unrecognized Category. Proves the inference above
   // is flooring-only, not a general blank-Category catch-all.
-  mapAirtableRecord("legacy-5", { "Name": "Legacy Unknown Item, No Category (should not publish)", "Price": 25 }),
+  mapAirtableRecord("legacy-5", { "Display Name": "Legacy Unknown Item, No Category (should not publish)", "Website Price": 25 }),
 ].filter(Boolean);
 
 async function fetchInventory() {
@@ -240,18 +268,25 @@ function boxesAvailable(item) {
   return Math.floor(item.availableSqFt / item.sqFtPerUnit);
 }
 
-// Specs is a single "|"-separated field (e.g. "22 MIL|Waterproof|Click-lock")
-// — split into at most 3 short chips for the card.
-function specsArray(item) {
-  if (!item.specs) return [];
-  return item.specs.split("|").map(s => s.trim()).filter(Boolean).slice(0, 3);
+function highlightBullets(highlights) {
+  if (!highlights) return [];
+  return highlights.split(/\r?\n/)
+    .map(s => s.trim().replace(/^[•●◦∙\-*]\s*/, ""))
+    .filter(Boolean);
 }
 
-// A generic stand-in for per-category structured filters (capacity, fuel
-// type, voltage, wear layer...) we don't have dedicated Airtable columns
-// for yet: any spec chip that looks like a thickness/wear-layer callout.
-function wearLayerSpec(item) {
-  return specsArray(item).find(s => /\d\s?(mil|mm)\b/i.test(s)) || "";
+// No dedicated Specs field (deliberately not created — see README) — the
+// first 3 short Highlights lines double as the card's chip row. The rest
+// of Highlights still shows in full in the "More details" section.
+function cardChips(item) {
+  return highlightBullets(item.highlights).slice(0, 3);
+}
+
+// A generic stand-in for a structured thickness/wear-layer field we don't
+// have yet: any Highlights line that looks like a mil/mm callout. Scans
+// all of Highlights, not just the first 3 shown as chips.
+function wearLayerFromHighlights(item) {
+  return highlightBullets(item.highlights).find(s => /\d\s?(mil|mm)\b/i.test(s)) || "";
 }
 
 function photoBlock(item) {
@@ -268,14 +303,13 @@ function photoBlock(item) {
   return `<div class="product-photo main-photo" style="background-image:url('${main}'); background-size:cover; background-position:center;" data-main-photo></div>${thumbs}`;
 }
 
-// Not-yet-available items are never hidden during the staged migration —
-// they're shown with a status pill instead of the Text button (see
-// actionButtons below), same as the site's pre-migration behavior.
+// Out-of-stock items are never hidden here — they're shown with a
+// disabled "Out of Stock" pill instead of the Text button (see
+// actionButtons below). In practice most such rows likely won't reach
+// this site at all once the Apps Script export rule (Post to Website =
+// Yes AND Quantity Available > 0) is in place, but this costs nothing.
 function statusBadge(item) {
-  if (!isAvailable(item)) {
-    const cls = item.webStatus === "Sold" ? "badge-sold" : item.webStatus === "Coming Soon" ? "badge-new" : "badge-reserved";
-    return `<span class="badge ${cls}">${item.webStatus}</span>`;
-  }
+  if (!isAvailable(item)) return `<span class="badge badge-sold">Out of Stock</span>`;
   return item.isNew ? `<span class="badge badge-new">New</span>` : "";
 }
 
@@ -289,28 +323,22 @@ function smsMessageForItem(item) {
 
 // Single CTA per card, per the compact card design — no secondary button,
 // no on-site form. Opens the visitor's SMS app with a prefilled message.
-// Reserved/Sold/Coming Soon items keep the card visible but swap the CTA
-// for a disabled status pill instead.
+// Out-of-stock items keep the card visible but swap the CTA for a
+// disabled pill instead.
 function actionButtons(item) {
   if (!isAvailable(item)) {
-    return `<span class="btn btn-outline btn-small btn-block" style="opacity:.5; cursor:default;">${item.webStatus}</span>`;
+    return `<span class="btn btn-outline btn-small btn-block" style="opacity:.5; cursor:default;">Out of Stock</span>`;
   }
   const phoneHref = window.SITE_CONFIG ? window.SITE_CONFIG.phoneHref : "";
   const smsHref = `sms:${phoneHref}?&body=${encodeURIComponent(smsMessageForItem(item))}`;
   return `<a href="${smsHref}" class="btn btn-dark btn-small btn-block">Text About This Item</a>`;
 }
 
-function highlightBullets(highlights) {
-  if (!highlights) return [];
-  return highlights.split(/\r?\n/)
-    .map(s => s.trim().replace(/^[•●◦∙\-*]\s*/, ""))
-    .filter(Boolean);
-}
-
-// Price block format depends on Sell Unit:
+// Price block format depends on Unit Type:
 //   sq ft  -> "$2.01 / sq ft" then "$42.11 / box · 49 boxes / 1,026 sq ft available"
 //   each   -> "$649 each"     then "Retail $1,049 · 2 available"
 //   box    -> "$42.11 / box"  then "Retail $89.00 · 12 boxes available"
+//   roll   -> "$42.11 / roll" then "Retail $89.00 · 12 rolls available"
 function priceBlock(item) {
   if (item.sellUnit === "sq ft" && typeof item.price === "number") {
     const boxes = boxesAvailable(item);
@@ -324,24 +352,30 @@ function priceBlock(item) {
     </div>`;
   }
 
-  const unitLabel = item.sellUnit === "box" ? "/ box" : "each";
-  const priceText = item.sellUnit === "box" && typeof item.price === "number" ? money2(item.price) : money(item.price);
+  const perUnitLabels = { box: "/ box", roll: "/ roll" };
+  const pluralWords = { box: " boxes", roll: " rolls" };
+  const unitLabel = perUnitLabels[item.sellUnit] || "each";
+  const isPerUnit = item.sellUnit === "box" || item.sellUnit === "roll";
+  const priceText = isPerUnit && typeof item.price === "number" ? money2(item.price) : money(item.price);
   const availParts = [];
   if (typeof item.wasPrice === "number") availParts.push(`Retail ${money(item.wasPrice)}`);
-  if (typeof item.qtyAvailable === "number") availParts.push(`${item.qtyAvailable}${item.sellUnit === "box" ? " boxes" : ""} available`);
+  if (typeof item.qtyAvailable === "number") availParts.push(`${item.qtyAvailable}${pluralWords[item.sellUnit] || ""} available`);
   return `<div class="product-price">
     <div class="price-line">${priceText} <span class="price-unit">${unitLabel}</span></div>
     ${availParts.length ? `<div class="price-avail">${availParts.join(" &middot; ")}</div>` : ""}
   </div>`;
 }
 
-// Compact card: square image -> category -> name -> up to 3 spec chips ->
-// price -> availability line -> one CTA. Long copy (Details/Highlights)
-// moves into a collapsed <details> section instead of living on the card.
+// Compact card: square image -> category (+ subcategory, if set) -> name
+// -> up to 3 chips (from the first Highlights lines) -> price ->
+// availability line -> one CTA. Long copy (Description, remaining
+// Highlights, a product reference link) moves into a collapsed <details>
+// section instead of living on the card.
 function productCard(item) {
-  const chips = specsArray(item);
-  const bullets = highlightBullets(item.highlights);
-  const hasMore = Boolean(item.details) || bullets.length > 0;
+  const chips = cardChips(item);
+  const moreBullets = highlightBullets(item.highlights).slice(chips.length);
+  const hasMore = Boolean(item.description) || moreBullets.length > 0 || Boolean(item.productUrl);
+  const categoryLabel = item.webSubcategory ? `${item.webCategory} &middot; ${item.webSubcategory}` : item.webCategory;
   return `
   <div class="product-card" data-category="${item.webCategory}">
     <div class="photo-wrap">
@@ -349,14 +383,15 @@ function productCard(item) {
       ${statusBadge(item)}
     </div>
     <div class="product-info">
-      <span class="product-cat">${item.webCategory}</span>
+      <span class="product-cat">${categoryLabel}</span>
       <h4>${item.name}</h4>
       ${chips.length ? `<div class="spec-chips">${chips.map(c => `<span class="spec-chip">${c}</span>`).join("")}</div>` : ""}
       ${priceBlock(item)}
       ${hasMore ? `<details class="product-more">
         <summary>More details</summary>
-        ${item.details ? `<p class="product-desc">${item.details}</p>` : ""}
-        ${bullets.length ? `<ul class="product-details">${bullets.map(b => `<li>${b}</li>`).join("")}</ul>` : ""}
+        ${item.description ? `<p class="product-desc">${item.description}</p>` : ""}
+        ${moreBullets.length ? `<ul class="product-details">${moreBullets.map(b => `<li>${b}</li>`).join("")}</ul>` : ""}
+        ${item.productUrl ? `<a href="${item.productUrl}" target="_blank" rel="noopener" class="product-ref-link">View manufacturer page</a>` : ""}
       </details>` : ""}
     </div>
     <div class="product-actions">
@@ -422,10 +457,10 @@ function pickNewArrivals(items, targetCount) {
 }
 
 // ---------------------------------------------------------------------
-// Shop page: category tabs + brand/spec filters + sort + search, over the
-// array already fetched by fetchInventory() — no extra Airtable calls.
-// Flooring renders as a contractor-style table; every other category
-// renders as the standard card grid — see renderShopCatalog().
+// Shop page: category tabs + brand/subcategory filters + sort + search,
+// over the array already fetched by fetchInventory() — no extra Airtable
+// calls. Flooring renders as a contractor-style table; every other
+// category renders as the standard card grid — see renderShopCatalog().
 // ---------------------------------------------------------------------
 let shopItems = [];
 let itemsById = {};
@@ -433,7 +468,7 @@ let currentCategory = "all";
 let currentSort = "featured";
 let currentSearch = "";
 let currentBrand = "";
-let currentSpec = "";
+let currentSubcategory = "";
 let currentWearLayer = "";
 
 const SQFT_SORT_OPTIONS = [
@@ -502,12 +537,12 @@ function updateCalcButtonVisibility() {
   btn.style.display = (currentCategory === "all" || isFlooringView()) ? "" : "none";
 }
 
-// Rebuilds the Brand / Spec / Wear Layer filter <select> options from
-// whatever's actually present in the current category — so a dropdown
-// never offers an option with zero matching items.
+// Rebuilds the Brand / Subcategory / Wear Layer filter <select> options
+// from whatever's actually present in the current category — so a
+// dropdown never offers an option with zero matching items.
 function updateFacetFilterOptions(categoryItems) {
   const brandSelect = document.getElementById("brand-filter");
-  const specSelect = document.getElementById("spec-filter");
+  const subcategorySelect = document.getElementById("subcategory-filter");
   const wearSelect = document.getElementById("wear-layer-filter");
 
   if (brandSelect) {
@@ -516,14 +551,14 @@ function updateFacetFilterOptions(categoryItems) {
     brandSelect.innerHTML = `<option value="">All Brands</option>` + brands.map(b => `<option value="${b}">${b}</option>`).join("");
     brandSelect.value = currentBrand;
   }
-  if (specSelect) {
-    const specs = [...new Set(categoryItems.flatMap(specsArray))].sort();
-    if (!specs.includes(currentSpec)) currentSpec = "";
-    specSelect.innerHTML = `<option value="">All Specs</option>` + specs.map(s => `<option value="${s}">${s}</option>`).join("");
-    specSelect.value = currentSpec;
+  if (subcategorySelect) {
+    const subcategories = [...new Set(categoryItems.map(i => i.webSubcategory).filter(Boolean))].sort();
+    if (!subcategories.includes(currentSubcategory)) currentSubcategory = "";
+    subcategorySelect.innerHTML = `<option value="">All Subcategories</option>` + subcategories.map(s => `<option value="${s}">${s}</option>`).join("");
+    subcategorySelect.value = currentSubcategory;
   }
   if (wearSelect) {
-    const wears = [...new Set(categoryItems.map(wearLayerSpec).filter(Boolean))].sort();
+    const wears = [...new Set(categoryItems.map(wearLayerFromHighlights).filter(Boolean))].sort();
     if (!wears.includes(currentWearLayer)) currentWearLayer = "";
     wearSelect.innerHTML = `<option value="">Any Thickness / Wear Layer</option>` + wears.map(w => `<option value="${w}">${w}</option>`).join("");
     wearSelect.value = currentWearLayer;
@@ -546,11 +581,12 @@ function updateViewToggle() {
   if (flooringRow) flooringRow.hidden = !flooring;
 }
 
-// Search matches Name, Brand, Model, Category, Retailer and Specs, case-
-// insensitive. Fields that are blank for a given item are simply skipped.
+// Search matches Name, Brand, Model, Category, Subcategory, Retailer and
+// Highlights, case-insensitive. Fields that are blank for a given item are
+// simply skipped.
 function searchMatches(item, query) {
   if (!query) return true;
-  const haystack = [item.name, item.brand, item.model, item.webCategory, item.retailer, item.specs]
+  const haystack = [item.name, item.brand, item.model, item.webCategory, item.webSubcategory, item.retailer, item.highlights]
     .filter(Boolean)
     .join(" \n ")
     .toLowerCase();
@@ -561,12 +597,12 @@ function renderFlooringTable(items) {
   const tbody = document.querySelector("#flooring-table tbody");
   if (!tbody) return;
   if (items.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" class="table-empty">No flooring matches your filters right now — text us what you're looking for.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="table-empty">No flooring matches your filters right now — text us what you're looking for.</td></tr>`;
     return;
   }
   tbody.innerHTML = items.map(item => {
     const boxes = boxesAvailable(item);
-    const wear = wearLayerSpec(item) || "&mdash;";
+    const wear = wearLayerFromHighlights(item) || "&mdash;";
     const photo = item.photos && item.photos[0] ? item.photos[0] : "";
     return `<tr>
       <td class="table-product-cell">
@@ -576,6 +612,7 @@ function renderFlooringTable(items) {
           ${item.brand ? `<div class="table-product-sub">${item.brand}</div>` : ""}
         </div>
       </td>
+      <td>${item.webSubcategory || "&mdash;"}</td>
       <td>${wear}</td>
       <td>${typeof item.price === "number" ? money2(item.price) : "&mdash;"}</td>
       <td>${typeof item.boxPrice === "number" ? money2(item.boxPrice) : "&mdash;"}</td>
@@ -584,7 +621,7 @@ function renderFlooringTable(items) {
       <td class="table-actions-cell">
         ${isAvailable(item)
           ? `<button type="button" class="btn btn-dark btn-small btn-quote" data-quote-id="${item.id}">Get a Quote</button>`
-          : `<span class="btn btn-outline btn-small" style="opacity:.5; cursor:default;">${item.webStatus}</span>`}
+          : `<span class="btn btn-outline btn-small" style="opacity:.5; cursor:default;">Out of Stock</span>`}
       </td>
     </tr>`;
   }).join("");
@@ -599,12 +636,14 @@ function renderShopCatalog() {
   updateFacetFilterOptions(inCategory);
 
   if (isFlooringView()) {
-    const filtered = currentWearLayer ? inCategory.filter(i => specsArray(i).includes(currentWearLayer)) : inCategory;
+    let filtered = inCategory;
+    if (currentSubcategory) filtered = filtered.filter(i => i.webSubcategory === currentSubcategory);
+    if (currentWearLayer) filtered = filtered.filter(i => wearLayerFromHighlights(i) === currentWearLayer);
     renderFlooringTable(sortItems(filtered, currentSort));
   } else {
     let filtered = inCategory;
     if (currentBrand) filtered = filtered.filter(i => i.brand === currentBrand);
-    if (currentSpec) filtered = filtered.filter(i => specsArray(i).includes(currentSpec));
+    if (currentSubcategory) filtered = filtered.filter(i => i.webSubcategory === currentSubcategory);
     renderGrid(sortItems(filtered, currentSort), "catalog-grid");
   }
   updateViewToggle();
@@ -645,7 +684,7 @@ function initShopControls(items) {
       btn.classList.add("active");
       currentCategory = btn.getAttribute("data-filter");
       currentBrand = "";
-      currentSpec = "";
+      currentSubcategory = "";
       currentWearLayer = "";
       updateSortOptionsVisibility();
       updateCalcButtonVisibility();
@@ -668,10 +707,10 @@ function initShopControls(items) {
       renderShopCatalog();
     });
   }
-  const specSelect = document.getElementById("spec-filter");
-  if (specSelect) {
-    specSelect.addEventListener("change", () => {
-      currentSpec = specSelect.value;
+  const subcategorySelect = document.getElementById("subcategory-filter");
+  if (subcategorySelect) {
+    subcategorySelect.addEventListener("change", () => {
+      currentSubcategory = subcategorySelect.value;
       renderShopCatalog();
     });
   }
