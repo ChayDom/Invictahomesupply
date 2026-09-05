@@ -52,7 +52,7 @@ separate "Website Category":
 | Asking price | `Price` | |
 | Retail/comparison price | `Was Price` | Powers the "Retail $1,049" line. (A rename to `Retail Price` was discussed as a "potentially later" change — this code reads `Was Price`, today's actual field; update this table and `mapAirtableRecord()` together if that rename happens.) |
 | Stock count | `Quantity Available` | Combines Product Catalog with live Product Inventory — never duplicated back into Product Catalog. |
-| Availability | `In Stock`, falling back to legacy `Status` text, falling back to `Quantity Available > 0` | See "How the site behaves" below — `Status` can carry a specific "Reserved"/"Sold Out" label the pill shows verbatim. |
+| Availability | `Status` text, falling back to `Quantity Available > 0` | See "How the site behaves" below — `Status` can carry a specific "Reserved"/"Sold Out" label the pill shows verbatim. There is no separate `In Stock` boolean field in the live schema. |
 | Publish gate | `Post to Website` | Unchanged — see "Publishing safeguards" below. |
 | Long description | `Details` | Shown in the card's collapsed "More details" section. |
 | Structured Flooring chips | `Wear Layer MIL`, `Thickness MM`, `Underlayment Attached`, `Water Resistance` | New, Flooring-specific, authoritative when present — see "Flooring's structured fields" below. Never parsed from a title. |
@@ -126,13 +126,15 @@ every row has a clean 7-category `Category` value:
 
   This logic lives in `resolveWebCategory()` / `LEGACY_CATEGORY_RULES` /
   `hasFlooringAttributes()` in `inventory.js`.
-- Availability (`isAvailable()`/`resolveStatusLabel()`) prefers `In Stock`,
-  then the legacy `Status` text (shown verbatim on the pill when it's more
-  specific than "In Stock", e.g. "Reserved"), then `Quantity Available > 0`.
-  A not-in-stock item is never hidden here — it renders with a disabled
-  status pill instead of the Text button. In practice, once the Apps
-  Script export rule below is in place, most such rows won't reach this
-  site at all; the client-side fallback is just a safety net.
+- Availability (`isAvailable()`/`resolveStatusLabel()`) prefers the
+  `Status` text (shown verbatim on the pill when it's more specific than
+  "In Stock", e.g. "Reserved"), then `Quantity Available > 0`. There is no
+  separate `In Stock` boolean field in Airtable — confirmed against the
+  live schema — so this doesn't check for one. A not-in-stock item is
+  never hidden here — it renders with a disabled status pill instead of
+  the Text button. In practice, once the Apps Script export rule below is
+  in place, most such rows won't reach this site at all; the client-side
+  fallback is just a safety net.
 
 **The Netlify function's Airtable filter is `{Post to Website} = TRUE()`**
 — see `netlify/functions/inventory.mts`. Don't change that filter to key
@@ -176,11 +178,10 @@ or loosen any of them.
 
 ### Marking items out of stock, sold, or new
 
-- Zero out `Quantity Available` (or set `In Stock` to false, or set the
-  legacy `Status` field to something other than "In Stock") to show a
-  disabled status pill instead of the Text button — the item stays
-  visible, it isn't removed. Uncheck `Post to Website` if you actually
-  want it gone from the site.
+- Zero out `Quantity Available` (or set `Status` to something other than
+  "In Stock") to show a disabled status pill instead of the Text button —
+  the item stays visible, it isn't removed. Uncheck `Post to Website` if
+  you actually want it gone from the site.
 - Anything with a **Date Added** within the last 7 days is automatically
   tagged "New" on the site — no extra field to manage, and "New This
   Week" on the homepage is derived from this, never a manual flag.

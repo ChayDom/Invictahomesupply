@@ -13,12 +13,13 @@
 
      Product Key, Name, Category, Subcategory, Brand, Model, Retail SKU,
      Retailer, Price, Was Price, Unit Type (Box/Each/Sq Ft/Roll),
-     Quantity Available, In Stock, Status (legacy — In Stock/Reserved/
-     Sold Out text), Box Price, Sq Ft Per Unit, Available Sq Ft,
-     Thickness MM, Wear Layer MIL, Underlayment Attached (Yes/No),
-     Water Resistance, Details, Highlights, Product URL, Photos
-     (attachment, may be empty/absent), Reference Image URL (single-URL
-     fallback), Post to Website (server-side gate only), Date Added.
+     Quantity Available, Status (In Stock/Reserved/Sold Out text), Box
+     Price, Sq Ft Per Unit, Available Sq Ft, Thickness MM, Wear Layer MIL,
+     Underlayment Attached (Yes/No), Water Resistance, Details, Highlights,
+     Product URL, Photos (attachment, may be empty/absent), Reference
+     Image URL (single-URL fallback), Post to Website (server-side gate
+     only), Date Added. There is no separate "In Stock" boolean field —
+     confirmed against the live schema — so it isn't read here.
 
    Category resolution still needs a fallback because every row won't
    have a clean one of the 7 site categories in `Category` on day one:
@@ -27,14 +28,13 @@
    Flooring from flooring-shaped attributes. Anything else is not
    published — see LEGACY_CATEGORY_RULES/hasFlooringAttributes.
 
-   Availability prefers Website Export's `In Stock` boolean, then the
-   legacy `Status` text (which can carry a specific "Reserved"/"Sold Out"
-   label the badge/pill will show verbatim), then `Quantity Available > 0`
-   — see resolveStatusLabel()/isAvailable(). Not-in-stock items are never
-   hidden here, only shown with a disabled pill instead of the Text
-   button; per the discussed Apps Script export rule (Post to Website =
-   Yes AND Quantity Available > 0) most such rows won't reach this site
-   at all, but the fallback costs nothing.
+   Availability prefers the `Status` text (which can carry a specific
+   "Reserved"/"Sold Out" label the badge/pill will show verbatim), then
+   `Quantity Available > 0` — see resolveStatusLabel()/isAvailable().
+   Not-in-stock items are never hidden here, only shown with a disabled
+   pill instead of the Text button; per the discussed Apps Script export
+   rule (Post to Website = Yes AND Quantity Available > 0) most such rows
+   won't reach this site at all, but the fallback costs nothing.
 
    Flooring is the one category with real structured comparison fields
    (Thickness MM, Wear Layer MIL, Underlayment Attached, Water
@@ -138,17 +138,15 @@ function resolveSellUnit(f, webCategory) {
   return webCategory === "Flooring" ? "sq ft" : "each";
 }
 
-// Availability/status label, most-specific source first: the `In Stock`
-// boolean (Website Export), then the legacy `Status` text (which can
-// carry "Reserved"/"Sold Out" — shown verbatim on the badge/pill instead
-// of a generic label when available), then Quantity Available > 0.
-// Nothing present defaults to "In Stock" rather than hiding the item.
+// Availability/status label, most-specific source first: the `Status`
+// text (which can carry "Reserved"/"Sold Out" — shown verbatim on the
+// badge/pill instead of a generic label when available), then
+// Quantity Available > 0. Nothing present defaults to "In Stock" rather
+// than hiding the item. (There is no separate "In Stock" boolean field
+// in Airtable — confirmed against the live schema — so this doesn't
+// check for one.)
 function resolveStatusLabel(f) {
   const legacyStatus = (f["Status"] || "").trim();
-  if (typeof f["In Stock"] === "boolean") {
-    if (f["In Stock"]) return "In Stock";
-    return legacyStatus || "Out of Stock";
-  }
   if (legacyStatus) return legacyStatus;
   if (typeof f["Quantity Available"] === "number") return f["Quantity Available"] > 0 ? "In Stock" : "Out of Stock";
   return "In Stock";

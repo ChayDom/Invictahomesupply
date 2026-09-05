@@ -70,9 +70,10 @@ Two things worth knowing, neither of which blocks a dry run:
 
 ## `WebsiteExport_Airtable_Sync_v2.js` — review notes
 
-**Verdict: sound design, matches the real Airtable schema. One real
-operational risk (rate limiting) should be fixed before running it against
-the full catalog; safe to test now against the current small record set.**
+**Verdict: sound design, matches the real Airtable schema. Rate limiting
+and enum validation (see "Fixed" below) are now in place; safe to run
+against the full catalog once a real run's invalid-value counts are
+checked.**
 
 What it does right:
 - Every Airtable field name written in the `fields` object was checked
@@ -99,9 +100,11 @@ What it does right:
   one. Instead it reads `IN STOCK` and `POST TO WEBSITE` from the Website
   Export sheet and folds both into the single real field `Post to Website`
   (`post && inStock`). This is the right design for a schema with no
-  separate stock flag, and it retroactively confirms why `inventory.js`'s
-  `resolveStatusLabel()` Tier 1 (`In Stock` boolean) is currently
-  unreachable-but-harmless — that field was never expected to exist.
+  separate stock flag — it retroactively confirmed that `inventory.js`'s
+  now-removed `In Stock`-boolean fallback tier in `resolveStatusLabel()`
+  was dead code, since that field was never expected to exist; it has
+  since been removed there (see the site-side commit) in favor of just
+  `Status` text, then `Quantity Available > 0`.
 - Missing/stale records are unpublished (`Post to Website: false`), never
   deleted — matches the "never delete, only unpublish" requirement.
 - Upserts by `Product Key` via `performUpsert.fieldsToMergeOn`, batches of
@@ -109,30 +112,51 @@ What it does right:
   is a single sequential script with no concurrent trigger overlap risk
   documented elsewhere.
 
-Real risk found — **no rate-limit handling**:
+**Update — both findings below have since been fixed** (rate limiting and
+enum validation). The original findings are kept for context, followed by
+what changed.
+
+Originally found — **no rate-limit handling**:
 - Airtable enforces 5 requests/sec per base. For the current ~24-record
-  test set this is a non-issue (3 batches). Once the full ~566-product
+  test set this was a non-issue (3 batches). Once the full ~566-product
   catalog is flowing through Website Export, this becomes ~57 upsert
   batches, plus the paginated `iwaFetchAll_` GETs, plus the stale-unpublish
   PATCH batches — all fired back-to-back with no `Utilities.sleep()` and no
   429 retry/backoff in `iwaRequest_`. Apps Script can execute
   `UrlFetchApp.fetch()` calls fast enough to trip the limit, and a 429
-  response is not handled — it will throw and abort the whole sync
-  mid-run. **Recommend adding a short `Utilities.sleep(200)` between
-  batches and a retry-with-backoff on HTTP 429 in `iwaRequest_` before
-  running this against the full catalog.** Not a blocker for testing at
-  the current small scale.
+  response was not handled — it would throw and abort the whole sync
+  mid-run.
 
-Minor note:
+Originally found — **no value normalization before typecast**:
 - `Category`, `Unit Type`, `Underlayment Attached`, and `Water Resistance`
-  are passed straight through from the sheet text with `typecast: true`
+  were passed straight through from the sheet text with `typecast: true`
   and no normalization/allowlist check before sending. This is the
   mechanism that produced the 11-value Category taxonomy sprawl found
   earlier in this project (any spelling/casing variant silently becomes a
-  new Airtable select choice). Not a bug in this script specifically — it's
-  doing what upsert-with-typecast is supposed to do — but a normalization
-  or "must match a known value" check on the Website Export side (or right
-  before this script sends the payload) would prevent future drift.
+  new Airtable select choice).
+
+**Fixed:**
+- `iwaRequest_` now routes every call (including retries) through
+  `iwaThrottle_()`, which enforces a 220ms minimum gap between requests —
+  comfortably under Airtable's 5 req/sec cap — and retries on HTTP 429 up
+  to `IWA_MAX_ATTEMPTS` (5) times, honoring the `Retry-After` header when
+  present and otherwise backing off exponentially (500ms, 1s, 2s, 4s,
+  capped at 8s) via `iwaRetryDelayMs_`.
+- `Category`, `Water Resistance`, and `Underlayment Attached` are now
+  validated with `iwaEnum_()` against fixed allowlists (`Flooring`/`Water
+  Heaters`/`Appliances`/`Plumbing & Bath`/`Lawn & Outdoor`/`Tools`/`Home
+  Improvement` for Category; `Waterproof`/`Water Resistant`/`Not Water
+  Resistant`/`Unknown` for Water Resistance; `Yes`/`No` for Underlayment
+  Attached) before being sent. A value that's blank stays blank as before;
+  a value that's present but not an exact allowlist match is now also sent
+  as blank — **never guessed or invented** — and the affected Product Keys
+  are collected and logged (`invalidCategory`/`invalidWaterResistance`/
+  `invalidUnderlaymentAttached` counts in the returned summary, full key
+  lists in the `console.log` output) so the source row can be corrected in
+  Website Export. This closes off the typecast-driven taxonomy-drift path
+  for these three fields specifically — a typo can no longer mint a new
+  Airtable select option through this sync. `Unit Type` is unchanged
+  (still free text) since no fixed allowlist was specified for it.
 
 Reminder (not a code issue): confirm the `AIRTABLE_TOKEN` Script Property
 this sync uses is a **write-capable** token, and that it is a **different**
@@ -159,5 +183,9 @@ server-side.
 
 `WebsiteExport_Airtable_Sync_v2.js` is a separate trigger/schedule from the
 Product Catalog maintenance one and can be tested independently at the
-current small record count. Before pointing it at the full ~566-product
-catalog on a recurring schedule, add the rate-limit handling noted above.
+current small record count. Rate-limit handling and Category/Water
+Resistance/Underlayment Attached enum validation are now in place (see
+above) — it's safe to point this at the full ~566-product catalog once a
+real run's `invalidCategory`/`invalidWaterResistance`/
+`invalidUnderlaymentAttached` counts have been checked and any non-zero
+counts resolved at the source in Website Export.

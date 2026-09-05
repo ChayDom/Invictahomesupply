@@ -16,6 +16,17 @@
  * - Existing records update by Product Key
  * - Stale Airtable records are unpublished,
  *   NOT deleted
+ * - Category, Water Resistance, and
+ *   Underlayment Attached are validated
+ *   against a fixed allowlist before being
+ *   sent to Airtable. A value that isn't an
+ *   exact allowlist match is left blank
+ *   (never guessed/invented) and reported in
+ *   the run summary so the source data can be
+ *   fixed in Website Export.
+ * - All Airtable requests are paced to stay
+ *   under the 5 req/sec cap and retry on
+ *   HTTP 429 with exponential backoff.
  *
  * Required Script Property:
  * AIRTABLE_TOKEN
@@ -34,6 +45,46 @@ const IWA_SYNC = {
   TOKEN_PROPERTY:
     'AIRTABLE_TOKEN'
 };
+
+/*
+ * Exact-match allowlists. A Website Export
+ * value that isn't an exact match (including
+ * case) is treated as invalid: it is sent to
+ * Airtable as blank rather than guessed, and
+ * counted in the run summary.
+ */
+const IWA_CATEGORY_VALUES = [
+  'Flooring',
+  'Water Heaters',
+  'Appliances',
+  'Plumbing & Bath',
+  'Lawn & Outdoor',
+  'Tools',
+  'Home Improvement'
+];
+
+const IWA_WATER_RESISTANCE_VALUES = [
+  'Waterproof',
+  'Water Resistant',
+  'Not Water Resistant',
+  'Unknown'
+];
+
+const IWA_UNDERLAYMENT_VALUES = [
+  'Yes',
+  'No'
+];
+
+/*
+ * Airtable rate limit is 5 requests/sec per
+ * base. 220ms keeps every request (including
+ * retries) comfortably under that cap.
+ */
+const IWA_MIN_REQUEST_INTERVAL_MS = 220;
+
+const IWA_MAX_ATTEMPTS = 5;
+
+let iwaLastRequestAt_ = 0;
 
 function syncWebsiteExportToAirtableV2() {
   const token =
@@ -151,6 +202,10 @@ function syncWebsiteExportToAirtableV2() {
 
   const records = [];
 
+  const invalidCategoryKeys = [];
+  const invalidWaterResistanceKeys = [];
+  const invalidUnderlaymentKeys = [];
+
   values
     .slice(1)
     .forEach(function(row) {
@@ -167,12 +222,41 @@ function syncWebsiteExportToAirtableV2() {
 
       exportKeys.add(key);
 
-      const category =
-        iwaText_(
+      const categoryResult =
+        iwaEnum_(
           row[
             H['CATEGORY']
-          ]
+          ],
+          IWA_CATEGORY_VALUES
         );
+
+      if (categoryResult.invalid) {
+        invalidCategoryKeys.push(key);
+      }
+
+      const waterResistanceResult =
+        iwaEnum_(
+          row[
+            H['WATER RESISTANCE']
+          ],
+          IWA_WATER_RESISTANCE_VALUES
+        );
+
+      if (waterResistanceResult.invalid) {
+        invalidWaterResistanceKeys.push(key);
+      }
+
+      const underlaymentResult =
+        iwaEnum_(
+          row[
+            H['UNDERLAYMENT ATTACHED']
+          ],
+          IWA_UNDERLAYMENT_VALUES
+        );
+
+      if (underlaymentResult.invalid) {
+        invalidUnderlaymentKeys.push(key);
+      }
 
       const unitType =
         iwaText_(
@@ -207,11 +291,7 @@ function syncWebsiteExportToAirtableV2() {
           ) || key,
 
         'Category':
-          iwaNullableText_(
-            row[
-              H['CATEGORY']
-            ]
-          ),
+          categoryResult.value,
 
         'Brand':
           iwaNullableText_(
@@ -249,7 +329,7 @@ function syncWebsiteExportToAirtableV2() {
           ),
 
         'Price Basis':
-          category === 'Flooring'
+          categoryResult.value === 'Flooring'
             ? 'Per Sq Ft'
             : (
                 unitType === 'Box'
@@ -353,22 +433,10 @@ function syncWebsiteExportToAirtableV2() {
           ),
 
         'Underlayment Attached':
-          iwaNullableText_(
-            row[
-              H[
-                'UNDERLAYMENT ATTACHED'
-              ]
-            ]
-          ),
+          underlaymentResult.value,
 
         'Water Resistance':
-          iwaNullableText_(
-            row[
-              H[
-                'WATER RESISTANCE'
-              ]
-            ]
-          )
+          waterResistanceResult.value
       };
 
       records.push({
@@ -475,12 +543,43 @@ function syncWebsiteExportToAirtableV2() {
       records.length,
 
     unpublished:
-      stale.length
+      stale.length,
+
+    invalidCategory:
+      invalidCategoryKeys.length,
+
+    invalidWaterResistance:
+      invalidWaterResistanceKeys.length,
+
+    invalidUnderlaymentAttached:
+      invalidUnderlaymentKeys.length
   };
 
   console.log(
     JSON.stringify(summary)
   );
+
+  if (
+    invalidCategoryKeys.length ||
+    invalidWaterResistanceKeys.length ||
+    invalidUnderlaymentKeys.length
+  ) {
+    /*
+     * These Product Keys had a value present
+     * that didn't exactly match the allowlist.
+     * The field was sent to Airtable as blank
+     * instead of a guess — fix the source value
+     * in Website Export, then re-run.
+     */
+    console.log(
+      'Invalid enum values left blank: ' +
+      JSON.stringify({
+        category: invalidCategoryKeys,
+        waterResistance: invalidWaterResistanceKeys,
+        underlaymentAttached: invalidUnderlaymentKeys
+      })
+    );
+  }
 
   return summary;
 }
@@ -565,35 +664,116 @@ function iwaRequest_(
       );
   }
 
-  const response =
-    UrlFetchApp.fetch(
-      url,
-      options
-    );
+  for (
+    let attempt = 1;
+    attempt <= IWA_MAX_ATTEMPTS;
+    attempt++
+  ) {
+    iwaThrottle_();
 
-  const code =
-    response
-      .getResponseCode();
+    const response =
+      UrlFetchApp.fetch(
+        url,
+        options
+      );
 
-  const body =
-    response
-      .getContentText();
+    const code =
+      response
+        .getResponseCode();
+
+    if (
+      code === 429 &&
+      attempt < IWA_MAX_ATTEMPTS
+    ) {
+      Utilities.sleep(
+        iwaRetryDelayMs_(
+          response,
+          attempt
+        )
+      );
+
+      continue;
+    }
+
+    const body =
+      response
+        .getContentText();
+
+    if (
+      code < 200 ||
+      code >= 300
+    ) {
+      throw new Error(
+        'Airtable HTTP ' +
+        code +
+        ': ' +
+        body
+      );
+    }
+
+    return body
+      ? JSON.parse(body)
+      : {};
+  }
+}
+
+/*
+ * Keeps every request (including retries) at
+ * least IWA_MIN_REQUEST_INTERVAL_MS apart, so
+ * a run of sequential batches stays under
+ * Airtable's 5 req/sec cap.
+ */
+function iwaThrottle_() {
+  const elapsed =
+    Date.now() - iwaLastRequestAt_;
 
   if (
-    code < 200 ||
-    code >= 300
+    elapsed <
+    IWA_MIN_REQUEST_INTERVAL_MS
   ) {
-    throw new Error(
-      'Airtable HTTP ' +
-      code +
-      ': ' +
-      body
+    Utilities.sleep(
+      IWA_MIN_REQUEST_INTERVAL_MS -
+      elapsed
     );
   }
 
-  return body
-    ? JSON.parse(body)
-    : {};
+  iwaLastRequestAt_ = Date.now();
+}
+
+/*
+ * Honors Airtable's Retry-After header when
+ * present; otherwise exponential backoff
+ * (500ms, 1000ms, 2000ms, 4000ms), capped at
+ * 8s.
+ */
+function iwaRetryDelayMs_(
+  response,
+  attempt
+) {
+  const headers =
+    response.getAllHeaders
+      ? response.getAllHeaders()
+      : {};
+
+  const retryAfter =
+    headers['Retry-After'] ||
+    headers['retry-after'];
+
+  const seconds =
+    Number(retryAfter);
+
+  if (
+    retryAfter !== undefined &&
+    Number.isFinite(seconds) &&
+    seconds > 0
+  ) {
+    return seconds * 1000;
+  }
+
+  return Math.min(
+    8000,
+    500 * Math.pow(2, attempt - 1)
+  );
 }
 
 function iwaText_(v) {
@@ -627,6 +807,35 @@ function iwaNumber_(v) {
   return Number.isFinite(n)
     ? n
     : null;
+}
+
+/*
+ * Exact-match validation against a fixed
+ * allowlist. Never guesses a substitute value:
+ * a non-empty value that isn't an exact match
+ * comes back as { value: null, invalid: true }
+ * so the caller can report it, and a blank
+ * source value comes back as
+ * { value: null, invalid: false } (nothing to
+ * report, just missing).
+ */
+function iwaEnum_(v, allowed) {
+  const text = iwaText_(v);
+
+  if (!text) {
+    return {
+      value: null,
+      invalid: false
+    };
+  }
+
+  const matched =
+    allowed.indexOf(text) !== -1;
+
+  return {
+    value: matched ? text : null,
+    invalid: !matched
+  };
 }
 
 function iwaBool_(v) {
