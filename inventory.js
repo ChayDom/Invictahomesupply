@@ -1,12 +1,23 @@
 /* ===================================================================
    Invicta Home Supply — inventory (Airtable-backed catalog)
 
+   STAGED MIGRATION IN PROGRESS. Source of truth for product data is the
+   Google Sheet Product Catalog -> Website Export -> Airtable -> this site.
+   Airtable is a synced mirror, not the source of truth — new fields (Web
+   Category, Sell Unit, Specs, Web Status, Quantity Available) must be
+   added in Product Catalog and carried through Website Export and the
+   Apps Script/Airtable payload, or the next sync can overwrite/ignore
+   them. See README for the exact Sheet columns and export mapping.
+
+   Until every row has been migrated, "Post to Website" (not Web Category
+   or Web Status) is the publish gate, and every field below has a
+   fallback so a row missing the new columns still displays instead of
+   disappearing — see resolveWebCategory()/resolveWebStatus() and the
+   Sell Unit inference below.
+
    Inventory data is fetched from the /api/inventory serverless function,
    which holds the Airtable credentials server-side (Netlify environment
-   variables) — nothing sensitive lives in this file or in git. The
-   function itself only ever returns rows with a Web Category set and
-   Web Status = "In Stock" — see netlify/functions/inventory.mts and the
-   README for the full field list.
+   variables) — nothing sensitive lives in this file or in git.
    Until that function returns data, the site shows sample placeholder
    items so it never looks broken.
    =================================================================== */
@@ -14,12 +25,13 @@ window.AIRTABLE_CONFIG = {
   cacheMinutes: 15,
 };
 
-const CACHE_KEY = "invicta_inventory_cache_v2";
+const CACHE_KEY = "invicta_inventory_cache_v3";
 const INVENTORY_ENDPOINT = "/api/inventory";
 
-// The 7 public-facing website categories — every item's Web Category must
-// match one of these labels exactly, or it won't render anywhere. (Airtable's
-// own internal "Category" field can be far broader; it never reaches the site.)
+// The 7 public-facing website categories. Every item is resolved to one of
+// these (see resolveWebCategory) even when Web Category is still blank, so
+// a not-yet-migrated row never vanishes — it just lands in a fallback tab
+// until it's explicitly categorized upstream in Product Catalog.
 const WEB_CATEGORIES = [
   "Flooring",
   "Water Heaters",
@@ -30,10 +42,81 @@ const WEB_CATEGORIES = [
   "Home Improvement",
 ];
 
+// Legacy internal Category values (pre-migration) mapped to their closest
+// new web category. Anything not listed here (including blank) falls back
+// to "Home Improvement" — the broadest catch-all — rather than being hidden.
+// Temporary: remove once every row has a real Web Category from Product Catalog.
+const LEGACY_CATEGORY_FALLBACK = {
+  "Flooring": "Flooring",
+  "Appliances": "Appliances",
+  "Tools": "Tools",
+};
+
+function resolveWebCategory(f) {
+  const webCategory = (f["Web Category"] || "").trim();
+  if (WEB_CATEGORIES.includes(webCategory)) return webCategory;
+  const legacy = (f["Category"] || "").trim();
+  return LEGACY_CATEGORY_FALLBACK[legacy] || "Home Improvement";
+}
+
+// Legacy internal Status values mapped onto the new Web Status vocabulary.
+// Temporary: remove once every row has a real Web Status from Product Catalog.
+const LEGACY_STATUS_FALLBACK = {
+  "In Stock": "In Stock",
+  "Reserved": "Reserved",
+  "Sold Out": "Sold",
+  "Sold": "Sold",
+};
+
+function resolveWebStatus(f) {
+  const webStatus = (f["Web Status"] || "").trim();
+  if (webStatus) return webStatus;
+  const legacy = (f["Status"] || "").trim();
+  return LEGACY_STATUS_FALLBACK[legacy] || "In Stock";
+}
+
+function isAvailable(item) {
+  return item.webStatus === "In Stock";
+}
+
+// Maps one raw Airtable record into the shape the rest of this file uses.
+// Every new field has a fallback so a row that predates the Web
+// Category/Sell Unit/Specs/Web Status/Quantity Available migration still
+// renders correctly instead of disappearing or crashing.
+function mapAirtableRecord(id, f) {
+  const dateAdded = f["Date Added"] ? new Date(f["Date Added"]) : null;
+  const webCategory = resolveWebCategory(f);
+  return {
+    id,
+    productKey: f["Product Key"] || "",
+    name: f["Name"] || "Untitled item",
+    webCategory,
+    sellUnit: f["Sell Unit"] || (webCategory === "Flooring" ? "sq ft" : "each"),
+    specs: f["Specs"] || "",
+    brand: f["Brand"] || "",
+    model: f["Model"] || "",
+    retailer: f["Retailer"] || "",
+    price: f["Price"],
+    wasPrice: f["Was Price"],
+    qtyAvailable: f["Quantity Available"],
+    boxPrice: f["Box Price"],
+    sqFtPerUnit: f["Sq Ft Per Unit"],
+    availableSqFt: f["Available Sq Ft"],
+    details: f["Details"] || "",
+    highlights: f["Highlights"] || "",
+    webStatus: resolveWebStatus(f),
+    photos: (f["Photos"] || []).map(p => p.url),
+    isNew: dateAdded ? (Date.now() - dateAdded.getTime()) / 86400000 <= 7 : false,
+  };
+}
+
 // Shown automatically until the Airtable function returns real records —
-// replace by adding real rows in Airtable, not by editing this list.
-// Deliberately spans multiple categories so the mixed layouts (New This
-// Week, category tiles, shop tabs) all have something to show.
+// replace by adding real rows in the Product Catalog sheet, not by editing
+// this list. Deliberately spans multiple categories so the mixed layouts
+// (New This Week, category tiles, shop tabs) all have something to show.
+// The first 8 represent the fully-migrated future state; the last 2 are
+// raw, pre-migration-shaped records run through mapAirtableRecord() so the
+// staged-migration fallbacks are visibly exercised, not just unit logic.
 const FALLBACK_ITEMS = [
   { id: "sample-1", name: "Waterproof Oak Plank Flooring", webCategory: "Flooring", brand: "Invicta Floors", sellUnit: "sq ft", price: 2.01, boxPrice: 42.11, sqFtPerUnit: 20.94, availableSqFt: 1026, specs: "22 MIL|Waterproof|Click-lock", details: "Brand new, never used.", highlights: "22mil wear layer\nClicklock installation\n~20.94 sq ft per box", webStatus: "In Stock", photos: [], isNew: true },
   { id: "sample-2", name: "Rustic Pine Waterproof Plank", webCategory: "Flooring", brand: "Invicta Floors", sellUnit: "sq ft", price: 1.79, boxPrice: 38.36, sqFtPerUnit: 21.43, availableSqFt: 815, specs: "12 MIL|Waterproof|Click-lock", details: "Brand new, never used.", highlights: "12mil wear layer\nWaterproof core\nPickup only", webStatus: "In Stock", photos: [], isNew: true },
@@ -43,6 +126,12 @@ const FALLBACK_ITEMS = [
   { id: "sample-6", name: "Self-Propelled Gas Mower, 21 in", webCategory: "Lawn & Outdoor", brand: "Honda", sellUnit: "each", price: 429, wasPrice: 599, qtyAvailable: 3, specs: "21 in|Self-propelled|Gas", details: "Brand new, factory sealed.", highlights: "Mulch/bag/side-discharge 3-in-1", webStatus: "In Stock", photos: [] },
   { id: "sample-7", name: "18V Cordless Drill Kit, 2 Batteries", webCategory: "Tools", brand: "DeWalt", sellUnit: "each", price: 89, wasPrice: 149, qtyAvailable: 6, specs: "18V|2 batteries|Brushless", details: "Brand new, never used.", highlights: "Includes both batteries + charger", webStatus: "In Stock", photos: [] },
   { id: "sample-8", name: "Matte Black Barn Door Hardware Kit", webCategory: "Home Improvement", brand: "", sellUnit: "each", price: 65, wasPrice: 120, qtyAvailable: 5, specs: "6.6 ft track|Matte black|Soft-close", details: "Brand new, factory sealed.", highlights: "Fits doors up to 36 in wide", webStatus: "In Stock", photos: [] },
+  // Pre-migration rows: no Web Category/Sell Unit/Specs/Web Status/Quantity
+  // Available yet, only the legacy Category/Status fields — proves these
+  // still show up (Flooring fallback, sq ft inferred; Reserved shown with
+  // a disabled pill, not hidden).
+  mapAirtableRecord("legacy-1", { "Name": "Legacy Oak Laminate (unmigrated row)", "Category": "Flooring", "Price": 1.65, "Status": "In Stock" }),
+  mapAirtableRecord("legacy-2", { "Name": "Legacy Cordless Trimmer (unmigrated row)", "Category": "Renovation Supplies", "Price": 45, "Status": "Reserved" }),
 ];
 
 async function fetchInventory() {
@@ -59,39 +148,7 @@ async function fetchInventory() {
     if (!res.ok) throw new Error(`Inventory request failed: ${res.status}`);
     const json = await res.json();
     const records = json.records || [];
-
-    const now = Date.now();
-    const items = records
-      .map(r => {
-        const f = r.fields || {};
-        const dateAdded = f["Date Added"] ? new Date(f["Date Added"]) : null;
-        return {
-          id: r.id,
-          productKey: f["Product Key"] || "",
-          name: f["Name"] || "Untitled item",
-          webCategory: f["Web Category"] || "",
-          sellUnit: f["Sell Unit"] || "each",
-          specs: f["Specs"] || "",
-          brand: f["Brand"] || "",
-          model: f["Model"] || "",
-          retailer: f["Retailer"] || "",
-          price: f["Price"],
-          wasPrice: f["Was Price"],
-          qtyAvailable: f["Quantity Available"],
-          boxPrice: f["Box Price"],
-          sqFtPerUnit: f["Sq Ft Per Unit"],
-          availableSqFt: f["Available Sq Ft"],
-          details: f["Details"] || "",
-          highlights: f["Highlights"] || "",
-          webStatus: f["Web Status"] || "",
-          photos: (f["Photos"] || []).map(p => p.url),
-          isNew: dateAdded ? (now - dateAdded.getTime()) / 86400000 <= 7 : false,
-        };
-      })
-      // Belt-and-suspenders: the serverless function already filters to
-      // published/in-stock rows, but never trust a client-visible feed to
-      // have been filtered upstream — re-check here too.
-      .filter(item => WEB_CATEGORIES.includes(item.webCategory) && item.webStatus === "In Stock");
+    const items = records.map(r => mapAirtableRecord(r.id, r.fields || {}));
 
     localStorage.setItem(CACHE_KEY, JSON.stringify({ data: items, ts: Date.now() }));
     return items;
@@ -150,7 +207,14 @@ function photoBlock(item) {
   return `<div class="product-photo main-photo" style="background-image:url('${main}'); background-size:cover; background-position:center;" data-main-photo></div>${thumbs}`;
 }
 
+// Not-yet-available items are never hidden during the staged migration —
+// they're shown with a status pill instead of the Text button (see
+// actionButtons below), same as the site's pre-migration behavior.
 function statusBadge(item) {
+  if (!isAvailable(item)) {
+    const cls = item.webStatus === "Sold" ? "badge-sold" : item.webStatus === "Coming Soon" ? "badge-new" : "badge-reserved";
+    return `<span class="badge ${cls}">${item.webStatus}</span>`;
+  }
   return item.isNew ? `<span class="badge badge-new">New</span>` : "";
 }
 
@@ -164,7 +228,12 @@ function smsMessageForItem(item) {
 
 // Single CTA per card, per the compact card design — no secondary button,
 // no on-site form. Opens the visitor's SMS app with a prefilled message.
+// Reserved/Sold/Coming Soon items keep the card visible but swap the CTA
+// for a disabled status pill instead.
 function actionButtons(item) {
+  if (!isAvailable(item)) {
+    return `<span class="btn btn-outline btn-small btn-block" style="opacity:.5; cursor:default;">${item.webStatus}</span>`;
+  }
   const phoneHref = window.SITE_CONFIG ? window.SITE_CONFIG.phoneHref : "";
   const smsHref = `sms:${phoneHref}?&body=${encodeURIComponent(smsMessageForItem(item))}`;
   return `<a href="${smsHref}" class="btn btn-dark btn-small btn-block">Text About This Item</a>`;
@@ -268,7 +337,11 @@ function newFirst(items) {
 }
 
 function pickNewArrivals(items, targetCount) {
-  const byCategory = cat => newFirst(items.filter(i => i.webCategory === cat));
+  // The homepage promo strip only ever shows available items — Reserved/
+  // Sold/Coming Soon items still render in the Shop grid (with a status
+  // pill), just not here.
+  const available = items.filter(isAvailable);
+  const byCategory = cat => newFirst(available.filter(i => i.webCategory === cat));
   const picks = [
     ...byCategory("Flooring").slice(0, 2),
     ...byCategory("Appliances").slice(0, 1),
@@ -277,7 +350,7 @@ function pickNewArrivals(items, targetCount) {
   const usedIds = new Set(picks.map(i => i.id));
 
   if (picks.length < targetCount) {
-    for (const item of newFirst(items)) {
+    for (const item of newFirst(available)) {
       if (picks.length >= targetCount) break;
       if (usedIds.has(item.id)) continue;
       picks.push(item);
@@ -448,7 +521,9 @@ function renderFlooringTable(items) {
       <td>${boxes !== null ? boxes : "&mdash;"}</td>
       <td>${typeof item.availableSqFt === "number" ? sqFtAvailable(item.availableSqFt) : "&mdash;"}</td>
       <td class="table-actions-cell">
-        <button type="button" class="btn btn-dark btn-small btn-quote" data-quote-id="${item.id}">Get a Quote</button>
+        ${isAvailable(item)
+          ? `<button type="button" class="btn btn-dark btn-small btn-quote" data-quote-id="${item.id}">Get a Quote</button>`
+          : `<span class="btn btn-outline btn-small" style="opacity:.5; cursor:default;">${item.webStatus}</span>`}
       </td>
     </tr>`;
   }).join("");

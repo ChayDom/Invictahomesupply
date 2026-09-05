@@ -18,7 +18,11 @@ export default async (req: Request, context: Context) => {
 
     do {
       const url = new URL(`https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}`);
-      url.searchParams.set("filterByFormula", "AND({Web Category} != '', {Web Status} = 'In Stock')");
+      // Staged migration: Post to Website remains the primary publish gate
+      // until Web Category/Web Status are populated via the Sheet -> Website
+      // Export -> Airtable sync. Do not switch this to Web Category/Web
+      // Status until that data has been verified end to end (see README).
+      url.searchParams.set("filterByFormula", "{Post to Website} = TRUE()");
       if (offset) url.searchParams.set("offset", offset);
 
       const res = await fetch(url, {
