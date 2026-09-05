@@ -383,18 +383,23 @@ function smsMessageForItem(item) {
   return `Hi, I'm interested in ${item.name} (SKU: ${sku}). Is it still available?`;
 }
 
+function smsHrefForItem(item) {
+  const phoneHref = window.SITE_CONFIG ? window.SITE_CONFIG.phoneHref : "";
+  return `sms:${phoneHref}?&body=${encodeURIComponent(smsMessageForItem(item))}`;
+}
+
 // One CTA per card for most categories — opens the visitor's SMS app with
 // a prefilled message. Flooring cards get a second "Get a Quote" button
-// (the sq-ft-needed quote modal, formerly only reachable from the
-// contractor table) alongside the Text CTA, since a sq-ft quote makes
-// sense there and nowhere else. Out-of-stock items keep the card visible
-// but swap the CTA(s) for a disabled pill instead.
+// (the sq-ft-needed quote modal) alongside the Text CTA, since a sq-ft
+// quote makes sense there and nowhere else — the Contractor View table
+// (see renderContractorTable) uses a single "Text to Hold" CTA instead,
+// matching its denser, comparison-first design. Out-of-stock items keep
+// the card visible but swap the CTA(s) for a disabled pill instead.
 function actionButtons(item) {
   if (!isAvailable(item)) {
     return `<span class="btn btn-outline btn-small btn-block" style="opacity:.5; cursor:default;">${item.statusLabel}</span>`;
   }
-  const phoneHref = window.SITE_CONFIG ? window.SITE_CONFIG.phoneHref : "";
-  const smsHref = `sms:${phoneHref}?&body=${encodeURIComponent(smsMessageForItem(item))}`;
+  const smsHref = smsHrefForItem(item);
   if (item.webCategory !== "Flooring") {
     return `<a href="${smsHref}" class="btn btn-dark btn-small btn-block">Text About This Item</a>`;
   }
@@ -490,6 +495,99 @@ function renderGrid(items, containerId) {
 }
 
 // ---------------------------------------------------------------------
+// Flooring's Contractor View — an alternate to the card grid, toggled by
+// the Card View/Contractor View buttons (see initShopControls). Same
+// filtered/sorted item array as the grid; just a denser, comparison-first
+// table layout instead of cards. See shop.html for the static markup.
+// ---------------------------------------------------------------------
+
+// Eyebrow (live SKU/sq ft counts) and heading — both computed from
+// `items`, the currently-filtered/visible set, so they read as "here's
+// what's live right now" rather than a static category-wide count. The
+// heading names the active Type filter when one is selected ("Luxury
+// Vinyl Plank, priced by the box."), and stays generic otherwise.
+function updateContractorHero(items) {
+  const eyebrowEl = document.getElementById("contractor-eyebrow");
+  const headingEl = document.getElementById("contractor-heading");
+  if (eyebrowEl) {
+    const totalSqFt = items.reduce((sum, i) => sum + (typeof i.availableSqFt === "number" ? i.availableSqFt : 0), 0);
+    eyebrowEl.textContent = `Flooring · ${items.length} SKU${items.length === 1 ? "" : "s"} · ${sqFtAvailable(totalSqFt)} sq ft in stock`;
+  }
+  if (headingEl) {
+    headingEl.textContent = currentSubcategory ? `${currentSubcategory}, priced by the box.` : "Flooring, priced by the box.";
+  }
+}
+
+// Single CTA per row: "Text to Hold" (the same SMS CTA as everywhere else
+// on the site, just relabeled for this denser layout), or the disabled
+// status pill when out of stock — the table has no separate quote button
+// since Get a Quote is already reachable from the Card View.
+function contractorRowCta(item) {
+  if (!isAvailable(item)) {
+    return `<span class="btn btn-outline btn-small" style="opacity:.5; cursor:default;">${item.statusLabel}</span>`;
+  }
+  return `<a href="${smsHrefForItem(item)}" class="btn btn-dark btn-small">Text to Hold</a>`;
+}
+
+function renderContractorTable(items) {
+  const tbody = document.getElementById("contractor-table-body");
+  if (!tbody) return;
+  if (items.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="table-empty">No flooring matches your filters right now — text us what you're looking for.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = items.map(item => {
+    const chips = flooringStructuredChips(item);
+    const photo = item.photos && item.photos[0] ? item.photos[0] : "";
+    const boxes = boxesAvailable(item);
+    const availLabel = flooringAvailabilityLabel(item) || "&mdash;";
+    const lowStock = typeof boxes === "number" && boxes <= 2;
+    return `<tr>
+      <td class="contractor-product-cell">
+        <div class="contractor-product-photo"${photo ? ` style="background-image:url('${photo}');"` : ""}></div>
+        <div>
+          <div class="contractor-product-name">${item.name}</div>
+          ${item.brand || item.webSubcategory ? `<div class="contractor-product-sub">${[item.brand, item.webSubcategory].filter(Boolean).join(" &middot; ")}</div>` : ""}
+        </div>
+      </td>
+      <td>${chips.length ? `<div class="spec-chips">${chips.map(c => `<span class="spec-chip">${c}</span>`).join("")}</div>` : "&mdash;"}</td>
+      <td>${typeof item.price === "number" ? money2(item.price) : "&mdash;"}</td>
+      <td>${typeof item.boxPrice === "number" ? money2(item.boxPrice) : "&mdash;"}</td>
+      <td class="${lowStock ? "contractor-low-stock" : ""}">${availLabel}</td>
+      <td class="contractor-actions-cell">${contractorRowCta(item)}</td>
+    </tr>`;
+  }).join("");
+}
+
+// Quick, product-independent sq-ft estimate for the inline "How many
+// boxes do I need?" widget — mirrors the Flooring Calculator modal's own
+// default 10% waste rate but is otherwise independent of it (no shared
+// state, doesn't touch calcWasteRate). "Multiple rooms?" opens the real
+// modal for anything more than this single quick number.
+const CONTRACTOR_CALC_WASTE_RATE = 0.10;
+function bindContractorCalcWidget() {
+  const input = document.getElementById("contractor-calc-sqft");
+  const btn = document.getElementById("contractor-calc-btn");
+  const result = document.getElementById("contractor-calc-result");
+  const fullLink = document.getElementById("contractor-calc-full-link");
+
+  const runEstimate = () => {
+    if (!input || !result) return;
+    const sqft = parseFloat(input.value);
+    if (!isFinite(sqft) || sqft <= 0) {
+      result.hidden = true;
+      return;
+    }
+    result.textContent = `Recommended: ${calcRound2(sqft * (1 + CONTRACTOR_CALC_WASTE_RATE))} sq ft`;
+    result.hidden = false;
+  };
+
+  btn?.addEventListener("click", runEstimate);
+  input?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); runEstimate(); } });
+  fullLink?.addEventListener("click", () => openCalculatorModal(false));
+}
+
+// ---------------------------------------------------------------------
 // Homepage "New This Week": deliberately mixes categories rather than
 // just showing whatever's newest — 2 Flooring, 1 Appliances, 1 Water
 // Heaters when available, topped up with other new/in-stock items so the
@@ -526,8 +624,9 @@ function pickNewArrivals(items, targetCount) {
 // ---------------------------------------------------------------------
 // Shop page: category tabs + brand/subcategory filters + sort + search,
 // over the array already fetched by fetchInventory() — no extra Airtable
-// calls. Every category, Flooring included, renders as the same
-// responsive card grid — see renderShopCatalog().
+// calls. Every category renders as the standard card grid; Flooring alone
+// also offers a Contractor View (a table) as a user-toggled alternate —
+// see renderShopCatalog()/updateViewToggle().
 // ---------------------------------------------------------------------
 let shopItems = [];
 let itemsById = {};
@@ -539,11 +638,17 @@ let currentSubcategory = "";
 // Flooring-only structured filters (per the "logical filter groups"
 // design — Type/Subcategory and Brand above are shared with every
 // category; these five only ever apply, and only ever show, on Flooring).
+// Both the Card View dropdowns and the Contractor View pill buttons read
+// and write these same variables — there's one filter state, not two.
 let currentThickness = "";
 let currentWearLayer = "";
 let currentUnderlayment = "";
 let currentWaterResistance = "";
 let currentAvailability = "";
+// Flooring-only view toggle: "card" (default, same grid as every other
+// category) or "contractor" (the table below). Irrelevant for every other
+// category, which only ever renders the card grid.
+let flooringViewMode = "card";
 
 const SQFT_SORT_OPTIONS = [
   { value: "sqft-desc", label: "Sq Ft Available: High to Low" },
@@ -611,26 +716,56 @@ function updateCalcButtonVisibility() {
   btn.style.display = (currentCategory === "all" || isFlooringView()) ? "" : "none";
 }
 
-// Rebuilds every filter <select>'s options so a dropdown never offers an
-// option with zero matching items. Type (Subcategory) and Brand options
-// come from every item in the category (categoryItems) since they're
-// independent facets; the Flooring-only structured filters come from
-// narrowedItems (already filtered by the current Type/Brand selection)
-// since e.g. "does Wear Layer apply" genuinely depends on which
-// Subcategory is selected — Laminate has no wear-layer rating even though
-// other Flooring items do.
+// Shared option-derivation for every Flooring/category facet — both the
+// Card View dropdowns (updateFacetFilterOptions) and the Contractor View
+// pill buttons (updateContractorPillFilters) call these same functions,
+// so "what counts as a valid option" is defined exactly once. Type
+// (Subcategory) and Brand are computed from categoryItems (every item in
+// the category — independent facets); the Flooring-only structured
+// facets come from narrowedItems (already filtered by Type/Brand) since
+// e.g. "does Wear Layer apply" genuinely depends on which Subcategory is
+// selected — Laminate has no wear-layer rating even though other
+// Flooring items do.
+function facetBrandOptions(categoryItems) {
+  return [...new Set(categoryItems.map(i => i.brand).filter(Boolean))].sort();
+}
+function facetSubcategoryOptions(categoryItems) {
+  return [...new Set(categoryItems.map(i => i.webSubcategory).filter(Boolean))].sort();
+}
+function facetThicknessOptions(narrowedItems) {
+  return [...new Set(narrowedItems.map(i => i.thicknessMm).filter(v => typeof v === "number" && v > 0))].sort((a, b) => a - b);
+}
+function facetWearLayerOptions(narrowedItems) {
+  return [...new Set(narrowedItems.map(i => i.wearLayerMil).filter(v => typeof v === "number" && v > 0))].sort((a, b) => a - b);
+}
+function facetUnderlaymentOptions(narrowedItems) {
+  const values = new Set(narrowedItems.map(i => i.underlaymentAttached).filter(Boolean));
+  const options = [];
+  if (values.has("Yes")) options.push({ value: "Yes", label: "Pad Attached" });
+  if (values.has("No")) options.push({ value: "No", label: "No Attached Pad" });
+  return options;
+}
+// "Unknown" is never a shopper-facing filter option.
+function facetWaterResistanceOptions(narrowedItems) {
+  const known = ["Waterproof", "Water Resistant", "Not Water Resistant"];
+  return known.filter(v => narrowedItems.some(i => i.waterResistance === v));
+}
+
+// Rebuilds every filter <select>'s options (Card View) so a dropdown
+// never offers an option with zero matching items, resetting the current
+// selection back to "Any/All" if it's no longer a valid option.
 function updateFacetFilterOptions(categoryItems, narrowedItems) {
   const brandSelect = document.getElementById("brand-filter");
   const subcategorySelect = document.getElementById("subcategory-filter");
 
   if (brandSelect) {
-    const brands = [...new Set(categoryItems.map(i => i.brand).filter(Boolean))].sort();
+    const brands = facetBrandOptions(categoryItems);
     if (!brands.includes(currentBrand)) currentBrand = "";
     brandSelect.innerHTML = `<option value="">All Brands</option>` + brands.map(b => `<option value="${b}">${b}</option>`).join("");
     brandSelect.value = currentBrand;
   }
   if (subcategorySelect) {
-    const subcategories = [...new Set(categoryItems.map(i => i.webSubcategory).filter(Boolean))].sort();
+    const subcategories = facetSubcategoryOptions(categoryItems);
     if (!subcategories.includes(currentSubcategory)) currentSubcategory = "";
     subcategorySelect.innerHTML = `<option value="">All Types</option>` + subcategories.map(s => `<option value="${s}">${s}</option>`).join("");
     subcategorySelect.value = currentSubcategory;
@@ -645,13 +780,13 @@ function updateFacetFilterOptions(categoryItems, narrowedItems) {
   const waterResistanceSelect = document.getElementById("water-resistance-filter");
 
   if (thicknessSelect) {
-    const thicknesses = [...new Set(narrowedItems.map(i => i.thicknessMm).filter(v => typeof v === "number" && v > 0))].sort((a, b) => a - b);
+    const thicknesses = facetThicknessOptions(narrowedItems);
     if (!thicknesses.includes(Number(currentThickness))) currentThickness = "";
     thicknessSelect.innerHTML = `<option value="">Any Thickness</option>` + thicknesses.map(t => `<option value="${t}">${t} mm</option>`).join("");
     thicknessSelect.value = currentThickness;
   }
   if (wearSelect) {
-    const wears = [...new Set(narrowedItems.map(i => i.wearLayerMil).filter(v => typeof v === "number" && v > 0))].sort((a, b) => a - b);
+    const wears = facetWearLayerOptions(narrowedItems);
     // Wear layer doesn't apply to every flooring type (e.g. laminate) —
     // hide the whole filter rather than show one that can only ever
     // narrow to "none of these."
@@ -661,23 +796,59 @@ function updateFacetFilterOptions(categoryItems, narrowedItems) {
     wearSelect.value = currentWearLayer;
   }
   if (underlaymentSelect) {
-    const values = new Set(narrowedItems.map(i => i.underlaymentAttached).filter(Boolean));
-    const options = [];
-    if (values.has("Yes")) options.push({ value: "Yes", label: "Pad Attached" });
-    if (values.has("No")) options.push({ value: "No", label: "No Attached Pad" });
+    const options = facetUnderlaymentOptions(narrowedItems);
     if (!options.some(o => o.value === currentUnderlayment)) currentUnderlayment = "";
     underlaymentSelect.innerHTML = `<option value="">Any Underlayment</option>` + options.map(o => `<option value="${o.value}">${o.label}</option>`).join("");
     underlaymentSelect.value = currentUnderlayment;
   }
   if (waterResistanceSelect) {
-    // "Unknown" is never a shopper-facing filter option.
-    const known = ["Waterproof", "Water Resistant", "Not Water Resistant"];
-    const values = known.filter(v => narrowedItems.some(i => i.waterResistance === v));
+    const values = facetWaterResistanceOptions(narrowedItems);
     if (!values.includes(currentWaterResistance)) currentWaterResistance = "";
     waterResistanceSelect.innerHTML = `<option value="">Any Water Resistance</option>` + values.map(v => `<option value="${v}">${v}</option>`).join("");
     waterResistanceSelect.value = currentWaterResistance;
   }
 }
+
+// One pill button per option, grouped by facet, for Contractor View —
+// same option lists and same currentX state variables as the Card View
+// dropdowns above (updateFacetFilterOptions must run first each render so
+// an invalid selection is already reset to "Any/All" before this reads
+// it). A facet group renders nothing (not even an "Any" pill) when there
+// are zero options, same as a dropdown that would otherwise be pointless.
+function pillGroup(id, label, options, currentValue) {
+  if (options.length === 0) return "";
+  const pill = (value, text, active) => `<button type="button" class="pill-btn${active ? " active" : ""}" data-pill-group="${id}" data-pill-value="${value}">${text}</button>`;
+  return `<div class="pill-filter-group" data-pill-group-wrap="${id}">
+    ${pill("", `All ${label}`, !currentValue)}
+    ${options.map(o => pill(o.value, o.label, currentValue === o.value)).join("")}
+  </div>`;
+}
+function updateContractorPillFilters(categoryItems, narrowedItems) {
+  const container = document.getElementById("contractor-pill-filters");
+  if (!container) return;
+
+  const toOpts = arr => arr.map(v => ({ value: String(v), label: String(v) }));
+  const groups = [
+    pillGroup("subcategory", "Types", toOpts(facetSubcategoryOptions(categoryItems)), currentSubcategory),
+    pillGroup("brand", "Brands", toOpts(facetBrandOptions(categoryItems)), currentBrand),
+    pillGroup("thickness", "Thickness", facetThicknessOptions(narrowedItems).map(t => ({ value: String(t), label: `${t} mm` })), currentThickness),
+    pillGroup("wearLayer", "Wear Layer", facetWearLayerOptions(narrowedItems).map(w => ({ value: String(w), label: `${w} MIL` })), currentWearLayer),
+    pillGroup("underlayment", "Underlayment", facetUnderlaymentOptions(narrowedItems), currentUnderlayment),
+    pillGroup("waterResistance", "Water Resistance", toOpts(facetWaterResistanceOptions(narrowedItems)), currentWaterResistance),
+    pillGroup("availability", "Availability", [{ value: "500", label: "500+ sq ft" }, { value: "1000", label: "1,000+ sq ft" }], currentAvailability),
+  ];
+  container.innerHTML = groups.join("");
+}
+
+const PILL_FILTER_SETTERS = {
+  subcategory: v => { currentSubcategory = v; },
+  brand: v => { currentBrand = v; },
+  thickness: v => { currentThickness = v; },
+  wearLayer: v => { currentWearLayer = v; },
+  underlayment: v => { currentUnderlayment = v; },
+  waterResistance: v => { currentWaterResistance = v; },
+  availability: v => { currentAvailability = v; },
+};
 
 // Availability filter is a simple minimum-sq-ft threshold derived from
 // Available Sq Ft, not a stored field — options are static in shop.html
@@ -689,12 +860,31 @@ function matchesAvailability(item, threshold) {
 
 // Flooring gets its own extra filter row (Thickness/Wear Layer/
 // Underlayment/Water Resistance/Availability) on top of the generic
-// Type/Brand row every category uses — shown only while the Flooring tab
-// is active. The card grid itself is shared by every category, Flooring
-// included, so there's nothing else to toggle here.
+// Type/Brand row every category uses, plus the Card View/Contractor View
+// toggle — all hidden for every other category. Within Flooring, exactly
+// one of the card grid (+ dropdown filter rows) or the Contractor View
+// (+ pill filters) is shown, based on flooringViewMode.
+function isContractorView() {
+  return isFlooringView() && flooringViewMode === "contractor";
+}
 function updateViewToggle() {
+  const flooring = isFlooringView();
+  const contractor = isContractorView();
+
+  const viewToggle = document.getElementById("flooring-view-toggle");
+  if (viewToggle) viewToggle.hidden = !flooring;
+
+  const facetRow = document.getElementById("facet-filter-row");
+  if (facetRow) facetRow.hidden = contractor;
+
   const flooringRow = document.getElementById("flooring-filter-row");
-  if (flooringRow) flooringRow.hidden = !isFlooringView();
+  if (flooringRow) flooringRow.hidden = !flooring || contractor;
+
+  const grid = document.getElementById("catalog-grid");
+  if (grid) grid.hidden = contractor;
+
+  const contractorView = document.getElementById("contractor-view");
+  if (contractorView) contractorView.hidden = !contractor;
 }
 
 // Search matches Name, Brand, Model, Category, Subcategory, Retailer and
@@ -720,6 +910,7 @@ function renderShopCatalog() {
   if (currentSubcategory) filtered = filtered.filter(i => i.webSubcategory === currentSubcategory);
 
   updateFacetFilterOptions(inCategory, filtered);
+  if (isFlooringView()) updateContractorPillFilters(inCategory, filtered);
 
   if (isFlooringView()) {
     if (currentThickness) filtered = filtered.filter(i => i.thicknessMm === Number(currentThickness));
@@ -728,7 +919,12 @@ function renderShopCatalog() {
     if (currentWaterResistance) filtered = filtered.filter(i => i.waterResistance === currentWaterResistance);
     if (currentAvailability) filtered = filtered.filter(i => matchesAvailability(i, currentAvailability));
   }
-  renderGrid(sortItems(filtered, currentSort), "catalog-grid");
+  const sorted = sortItems(filtered, currentSort);
+  renderGrid(sorted, "catalog-grid");
+  if (isFlooringView()) {
+    updateContractorHero(sorted);
+    renderContractorTable(sorted);
+  }
   updateViewToggle();
 }
 
@@ -798,6 +994,27 @@ function initShopControls(items) {
   bindFilterSelect("underlayment-filter", v => { currentUnderlayment = v; });
   bindFilterSelect("water-resistance-filter", v => { currentWaterResistance = v; });
   bindFilterSelect("availability-filter", v => { currentAvailability = v; });
+
+  const viewToggleBtns = document.querySelectorAll(".view-toggle-btn");
+  viewToggleBtns.forEach(btn => {
+    btn.addEventListener("click", () => {
+      flooringViewMode = btn.getAttribute("data-view");
+      viewToggleBtns.forEach(b => b.classList.toggle("active", b === btn));
+      updateViewToggle();
+    });
+  });
+
+  // Contractor View's pill filters are delegated (the container's
+  // innerHTML is rebuilt every render, same reason the quote-button
+  // listener below is delegated on `document` rather than per-button).
+  document.getElementById("contractor-pill-filters")?.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-pill-group]");
+    if (!btn) return;
+    const setter = PILL_FILTER_SETTERS[btn.getAttribute("data-pill-group")];
+    if (setter) { setter(btn.getAttribute("data-pill-value")); renderShopCatalog(); }
+  });
+
+  bindContractorCalcWidget();
 
   const searchInput = document.getElementById("search-input");
   const searchClear = document.getElementById("search-clear");

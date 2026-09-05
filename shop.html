@@ -85,6 +85,12 @@
           <option value="price-desc">Price: High to Low</option>
         </select>
       </div>
+      <!-- Flooring-only: switches between the standard card grid and the
+           Contractor View table below. Hidden for every other category. -->
+      <div class="view-toggle" id="flooring-view-toggle" role="group" aria-label="Flooring view" hidden>
+        <button type="button" class="view-toggle-btn active" data-view="card">Card View</button>
+        <button type="button" class="view-toggle-btn" data-view="contractor">Contractor View</button>
+      </div>
       <button type="button" id="calc-open-btn" class="btn btn-outline btn-small calc-trigger-btn">
         <svg class="calc-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="11" x2="8" y2="11.01"/><line x1="12" y1="11" x2="12" y2="11.01"/><line x1="16" y1="11" x2="16" y2="11.01"/><line x1="8" y1="15" x2="8" y2="15.01"/><line x1="12" y1="15" x2="12" y2="15.01"/><line x1="16" y1="15" x2="16" y2="15.01"/><line x1="8" y1="19" x2="16" y2="19"/></svg>
         Flooring Calculator
@@ -135,6 +141,55 @@
 
   <div class="product-grid" id="catalog-grid">
     <!-- populated automatically from your Airtable inventory — see inventory.js and README -->
+  </div>
+
+  <!-- Flooring's Contractor View: an alternate to the card grid above,
+       swapped in only while Flooring + Contractor View are both active
+       (see updateViewToggle() in inventory.js). Shares the same filter
+       state as the dropdowns above — the pill buttons here are just a
+       different control bound to the same currentBrand/currentThickness/
+       etc. variables, not a separate filter system. -->
+  <div class="contractor-view" id="contractor-view" hidden>
+    <div class="contractor-hero">
+      <div class="contractor-hero-text">
+        <div class="contractor-eyebrow" id="contractor-eyebrow"></div>
+        <h2 id="contractor-heading">Flooring, priced by the box.</h2>
+        <p>Every count below is live — boxes leave as they're sold. Text us a SKU to hold it, then pick up or arrange delivery.</p>
+      </div>
+      <div class="contractor-calc-widget">
+        <div class="contractor-calc-label">How many boxes do I need?</div>
+        <div class="contractor-calc-row">
+          <input type="number" id="contractor-calc-sqft" min="0" step="any" placeholder="Room sq ft" aria-label="Room square footage, for a quick estimate">
+          <button type="button" class="btn btn-dark btn-small" id="contractor-calc-btn">Calculate</button>
+        </div>
+        <div class="contractor-calc-hint">Adds 10% for cuts and waste.</div>
+        <div class="contractor-calc-result" id="contractor-calc-result" hidden></div>
+        <button type="button" class="calc-link" id="contractor-calc-full-link">Multiple rooms? Use the full calculator</button>
+      </div>
+    </div>
+
+    <!-- Populated by inventory.js — same Type/Brand/Thickness/Wear
+         Layer/Underlayment/Water Resistance/Availability facets as the
+         dropdowns above, rendered as pill buttons instead. -->
+    <div class="contractor-pill-filters" id="contractor-pill-filters"></div>
+
+    <div class="contractor-table-wrap">
+      <table class="contractor-table" id="contractor-table">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>Specs</th>
+            <th>Per Sq Ft</th>
+            <th>Per Box</th>
+            <th>Available</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="contractor-table-body">
+          <!-- populated automatically — see inventory.js -->
+        </tbody>
+      </table>
+    </div>
   </div>
 </section>
 

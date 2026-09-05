@@ -103,6 +103,34 @@ that doesn't apply, e.g. laminate simply shows fewer chips instead of an
 empty "MIL" chip. Non-Flooring categories have no structured fields yet,
 so Highlights remains their primary chip source until they get some.
 
+### Flooring: Card View / Contractor View toggle
+
+Flooring is the only category with a second, user-toggled layout. A
+"Card View" / "Contractor View" pill toggle appears next to Sort/the
+Flooring Calculator button, Flooring-only, defaulting to Card View (the
+same grid every other category uses):
+
+- **Card View** — unchanged: the responsive card grid, dropdown Type/
+  Brand + structured filters, and the "Get a Quote" button on each card.
+- **Contractor View** — a denser table (`renderContractorTable()` in
+  `inventory.js`) aimed at comparing many SKUs at once: a live "N SKUs ·
+  N sq ft in stock" eyebrow and a heading that names the active Type
+  filter, an inline "How many boxes do I need?" quick sq-ft-with-waste
+  estimate (independent of, and does not modify, the real Flooring
+  Calculator modal — it links out to that modal for anything more than a
+  single quick number), the same Type/Brand/Thickness/Wear Layer/
+  Underlayment/Water Resistance/Availability filters rendered as pill
+  buttons instead of dropdowns, and one "Text to Hold" CTA per row (no
+  quote button here — Get a Quote stays a Card View action).
+
+Both views/filter controls read and write the **same** filter state
+(`currentBrand`, `currentThickness`, etc.) — the pill buttons aren't a
+separate filter system, just a different control bound to the same
+variables, so switching views mid-session doesn't reset your filters.
+The option-derivation logic (`facetBrandOptions()`, `facetThicknessOptions()`,
+etc.) is shared by both the dropdown renderer and the pill renderer, so
+"what counts as a valid option" is defined exactly once.
+
 ## How the site behaves during migration (nothing currently live disappears)
 
 `Post to Website` remains the only publish gate — not `Category`. Until
@@ -270,11 +298,11 @@ and we can walk through it live using a browser tool.
 ## File map
 
 - `index.html` — homepage (hero, category tiles, mixed "New This Week", SMS opt-in)
-- `shop.html` — full catalog: 7 category tabs, one responsive card grid shared by every category (Flooring included), plus Flooring's extra structured filter row
+- `shop.html` — full catalog: 7 category tabs, one responsive card grid shared by every category, plus Flooring's extra structured filter row and its Card View/Contractor View toggle (see below)
 - `about.html` — story + how reserving works + why-buy-local
 - `contact.html` — contact info + FAQ
 - `styles.css` — shared styles
 - `app.js` — contact-info config + mobile menu + filter logic + SMS links
-- `inventory.js` — Airtable config + fetch/cache + product card rendering (chips/pricing structured-first for Flooring)
+- `inventory.js` — Airtable config + fetch/cache + product card & Flooring Contractor View table rendering (chips/pricing structured-first for Flooring)
 - `netlify/functions/inventory.mts` — serverless proxy to Airtable (holds the API token server-side; filters on `Post to Website = TRUE`)
 - `marketplace-post-templates.md` — copy-paste posts for Marketplace/FB groups

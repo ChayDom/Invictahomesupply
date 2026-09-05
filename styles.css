@@ -640,6 +640,196 @@ nav.primary-nav a.active {
   grid-column: 1 / -1;
 }
 
+/* ---------- Flooring: Card View / Contractor View toggle ---------- */
+.view-toggle {
+  display: flex;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px;
+  background: #fff;
+}
+.view-toggle[hidden] { display: none; }
+.view-toggle-btn {
+  padding: 6px 14px;
+  border: none;
+  background: none;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.view-toggle-btn.active {
+  background: var(--charcoal);
+  color: var(--cream);
+}
+
+/* ---------- Flooring Contractor View ---------- */
+.contractor-view {
+  max-width: var(--max-width);
+  margin: 0 auto;
+}
+.contractor-view[hidden] { display: none; }
+
+.contractor-hero {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 28px;
+  justify-content: space-between;
+  align-items: flex-start;
+  background: var(--cream-dim);
+  border-radius: var(--radius-card);
+  padding: 28px;
+  margin-bottom: 28px;
+}
+.contractor-hero-text { flex: 1 1 360px; }
+.contractor-eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.72rem;
+  color: var(--amber-dark);
+  margin-bottom: 8px;
+}
+.contractor-hero-text h2 {
+  font-size: clamp(1.3rem, 2.6vw, 1.7rem);
+  margin: 0 0 8px;
+}
+.contractor-hero-text p {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  max-width: 52ch;
+}
+
+.contractor-calc-widget {
+  flex: 0 1 260px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: 16px;
+}
+.contractor-calc-label {
+  font-weight: 700;
+  font-size: 0.85rem;
+  margin-bottom: 10px;
+}
+.contractor-calc-row {
+  display: flex;
+  gap: 8px;
+}
+.contractor-calc-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.85rem;
+}
+.contractor-calc-hint {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+.contractor-calc-result {
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin-top: 10px;
+}
+.contractor-calc-result[hidden] { display: none; }
+/* Overrides .calc-link's white-space:nowrap (fine for its original short
+   "Calculate Sq Ft" label, but this button's longer text needs to wrap
+   instead of forcing the whole calc widget wider than its container). */
+#contractor-calc-full-link {
+  display: block;
+  margin-top: 10px;
+  white-space: normal;
+  text-align: left;
+}
+
+.contractor-pill-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+.pill-filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pill-btn {
+  padding: 7px 16px;
+  border: 1px solid var(--line);
+  background: #fff;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.75rem;
+  color: var(--charcoal);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.pill-btn.active,
+.pill-btn:hover {
+  background: var(--charcoal);
+  color: var(--cream);
+  border-color: var(--charcoal);
+}
+
+.contractor-table-wrap {
+  overflow-x: auto;
+}
+.contractor-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border: 1px solid var(--line);
+  font-size: 0.86rem;
+}
+.contractor-table th {
+  text-align: left;
+  padding: 12px 16px;
+  background: var(--cream-dim);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.contractor-table td {
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+  vertical-align: middle;
+}
+.contractor-product-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 220px;
+}
+.contractor-product-photo {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  border-radius: var(--radius);
+  background: var(--cream-dim) center / cover no-repeat;
+}
+.contractor-product-name { font-weight: 600; }
+.contractor-product-sub { font-size: 0.78rem; color: var(--text-muted); }
+.contractor-actions-cell { text-align: right; white-space: nowrap; }
+.contractor-low-stock { color: var(--amber-dark); font-weight: 700; white-space: nowrap; }
+.contractor-table .table-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 40px 16px;
+}
+
+@media (max-width: 700px) {
+  .contractor-hero { flex-direction: column; flex-wrap: nowrap; padding: 20px; }
+  .contractor-hero-text,
+  .contractor-calc-widget { flex: 1 1 auto; width: 100%; }
+}
+
 @media (max-width: 700px) {
   .facet-filter-row { margin-top: -14px; }
 }
