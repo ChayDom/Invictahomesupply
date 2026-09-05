@@ -39,11 +39,13 @@
    Flooring is the one category with real structured comparison fields
    (Thickness MM, Wear Layer MIL, Underlayment Attached, Water
    Resistance) — these are authoritative when present and are never
-   parsed out of a title/Highlights. The compact card/table chips use
-   these first (in the order: Wear Layer, Thickness, Underlayment, Water
+   parsed out of a title/Highlights. Flooring cards use these first (in
+   priority order: Wear Layer, Thickness, Underlayment, Water
    Resistance), only falling back to Highlights lines to fill any
    remaining chip slots. Every other category still uses Highlights as
    its primary chip source until it gets structured fields of its own.
+   Flooring renders in the same responsive card grid as every other
+   category — no separate table layout.
 
    Inventory data is fetched from the /api/inventory serverless function,
    which holds the Airtable credentials server-side (Netlify environment
@@ -318,16 +320,12 @@ function flooringStructuredChips(item) {
 }
 
 // Structured fields first, Highlights only to fill remaining slots up to
-// maxChips — this is Flooring-specific because it's the only category
-// with real structured fields so far; every other category still uses
-// Highlights as its primary chip source. Returns both the chips to show
-// and the Highlights lines NOT used as chips, so "More details" never
-// repeats a line already shown as a chip.
-//
-// maxChips defaults to 3 for the compact card (the design's chip-row
-// convention everywhere else on the site); the Flooring comparison table
-// calls this with a higher cap since showing all 4 structured attributes
-// side by side is the entire point of that table, not a stylistic choice.
+// maxChips (3, the card's chip-row convention everywhere on the site) —
+// the structured-first priority is Flooring-specific because it's the
+// only category with real structured fields so far; every other category
+// still uses Highlights as its primary chip source. Returns both the
+// chips to show and the Highlights lines NOT used as chips, so "More
+// details" never repeats a line already shown as a chip.
 function chipsAndRemainingHighlights(item, maxChips = 3) {
   const structured = item.webCategory === "Flooring" ? flooringStructuredChips(item) : [];
   const allHighlights = highlightBullets(item.highlights);
@@ -336,8 +334,7 @@ function chipsAndRemainingHighlights(item, maxChips = 3) {
   return { chips: structured.concat(allHighlights.slice(0, need)), remainingHighlights: allHighlights.slice(need) };
 }
 
-// Boxes-available-aware low-stock messaging for Flooring, used both on
-// the compact card and in the contractor table's Available column.
+// Boxes-available-aware low-stock messaging for Flooring's compact card.
 function flooringAvailabilityLabel(item) {
   const boxes = boxesAvailable(item);
   if (boxes === null) {
@@ -386,17 +383,23 @@ function smsMessageForItem(item) {
   return `Hi, I'm interested in ${item.name} (SKU: ${sku}). Is it still available?`;
 }
 
-// Single CTA per card, per the compact card design — no secondary button,
-// no on-site form. Opens the visitor's SMS app with a prefilled message.
-// Out-of-stock items keep the card visible but swap the CTA for a
-// disabled pill instead.
+// One CTA per card for most categories — opens the visitor's SMS app with
+// a prefilled message. Flooring cards get a second "Get a Quote" button
+// (the sq-ft-needed quote modal, formerly only reachable from the
+// contractor table) alongside the Text CTA, since a sq-ft quote makes
+// sense there and nowhere else. Out-of-stock items keep the card visible
+// but swap the CTA(s) for a disabled pill instead.
 function actionButtons(item) {
   if (!isAvailable(item)) {
     return `<span class="btn btn-outline btn-small btn-block" style="opacity:.5; cursor:default;">${item.statusLabel}</span>`;
   }
   const phoneHref = window.SITE_CONFIG ? window.SITE_CONFIG.phoneHref : "";
   const smsHref = `sms:${phoneHref}?&body=${encodeURIComponent(smsMessageForItem(item))}`;
-  return `<a href="${smsHref}" class="btn btn-dark btn-small btn-block">Text About This Item</a>`;
+  if (item.webCategory !== "Flooring") {
+    return `<a href="${smsHref}" class="btn btn-dark btn-small btn-block">Text About This Item</a>`;
+  }
+  return `<a href="${smsHref}" class="btn btn-dark btn-small">Text About This Item</a>
+    <button type="button" class="btn btn-outline btn-small" data-quote-id="${item.id}">Get a Quote</button>`;
 }
 
 // Price block format depends on Unit Type:
@@ -523,8 +526,8 @@ function pickNewArrivals(items, targetCount) {
 // ---------------------------------------------------------------------
 // Shop page: category tabs + brand/subcategory filters + sort + search,
 // over the array already fetched by fetchInventory() — no extra Airtable
-// calls. Flooring renders as a contractor-style table; every other
-// category renders as the standard card grid — see renderShopCatalog().
+// calls. Every category, Flooring included, renders as the same
+// responsive card grid — see renderShopCatalog().
 // ---------------------------------------------------------------------
 let shopItems = [];
 let itemsById = {};
@@ -684,19 +687,14 @@ function matchesAvailability(item, threshold) {
   return typeof item.availableSqFt === "number" && item.availableSqFt >= Number(threshold);
 }
 
-// Flooring gets its own filter row (Thickness/Wear Layer/Underlayment/
-// Water Resistance/Availability) instead of the generic row every other
-// category uses, and renders as a table instead of the card grid. Type
-// (Subcategory) and Brand stay visible for every category.
+// Flooring gets its own extra filter row (Thickness/Wear Layer/
+// Underlayment/Water Resistance/Availability) on top of the generic
+// Type/Brand row every category uses — shown only while the Flooring tab
+// is active. The card grid itself is shared by every category, Flooring
+// included, so there's nothing else to toggle here.
 function updateViewToggle() {
-  const grid = document.getElementById("catalog-grid");
-  const tableWrap = document.getElementById("catalog-table-wrap");
   const flooringRow = document.getElementById("flooring-filter-row");
-  const flooring = isFlooringView();
-
-  if (grid) grid.hidden = flooring;
-  if (tableWrap) tableWrap.hidden = !flooring;
-  if (flooringRow) flooringRow.hidden = !flooring;
+  if (flooringRow) flooringRow.hidden = !isFlooringView();
 }
 
 // Search matches Name, Brand, Model, Category, Subcategory, Retailer and
@@ -709,44 +707,6 @@ function searchMatches(item, query) {
     .join(" \n ")
     .toLowerCase();
   return haystack.includes(query);
-}
-
-// Flooring table columns: Product | Specs | Per Sq Ft | Per Box |
-// Available | (CTA). "Specs" reuses the same structured-first chip logic
-// as the compact card, but uncapped at 4 (Wear Layer/Thickness/
-// Underlayment/Water Resistance) instead of the card's 3 — this table
-// exists specifically so a contractor can compare every structured
-// attribute at a glance, not to stay visually compact like a card.
-function renderFlooringTable(items) {
-  const tbody = document.querySelector("#flooring-table tbody");
-  if (!tbody) return;
-  if (items.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" class="table-empty">No flooring matches your filters right now — text us what you're looking for.</td></tr>`;
-    return;
-  }
-  tbody.innerHTML = items.map(item => {
-    const { chips } = chipsAndRemainingHighlights(item, 4);
-    const photo = item.photos && item.photos[0] ? item.photos[0] : "";
-    const availLabel = flooringAvailabilityLabel(item) || "&mdash;";
-    return `<tr>
-      <td class="table-product-cell">
-        <div class="table-product-photo"${photo ? ` style="background-image:url('${photo}');"` : ""}></div>
-        <div>
-          <div class="table-product-name">${item.name}</div>
-          ${item.brand || item.webSubcategory ? `<div class="table-product-sub">${[item.brand, item.webSubcategory].filter(Boolean).join(" &middot; ")}</div>` : ""}
-        </div>
-      </td>
-      <td>${chips.length ? `<div class="spec-chips">${chips.map(c => `<span class="spec-chip">${c}</span>`).join("")}</div>` : "&mdash;"}</td>
-      <td>${typeof item.price === "number" ? money2(item.price) : "&mdash;"}</td>
-      <td>${typeof item.boxPrice === "number" ? money2(item.boxPrice) : "&mdash;"}</td>
-      <td>${availLabel}</td>
-      <td class="table-actions-cell">
-        ${isAvailable(item)
-          ? `<button type="button" class="btn btn-dark btn-small btn-quote" data-quote-id="${item.id}">Get a Quote</button>`
-          : `<span class="btn btn-outline btn-small" style="opacity:.5; cursor:default;">${item.statusLabel}</span>`}
-      </td>
-    </tr>`;
-  }).join("");
 }
 
 function renderShopCatalog() {
@@ -767,10 +727,8 @@ function renderShopCatalog() {
     if (currentUnderlayment) filtered = filtered.filter(i => i.underlaymentAttached === currentUnderlayment);
     if (currentWaterResistance) filtered = filtered.filter(i => i.waterResistance === currentWaterResistance);
     if (currentAvailability) filtered = filtered.filter(i => matchesAvailability(i, currentAvailability));
-    renderFlooringTable(sortItems(filtered, currentSort));
-  } else {
-    renderGrid(sortItems(filtered, currentSort), "catalog-grid");
   }
+  renderGrid(sortItems(filtered, currentSort), "catalog-grid");
   updateViewToggle();
 }
 
@@ -872,10 +830,11 @@ function initShopControls(items) {
 }
 
 // ---------------------------------------------------------------------
-// Get a Quote modal — used only for Flooring's contractor table, where a
-// sq-ft-needed quote makes sense. Submits to the "quote-request" Netlify
-// Form via fetch, so the page never navigates away. See the static hidden
-// form in shop.html for the field list Netlify expects.
+// Get a Quote modal — opened from the "Get a Quote" button on Flooring
+// cards (see actionButtons), where a sq-ft-needed quote makes sense.
+// Submits to the "quote-request" Netlify Form via fetch, so the page
+// never navigates away. See the static hidden form in shop.html for the
+// field list Netlify expects.
 // ---------------------------------------------------------------------
 function quotePriceText(item) {
   if (item.sellUnit === "sq ft" && typeof item.price === "number") {

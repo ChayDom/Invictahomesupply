@@ -92,8 +92,8 @@ parsed out of a title or Highlights**:
 | `Underlayment Attached` | Single select `Yes`/`No` | (single select keeps it aligned with the Google Sheet more easily than a checkbox) |
 | `Water Resistance` | Single select | `Waterproof`, `Water Resistant`, `Not Water Resistant`, `Unknown` |
 
-**Chip priority** (compact card and the Flooring table's Specs column
-both use this, via `chipsAndRemainingHighlights()` in `inventory.js`):
+**Chip priority** (Flooring's compact card uses this, via
+`chipsAndRemainingHighlights()` in `inventory.js`):
 Wear Layer → Thickness → Underlayment → Water Resistance, in that order,
 skipping any that are blank/not-applicable (and always skipping
 `Unknown` Water Resistance — it's never shown as a chip or offered as a
@@ -270,11 +270,11 @@ and we can walk through it live using a browser tool.
 ## File map
 
 - `index.html` — homepage (hero, category tiles, mixed "New This Week", SMS opt-in)
-- `shop.html` — full catalog: 7 category tabs, card grid for most categories, contractor-style table for Flooring
+- `shop.html` — full catalog: 7 category tabs, one responsive card grid shared by every category (Flooring included), plus Flooring's extra structured filter row
 - `about.html` — story + how reserving works + why-buy-local
 - `contact.html` — contact info + FAQ
 - `styles.css` — shared styles
 - `app.js` — contact-info config + mobile menu + filter logic + SMS links
-- `inventory.js` — Airtable config + fetch/cache + product card & flooring table rendering
+- `inventory.js` — Airtable config + fetch/cache + product card rendering (chips/pricing structured-first for Flooring)
 - `netlify/functions/inventory.mts` — serverless proxy to Airtable (holds the API token server-side; filters on `Post to Website = TRUE`)
 - `marketplace-post-templates.md` — copy-paste posts for Marketplace/FB groups

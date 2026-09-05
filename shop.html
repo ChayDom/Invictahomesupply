@@ -94,10 +94,10 @@
 
   <!-- Type (Subcategory, e.g. Luxury Vinyl Plank/Laminate/Tile for
        Flooring, Gas/Electric for Water Heaters) and Brand apply to every
-       category and both the table and grid views — never hidden by
-       category. Options are populated dynamically by inventory.js; a
-       dropdown simply keeps its "Any/All" option when a category hasn't
-       been given any values for that facet yet. -->
+       category — never hidden by category. Options are populated
+       dynamically by inventory.js; a dropdown simply keeps its "Any/All"
+       option when a category hasn't been given any values for that facet
+       yet. -->
   <div class="facet-filter-row" id="facet-filter-row">
     <select id="subcategory-filter" aria-label="Filter by type">
       <option value="">All Types</option>
@@ -135,28 +135,6 @@
 
   <div class="product-grid" id="catalog-grid">
     <!-- populated automatically from your Airtable inventory — see inventory.js and README -->
-  </div>
-
-  <!-- Flooring's contractor-style table: Product | Specs | Per Sq Ft |
-       Per Box | Available | CTA. Specs reuses the same structured-chip
-       logic as the compact card. Swapped in for the card grid above only
-       while the Flooring tab is active. -->
-  <div class="catalog-table-wrap" id="catalog-table-wrap" hidden>
-    <table class="catalog-table" id="flooring-table">
-      <thead>
-        <tr>
-          <th>Product</th>
-          <th>Specs</th>
-          <th>Per Sq Ft</th>
-          <th>Per Box</th>
-          <th>Available</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        <!-- populated automatically — see inventory.js -->
-      </tbody>
-    </table>
   </div>
 </section>
 

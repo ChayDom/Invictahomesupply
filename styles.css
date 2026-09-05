@@ -360,8 +360,8 @@ nav.primary-nav a.active {
 }
 /* Same issue as .btn[hidden] above: .product-grid sets its own `display`,
    which otherwise beats the browser's default [hidden]{display:none} on
-   origin precedence — so toggling `hidden` (e.g. switching to the Flooring
-   table view) wouldn't actually hide the grid without this override. */
+   origin precedence — so toggling `hidden` on this grid wouldn't actually
+   hide it without this override. */
 .product-grid[hidden] { display: none; }
 
 .product-card {
@@ -638,59 +638,6 @@ nav.primary-nav a.active {
   color: var(--text-muted);
   padding: 40px 0;
   grid-column: 1 / -1;
-}
-
-/* ---------- Flooring contractor table ---------- */
-.catalog-table-wrap {
-  max-width: var(--max-width);
-  margin: 0 auto;
-  overflow-x: auto;
-}
-.catalog-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: #fff;
-  border: 1px solid var(--line);
-  font-size: 0.86rem;
-}
-.catalog-table th {
-  text-align: left;
-  padding: 12px 16px;
-  background: var(--cream-dim);
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-.catalog-table td {
-  padding: 12px 16px;
-  border-top: 1px solid var(--line);
-  vertical-align: middle;
-  white-space: nowrap;
-}
-.table-product-cell {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  white-space: normal;
-  min-width: 220px;
-}
-.table-product-photo {
-  width: 48px;
-  height: 48px;
-  flex-shrink: 0;
-  border-radius: var(--radius);
-  background: var(--cream-dim) center / cover no-repeat;
-}
-.table-product-name { font-weight: 600; }
-.table-product-sub { font-size: 0.78rem; color: var(--text-muted); }
-.table-actions-cell { text-align: right; }
-.table-empty {
-  text-align: center;
-  color: var(--text-muted);
-  padding: 40px 16px;
-  white-space: normal;
 }
 
 @media (max-width: 700px) {
