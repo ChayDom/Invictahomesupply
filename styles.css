@@ -626,6 +626,13 @@ nav.primary-nav a.active {
    class sets its own `display`. */
 .facet-filter-row[hidden] { display: none; }
 
+/* Wrapper around the Wear Layer select so it can be hidden as a unit
+   (e.g. while viewing Laminate, which has no wear-layer rating) without
+   leaving a gap — display:contents makes the <select> itself the flex
+   item. Needs the same [hidden] override as above for the same reason. */
+#wear-layer-filter-item { display: contents; }
+#wear-layer-filter-item[hidden] { display: none; }
+
 .catalog-empty {
   text-align: center;
   color: var(--text-muted);

@@ -3,7 +3,7 @@ import type { Context, Config } from "@netlify/functions";
 export default async (req: Request, context: Context) => {
   const token = Netlify.env.get("AIRTABLE_TOKEN");
   const baseId = Netlify.env.get("AIRTABLE_BASE_ID");
-  const tableName = Netlify.env.get("AIRTABLE_TABLE_NAME") || "Inventory";
+  const tableName = Netlify.env.get("AIRTABLE_TABLE_NAME") || "Website Products";
 
   if (!token || !baseId) {
     return new Response(JSON.stringify({ error: "Airtable is not configured" }), {
@@ -18,10 +18,8 @@ export default async (req: Request, context: Context) => {
 
     do {
       const url = new URL(`https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}`);
-      // Staged migration: Post to Website remains the primary publish gate
-      // until Web Category/Web Status are populated via the Sheet -> Website
-      // Export -> Airtable sync. Do not switch this to Web Category/Web
-      // Status until that data has been verified end to end (see README).
+      // Post to Website is the sole publish gate — see README for the
+      // full field mapping and why Category/Status aren't filtered on here.
       url.searchParams.set("filterByFormula", "{Post to Website} = TRUE()");
       if (offset) url.searchParams.set("offset", offset);
 

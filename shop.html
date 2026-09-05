@@ -92,30 +92,44 @@
     </div>
   </div>
 
-  <!-- Subcategory filter (Web Subcategory, e.g. LVP/Laminate/Tile for
-       Flooring, Gas/Electric for Water Heaters) applies to every category
-       and both the table and grid views — never hidden by category.
-       Options are populated dynamically by inventory.js; the dropdown
-       simply has one option ("All Subcategories") when a category hasn't
-       been given any subcategories yet. -->
-  <div class="facet-filter-row" id="subcategory-filter-row">
-    <select id="subcategory-filter" aria-label="Filter by subcategory">
-      <option value="">All Subcategories</option>
-    </select>
-  </div>
-
-  <!-- Brand filter — shown for every category except Flooring, which gets
-       its own thickness/wear-layer filter row instead (see below).
-       Options are populated dynamically by inventory.js from whatever's
-       actually in stock in the active category. -->
+  <!-- Type (Subcategory, e.g. Luxury Vinyl Plank/Laminate/Tile for
+       Flooring, Gas/Electric for Water Heaters) and Brand apply to every
+       category and both the table and grid views — never hidden by
+       category. Options are populated dynamically by inventory.js; a
+       dropdown simply keeps its "Any/All" option when a category hasn't
+       been given any values for that facet yet. -->
   <div class="facet-filter-row" id="facet-filter-row">
+    <select id="subcategory-filter" aria-label="Filter by type">
+      <option value="">All Types</option>
+    </select>
     <select id="brand-filter" aria-label="Filter by brand">
       <option value="">All Brands</option>
     </select>
   </div>
+
+  <!-- Flooring-only structured filters — logical groups per attribute
+       rather than a mixed row of buttons. Wear Layer is hidden entirely
+       (not just left empty) when nothing in view has a wear-layer rating,
+       e.g. while viewing Laminate. -->
   <div class="facet-filter-row" id="flooring-filter-row" hidden>
-    <select id="wear-layer-filter" aria-label="Filter by thickness or wear layer">
-      <option value="">Any Thickness / Wear Layer</option>
+    <select id="thickness-filter" aria-label="Filter by thickness">
+      <option value="">Any Thickness</option>
+    </select>
+    <span id="wear-layer-filter-item">
+      <select id="wear-layer-filter" aria-label="Filter by wear layer">
+        <option value="">Any Wear Layer</option>
+      </select>
+    </span>
+    <select id="underlayment-filter" aria-label="Filter by underlayment">
+      <option value="">Any Underlayment</option>
+    </select>
+    <select id="water-resistance-filter" aria-label="Filter by water resistance">
+      <option value="">Any Water Resistance</option>
+    </select>
+    <select id="availability-filter" aria-label="Filter by availability">
+      <option value="">Any Availability</option>
+      <option value="500">500+ sq ft</option>
+      <option value="1000">1,000+ sq ft</option>
     </select>
   </div>
 
@@ -123,21 +137,19 @@
     <!-- populated automatically from your Airtable inventory — see inventory.js and README -->
   </div>
 
-  <!-- Flooring's contractor-style table: subcategory, price/sq ft,
-       price/box, boxes available, and total sq ft available at a glance.
-       Swapped in for the card grid above only while the Flooring tab is
-       active. -->
+  <!-- Flooring's contractor-style table: Product | Specs | Per Sq Ft |
+       Per Box | Available | CTA. Specs reuses the same structured-chip
+       logic as the compact card. Swapped in for the card grid above only
+       while the Flooring tab is active. -->
   <div class="catalog-table-wrap" id="catalog-table-wrap" hidden>
     <table class="catalog-table" id="flooring-table">
       <thead>
         <tr>
           <th>Product</th>
-          <th>Subcategory</th>
-          <th>Thickness / Wear Layer</th>
-          <th>Price / Sq Ft</th>
-          <th>Price / Box</th>
-          <th>Boxes Available</th>
-          <th>Total Sq Ft Available</th>
+          <th>Specs</th>
+          <th>Per Sq Ft</th>
+          <th>Per Box</th>
+          <th>Available</th>
           <th></th>
         </tr>
       </thead>
