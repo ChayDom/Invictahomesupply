@@ -319,17 +319,22 @@ function flooringStructuredChips(item) {
   return chips;
 }
 
-// Structured fields first, Highlights only to fill remaining slots (up to
-// 3 total) — this is Flooring-specific because it's the only category
+// Structured fields first, Highlights only to fill remaining slots up to
+// maxChips — this is Flooring-specific because it's the only category
 // with real structured fields so far; every other category still uses
 // Highlights as its primary chip source. Returns both the chips to show
 // and the Highlights lines NOT used as chips, so "More details" never
 // repeats a line already shown as a chip.
-function chipsAndRemainingHighlights(item) {
+//
+// maxChips defaults to 3 for the compact card (the design's chip-row
+// convention everywhere else on the site); the Flooring comparison table
+// calls this with a higher cap since showing all 4 structured attributes
+// side by side is the entire point of that table, not a stylistic choice.
+function chipsAndRemainingHighlights(item, maxChips = 3) {
   const structured = item.webCategory === "Flooring" ? flooringStructuredChips(item) : [];
   const allHighlights = highlightBullets(item.highlights);
-  if (structured.length >= 3) return { chips: structured.slice(0, 3), remainingHighlights: allHighlights };
-  const need = 3 - structured.length;
+  if (structured.length >= maxChips) return { chips: structured.slice(0, maxChips), remainingHighlights: allHighlights };
+  const need = maxChips - structured.length;
   return { chips: structured.concat(allHighlights.slice(0, need)), remainingHighlights: allHighlights.slice(need) };
 }
 
@@ -710,8 +715,10 @@ function searchMatches(item, query) {
 
 // Flooring table columns: Product | Specs | Per Sq Ft | Per Box |
 // Available | (CTA). "Specs" reuses the same structured-first chip logic
-// as the compact card, so the table and card grid never disagree about
-// what a product's key attributes are.
+// as the compact card, but uncapped at 4 (Wear Layer/Thickness/
+// Underlayment/Water Resistance) instead of the card's 3 — this table
+// exists specifically so a contractor can compare every structured
+// attribute at a glance, not to stay visually compact like a card.
 function renderFlooringTable(items) {
   const tbody = document.querySelector("#flooring-table tbody");
   if (!tbody) return;
@@ -720,7 +727,7 @@ function renderFlooringTable(items) {
     return;
   }
   tbody.innerHTML = items.map(item => {
-    const { chips } = chipsAndRemainingHighlights(item);
+    const { chips } = chipsAndRemainingHighlights(item, 4);
     const photo = item.photos && item.photos[0] ? item.photos[0] : "";
     const availLabel = flooringAvailabilityLabel(item) || "&mdash;";
     return `<tr>
