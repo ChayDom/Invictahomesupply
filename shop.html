@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Shop | Invicta Home Supply</title>
-<meta name="description" content="Shop flooring and home improvement products at below-retail prices in McKinney and the DFW area. Local pickup and delivery available — no online payment required.">
+<meta name="description" content="Shop brand-new overstock and value-priced flooring, water heaters, appliances, plumbing, lawn &amp; outdoor, tools, and home improvement products in McKinney and the DFW area. Text us to check availability.">
 <link rel="canonical" href="https://invictahomesupply.com/shop.html">
 
 <link rel="icon" href="/favicon.ico" sizes="any">
@@ -46,8 +46,8 @@
       <a href="contact.html">Contact</a>
     </nav>
     <div class="nav-cta">
-      <a href="tel:" data-tel-link class="btn btn-outline btn-small">Contact Us</a>
-      <a href="shop.html" class="btn btn-dark btn-small">Shop Now</a>
+      <a href="tel:" data-tel-link class="nav-phone"><span data-phone></span> &middot; Call or text</a>
+      <a href="shop.html" class="btn btn-dark btn-small">See What's In Stock</a>
     </div>
     <button class="menu-toggle" aria-label="Menu"><span></span><span></span><span></span></button>
   </div>
@@ -56,7 +56,7 @@
 <section class="hero" style="padding:70px 32px;">
   <div class="eyebrow">Full Catalog</div>
   <h1 style="font-size:clamp(2rem,4vw,2.8rem);">Browse Our Inventory</h1>
-  <p>Explore our current selection of flooring, appliances, tools, and home improvement products. Visit our showroom to see products before purchasing.</p>
+  <p>Explore our current selection of flooring, water heaters, appliances, plumbing, lawn &amp; outdoor, tools, and home improvement products. Visit our showroom to see products before purchasing.</p>
 </section>
 
 <section class="section" style="padding-top:56px;">
@@ -69,9 +69,12 @@
     <div class="filter-row">
       <button class="filter-btn active" data-filter="all">All</button>
       <button class="filter-btn" data-filter="Flooring">Flooring</button>
-      <button class="filter-btn" data-filter="Renovation Supplies">Renovation Supplies</button>
+      <button class="filter-btn" data-filter="Water Heaters">Water Heaters</button>
       <button class="filter-btn" data-filter="Appliances">Appliances</button>
+      <button class="filter-btn" data-filter="Plumbing &amp; Bath">Plumbing &amp; Bath</button>
+      <button class="filter-btn" data-filter="Lawn &amp; Outdoor">Lawn &amp; Outdoor</button>
       <button class="filter-btn" data-filter="Tools">Tools</button>
+      <button class="filter-btn" data-filter="Home Improvement">Home Improvement</button>
     </div>
     <div class="controls-right">
       <div class="sort-control">
@@ -89,8 +92,48 @@
     </div>
   </div>
 
+  <!-- Brand/Spec filters — shown for every category except Flooring, which
+       gets its own thickness/wear-layer filter row instead (see below).
+       Options are populated dynamically by inventory.js from whatever's
+       actually in stock in the active category. -->
+  <div class="facet-filter-row" id="facet-filter-row">
+    <select id="brand-filter" aria-label="Filter by brand">
+      <option value="">All Brands</option>
+    </select>
+    <select id="spec-filter" aria-label="Filter by spec">
+      <option value="">All Specs</option>
+    </select>
+  </div>
+  <div class="facet-filter-row" id="flooring-filter-row" hidden>
+    <select id="wear-layer-filter" aria-label="Filter by thickness or wear layer">
+      <option value="">Any Thickness / Wear Layer</option>
+    </select>
+  </div>
+
   <div class="product-grid" id="catalog-grid">
     <!-- populated automatically from your Airtable inventory — see inventory.js and README -->
+  </div>
+
+  <!-- Flooring's contractor-style table: price/sq ft, price/box, boxes
+       available, and total sq ft available at a glance. Swapped in for
+       the card grid above only while the Flooring tab is active. -->
+  <div class="catalog-table-wrap" id="catalog-table-wrap" hidden>
+    <table class="catalog-table" id="flooring-table">
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th>Thickness / Wear Layer</th>
+          <th>Price / Sq Ft</th>
+          <th>Price / Box</th>
+          <th>Boxes Available</th>
+          <th>Total Sq Ft Available</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- populated automatically — see inventory.js -->
+      </tbody>
+    </table>
   </div>
 </section>
 
@@ -224,9 +267,12 @@
     <div>
       <h4>Shop</h4>
       <a href="shop.html#flooring">Flooring</a>
-      <a href="shop.html#renovation">Renovation Supplies</a>
+      <a href="shop.html#water-heaters">Water Heaters</a>
       <a href="shop.html#appliances">Appliances</a>
+      <a href="shop.html#plumbing-bath">Plumbing &amp; Bath</a>
+      <a href="shop.html#lawn-outdoor">Lawn &amp; Outdoor</a>
       <a href="shop.html#tools">Tools</a>
+      <a href="shop.html#home-improvement">Home Improvement</a>
     </div>
     <div>
       <h4>Contact</h4>

@@ -126,6 +126,13 @@ nav.primary-nav a.active {
   gap: 18px;
 }
 
+.nav-phone {
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.nav-phone:hover { color: var(--amber-dark); }
+
 .btn {
   display: inline-block;
   padding: 12px 26px;
@@ -179,6 +186,19 @@ nav.primary-nav a.active {
   color: var(--cream);
   padding: 110px 32px;
   text-align: center;
+}
+
+/* Real-photo hero: a background image plus a dark scrim so light text stays
+   readable regardless of the photo. Swap --hero-photo's url() for a real
+   inventory/showroom shot (drop it in /assets and update the inline style
+   or this rule) — a photographic gradient stands in until then. */
+.hero-photo {
+  position: relative;
+  background:
+    linear-gradient(rgba(20, 26, 21, 0.72), rgba(20, 26, 21, 0.82)),
+    var(--hero-photo, linear-gradient(135deg, #2f4234, #1c2820));
+  background-size: cover;
+  background-position: center;
 }
 
 .hero .eyebrow {
@@ -237,13 +257,70 @@ nav.primary-nav a.active {
 }
 .section-head p { color: var(--text-muted); }
 
-/* ---------- Category grid ---------- */
+/* ---------- Trust strip (compact, single-line) ---------- */
+.trust-strip {
+  background: var(--charcoal-soft);
+  color: var(--cream-dim);
+  text-align: center;
+  padding: 16px 20px;
+  font-size: 0.8rem;
+  letter-spacing: 0.03em;
+}
+
+/* ---------- Category grid (icon cards, still used on About) ---------- */
 .category-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 24px;
   max-width: var(--max-width);
   margin: 0 auto;
+}
+
+/* ---------- Category tiles (square photo tiles, homepage) ---------- */
+.category-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 16px;
+  max-width: var(--max-width);
+  margin: 0 auto;
+}
+.category-tile {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  background: linear-gradient(135deg, var(--charcoal-soft), var(--charcoal));
+  display: flex;
+  align-items: flex-end;
+  transition: transform 0.2s ease;
+}
+.category-tile:hover { transform: translateY(-3px); }
+.category-tile .icon {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  width: 26px;
+  height: 26px;
+  color: var(--cream-dim);
+  opacity: 0.85;
+}
+.category-tile span {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 10px 10px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--cream);
+  text-align: left;
+  background: linear-gradient(0deg, rgba(0,0,0,0.55), transparent);
+}
+@media (max-width: 900px) {
+  .category-tile-grid { grid-template-columns: repeat(4, 1fr); }
+}
+@media (max-width: 480px) {
+  .category-tile-grid { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .category-tile span { font-size: 0.7rem; }
 }
 
 .category-card {
@@ -281,6 +358,11 @@ nav.primary-nav a.active {
   max-width: var(--max-width);
   margin: 0 auto;
 }
+/* Same issue as .btn[hidden] above: .product-grid sets its own `display`,
+   which otherwise beats the browser's default [hidden]{display:none} on
+   origin precedence — so toggling `hidden` (e.g. switching to the Flooring
+   table view) wouldn't actually hide the grid without this override. */
+.product-grid[hidden] { display: none; }
 
 .product-card {
   background: #fff;
@@ -292,8 +374,10 @@ nav.primary-nav a.active {
 }
 
 .product-photo {
-  aspect-ratio: 4/3;
+  aspect-ratio: 1 / 1;
   background: linear-gradient(135deg, var(--cream-dim), #fff);
+  background-size: cover;
+  background-position: center;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -301,6 +385,45 @@ nav.primary-nav a.active {
   color: var(--text-muted);
 }
 .product-photo svg { width: 34px; height: 34px; opacity: 0.5; }
+
+/* ---------- Spec chips ---------- */
+.spec-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.spec-chip {
+  background: var(--cream-dim);
+  color: var(--charcoal-soft);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 4px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+/* ---------- Expandable "More details" ---------- */
+.product-more {
+  font-size: 0.82rem;
+}
+.product-more summary {
+  cursor: pointer;
+  color: var(--amber-dark);
+  font-weight: 600;
+  font-size: 0.78rem;
+  list-style: none;
+}
+.product-more summary::-webkit-details-marker { display: none; }
+.product-more summary::before { content: "+ "; }
+.product-more[open] summary::before { content: "\2212 "; }
+.product-more p,
+.product-more ul {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+}
+.product-more ul { padding-left: 18px; }
+.product-more li { margin-bottom: 2px; }
 
 .product-info {
   padding: 20px;
@@ -323,53 +446,31 @@ nav.primary-nav a.active {
 }
 
 .product-price {
-  font-family: 'Zilla Slab', Georgia, serif;
-  font-size: 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   margin-top: auto;
   padding-top: 10px;
 }
 
-.product-price .was {
-  text-decoration: line-through;
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  font-family: 'Inter', sans-serif;
-  margin-left: 8px;
-}
-
-.product-price-flooring {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.product-price-flooring .price-line {
+.product-price .price-line {
   font-family: 'Zilla Slab', Georgia, serif;
   font-size: 1.15rem;
   font-weight: 700;
 }
 
-.product-price-flooring .price-unit {
+.product-price .price-unit {
   font-family: 'Inter', sans-serif;
   font-size: 0.85rem;
   color: var(--text-muted);
   font-weight: 700;
 }
 
-.product-price-flooring .price-sub,
-.product-price-flooring .price-avail {
+.product-price .price-avail {
   font-family: 'Inter', sans-serif;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   color: var(--text-muted);
-  font-weight: 400;
-}
-
-.product-price-flooring .price-avail {
-  font-weight: 700;
-}
-
-.product-price-flooring .price-bold {
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .product-actions {
@@ -492,6 +593,95 @@ nav.primary-nav a.active {
   white-space: nowrap;
 }
 .calc-icon { width: 15px; height: 15px; flex-shrink: 0; }
+
+/* ---------- Category-specific filter rows (Brand/Spec, or Flooring's
+   thickness/wear-layer) — swapped in/out by inventory.js based on the
+   active category tab. Reuses .sort-control's select styling. ---------- */
+.facet-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin: -28px auto 44px;
+  max-width: var(--max-width);
+}
+.facet-filter-row select {
+  padding: 9px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.78rem;
+  color: var(--charcoal);
+  cursor: pointer;
+}
+/* Same [hidden] override as .btn/.product-grid above — needed because this
+   class sets its own `display`. */
+.facet-filter-row[hidden] { display: none; }
+
+.catalog-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 40px 0;
+  grid-column: 1 / -1;
+}
+
+/* ---------- Flooring contractor table ---------- */
+.catalog-table-wrap {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  overflow-x: auto;
+}
+.catalog-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border: 1px solid var(--line);
+  font-size: 0.86rem;
+}
+.catalog-table th {
+  text-align: left;
+  padding: 12px 16px;
+  background: var(--cream-dim);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.catalog-table td {
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.table-product-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  white-space: normal;
+  min-width: 220px;
+}
+.table-product-photo {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  border-radius: var(--radius);
+  background: var(--cream-dim) center / cover no-repeat;
+}
+.table-product-name { font-weight: 600; }
+.table-product-sub { font-size: 0.78rem; color: var(--text-muted); }
+.table-actions-cell { text-align: right; }
+.table-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 40px 16px;
+  white-space: normal;
+}
+
+@media (max-width: 700px) {
+  .facet-filter-row { margin-top: -14px; }
+}
 
 @media (max-width: 700px) {
   .catalog-controls { flex-direction: column; align-items: stretch; }

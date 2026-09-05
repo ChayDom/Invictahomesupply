@@ -4,6 +4,13 @@ A 4-page static site (Home, Shop, About, Contact) with a live inventory
 catalog powered by Airtable. No monthly hosting fee, no online payment, no
 code editing required to add/remove/update items once it's set up.
 
+We are a **local supplier of brand-new overstock and value-priced home
+improvement products** — never use "liquidation," "clearance," or "discount
+warehouse" anywhere on the site or in listings. Also avoid specific savings
+claims like "50% under retail" unless they're actually computed from that
+item's own Price vs. Was Price — don't state a blanket sitewide discount
+percentage.
+
 ## How inventory works
 
 The Shop page and homepage "New This Week" section pull live from an
@@ -12,6 +19,21 @@ uploads. Add a row, drag in a few photos, and it shows up on the site
 automatically (visitors' browsers cache it for 15 minutes, so it's not
 instant, but close). Until you connect Airtable, the site shows sample
 placeholder items so it never looks broken or empty.
+
+### Two category fields — why there are two
+
+- **`Category`** is your own internal/reporting category and can be as
+  granular as you want — `Flooring`, `Appliances`, `Water Heaters`,
+  `Plumbing`, `Lawn & Outdoor`, `Tools`, `Lighting`, `Windows & Doors`,
+  `Electronics`, `Gaming`, `Toys`, `Collectibles`, `Health & Personal Care`,
+  etc. This never appears on the site — it's just for your own filtering
+  and reporting inside Airtable.
+- **`Web Category`** controls what customers actually see, and must be
+  exactly one of the 7 website categories (see table below). **Leaving
+  Web Category blank means the item is never published to the site** —
+  that's the mechanism for keeping something off the site without deleting
+  the row (e.g. electronics, toys, or anything you're not ready to list
+  publicly yet).
 
 ### Set up your Airtable base (one-time, ~10 minutes)
 
@@ -23,20 +45,44 @@ placeholder items so it never looks broken or empty.
    | Field name | Type |
    |---|---|
    | Name | Single line text |
-   | Category | Single select — options: `Flooring`, `Renovation Supplies`, `Appliances`, `Tools` |
+   | Category | Single select — your own internal reporting categories (see above), as broad or granular as you like |
+   | Web Category | Single select — **exactly one of:** `Flooring`, `Water Heaters`, `Appliances`, `Plumbing & Bath`, `Lawn & Outdoor`, `Tools`, `Home Improvement`. Leave blank to keep the item off the site. |
+   | Sell Unit | Single select — `each`, `box`, or `sq ft`. Controls the price format shown (e.g. flooring is priced `sq ft`; a water heater or appliance is `each`). |
+   | Specs | Single line text — up to three short specs separated by `\|`, e.g. `22 MIL\|Waterproof\|Click-lock` or `40 gal\|Natural gas\|Rheem`. Shown as chips on the product card. |
    | Price | Number |
-   | Was Price | Number (optional — leave blank if no discount to show) |
-   | Details | Long text |
-   | Status | Single select — options: `In Stock`, `Reserved`, `Sold Out` |
+   | Was Price | Number (optional — the retail/comparison price shown as "Retail $X" for `each`/`box` items; leave blank if you don't have one) |
+   | Quantity Available | Number (optional — units/boxes in stock; shown as "N available" for `each`/`box` items) |
+   | Brand | Single line text (optional) |
+   | Model | Single line text (optional) |
+   | Details | Long text (shown in the card's collapsed "More details" section, not up front) |
+   | Highlights | Long text, one line per bullet (also shown in "More details") |
+   | Web Status | Single select — `In Stock`, `Reserved`, `Sold`, `Coming Soon`. **Only `In Stock` items are ever exported to the site** — Reserved/Sold/Coming Soon rows are simply excluded from the public feed. |
    | Photos | Attachment (supports multiple photos per row — drag them all in) |
    | Date Added | Date (used to mark items "New" for 7 days automatically) |
-   | Date Reserved | Date (optional — fill in when status changes to Reserved/Sold, powers the "recently reserved" strip on the homepage) |
+
+   Flooring-specific fields (used only when Sell Unit is `sq ft`):
+
+   | Field name | Type |
+   |---|---|
+   | Box Price | Number |
+   | Sq Ft Per Unit | Number (sq ft covered per box) |
+   | Available Sq Ft | Number (total sq ft in stock — boxes available is calculated automatically as Available Sq Ft ÷ Sq Ft Per Unit) |
 
 4. Add a few rows to test — drag 2-3 photos into the Photos field per item.
    Since everything you sell is brand new (overstock/discontinued, not
    open-box or used), it's worth starting every **Details** entry with
    "Brand new —" for consistency, e.g. "Brand new, 20mil wear layer,
    clicklock, ~38 sq ft per box."
+
+### Migrating an existing base
+
+If your Airtable base predates this update, existing rows won't have Web
+Category or Web Status set yet — **those items will disappear from the site
+the moment you deploy this version**, until you go back and fill in Web
+Category (one of the 7 site categories) and set Web Status to `In Stock` on
+each row you want published. This is intentional (blank Web Category = not
+published), but budget time to update your existing rows before/right after
+deploying.
 
 ### Connect it to the site
 
@@ -71,11 +117,10 @@ your account. If that ever becomes a problem, the fix is moving the fetch
 behind a small serverless function instead of calling Airtable directly;
 ask if you want that set up later.
 
-### Marking items sold or new
+### Marking items sold, reserved, or new
 
-- Change **Status** to `Reserved` or `Sold Out` and fill in **Date
-  Reserved** — it'll show up in the "recently reserved" strip on the
-  homepage for 14 days, then quietly drop off.
+- Change **Web Status** to `Reserved`, `Sold`, or `Coming Soon` to pull an
+  item off the public site immediately — no need to delete the row.
 - Anything with a **Date Added** within the last 7 days is automatically
   tagged "New" on the site — no extra field to manage.
 
@@ -142,11 +187,12 @@ and we can walk through it live using a browser tool.
 
 ## File map
 
-- `index.html` — homepage (New This Week, recently reserved strip, SMS opt-in)
-- `shop.html` — full catalog with category filter tabs
+- `index.html` — homepage (hero, category tiles, mixed "New This Week", SMS opt-in)
+- `shop.html` — full catalog: 7 category tabs, card grid for most categories, contractor-style table for Flooring
 - `about.html` — story + how reserving works + why-buy-local
 - `contact.html` — contact info + FAQ
 - `styles.css` — shared styles
 - `app.js` — contact-info config + mobile menu + filter logic + SMS links
-- `inventory.js` — Airtable config + fetch/cache + product card rendering
+- `inventory.js` — Airtable config + fetch/cache + product card & flooring table rendering
+- `netlify/functions/inventory.mts` — serverless proxy to Airtable (holds the API token server-side; only exports items with a Web Category set and Web Status = In Stock)
 - `marketplace-post-templates.md` — copy-paste posts for Marketplace/FB groups

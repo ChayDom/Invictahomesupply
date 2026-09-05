@@ -18,7 +18,7 @@ export default async (req: Request, context: Context) => {
 
     do {
       const url = new URL(`https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}`);
-      url.searchParams.set("filterByFormula", "{Post to Website} = TRUE()");
+      url.searchParams.set("filterByFormula", "AND({Web Category} != '', {Web Status} = 'In Stock')");
       if (offset) url.searchParams.set("offset", offset);
 
       const res = await fetch(url, {

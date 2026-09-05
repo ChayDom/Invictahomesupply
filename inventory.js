@@ -3,35 +3,47 @@
 
    Inventory data is fetched from the /api/inventory serverless function,
    which holds the Airtable credentials server-side (Netlify environment
-   variables) — nothing sensitive lives in this file or in git.
-   Until that function returns data, the site shows sample items so it
-   never looks broken.
+   variables) — nothing sensitive lives in this file or in git. The
+   function itself only ever returns rows with a Web Category set and
+   Web Status = "In Stock" — see netlify/functions/inventory.mts and the
+   README for the full field list.
+   Until that function returns data, the site shows sample placeholder
+   items so it never looks broken.
    =================================================================== */
 window.AIRTABLE_CONFIG = {
   cacheMinutes: 15,
 };
 
-const CACHE_KEY = "invicta_inventory_cache_v1";
+const CACHE_KEY = "invicta_inventory_cache_v2";
 const INVENTORY_ENDPOINT = "/api/inventory";
+
+// The 7 public-facing website categories — every item's Web Category must
+// match one of these labels exactly, or it won't render anywhere. (Airtable's
+// own internal "Category" field can be far broader; it never reaches the site.)
+const WEB_CATEGORIES = [
+  "Flooring",
+  "Water Heaters",
+  "Appliances",
+  "Plumbing & Bath",
+  "Lawn & Outdoor",
+  "Tools",
+  "Home Improvement",
+];
 
 // Shown automatically until the Airtable function returns real records —
 // replace by adding real rows in Airtable, not by editing this list.
+// Deliberately spans multiple categories so the mixed layouts (New This
+// Week, category tiles, shop tabs) all have something to show.
 const FALLBACK_ITEMS = [
-  { id: "sample-1", name: "Waterproof Oak Plank Flooring", category: "Flooring", price: 34, wasPrice: 89, details: "Brand new, never used.", highlights: "20mil wear layer\nClicklock installation\n~38 sq ft per box", status: "In Stock", photos: [], isNew: true },
-  { id: "sample-2", name: "Ripped Pine Clicklock Plank", category: "Flooring", price: 29, wasPrice: 80, details: "Brand new, never used.", highlights: "5.5mm thickness\nWaterproof core\nPickup only", status: "In Stock", photos: [], isNew: true },
-  { id: "sample-3", name: "Undermount Kitchen Sink, Stainless", category: "Renovation Supplies", price: 120, wasPrice: 240, details: "Brand new, never used.", highlights: "Includes mounting hardware", status: "In Stock", photos: [] },
-  { id: "sample-4", name: "Butcher Block Countertop, 6ft", category: "Renovation Supplies", price: 95, wasPrice: 210, details: "Brand new, never used.", highlights: "Solid wood\nUnfinished", status: "In Stock", photos: [] },
-  { id: "sample-5", name: "Cordless Pet Stick Vacuum, HEPA", category: "Appliances", price: 95, wasPrice: 160, details: "Brand new, never used.", highlights: "Sealed box\nAll attachments included", status: "In Stock", photos: [], isNew: true },
-  { id: "sample-6", name: "Robotic 2-in-1 Vacuum & Mop", category: "Appliances", price: 200, wasPrice: 380, details: "Brand new, never used.", highlights: "Sealed box", status: "Reserved", photos: [], daysAgo: 1 },
-  { id: "sample-7", name: "18V Cordless Drill Kit, 2 Batteries", category: "Tools", price: 55, wasPrice: 110, details: "Brand new, never used.", highlights: "Includes both batteries", status: "In Stock", photos: [] },
-  { id: "sample-8", name: "50-Quart Hard Cooler", category: "Tools", price: 130, wasPrice: 225, details: "Brand new, never used.", highlights: "Factory sealed", status: "Sold Out", photos: [], daysAgo: 3 },
+  { id: "sample-1", name: "Waterproof Oak Plank Flooring", webCategory: "Flooring", brand: "Invicta Floors", sellUnit: "sq ft", price: 2.01, boxPrice: 42.11, sqFtPerUnit: 20.94, availableSqFt: 1026, specs: "22 MIL|Waterproof|Click-lock", details: "Brand new, never used.", highlights: "22mil wear layer\nClicklock installation\n~20.94 sq ft per box", webStatus: "In Stock", photos: [], isNew: true },
+  { id: "sample-2", name: "Rustic Pine Waterproof Plank", webCategory: "Flooring", brand: "Invicta Floors", sellUnit: "sq ft", price: 1.79, boxPrice: 38.36, sqFtPerUnit: 21.43, availableSqFt: 815, specs: "12 MIL|Waterproof|Click-lock", details: "Brand new, never used.", highlights: "12mil wear layer\nWaterproof core\nPickup only", webStatus: "In Stock", photos: [], isNew: true },
+  { id: "sample-3", name: "50-Gallon Gas Water Heater", webCategory: "Water Heaters", brand: "Rheem", sellUnit: "each", price: 649, wasPrice: 1049, qtyAvailable: 2, specs: "50 gal|Natural gas|Rheem", details: "Brand new, factory sealed.", highlights: "6-year tank warranty\nEnergy Star rated", webStatus: "In Stock", photos: [], isNew: true },
+  { id: "sample-4", name: "Stainless French Door Refrigerator", webCategory: "Appliances", brand: "Samsung", sellUnit: "each", price: 1350, wasPrice: 2199, qtyAvailable: 1, specs: "27 cu ft|French door|Stainless", details: "Brand new, minor box damage only.", highlights: "Ice maker included\nManufacturer warranty applies", webStatus: "In Stock", photos: [] },
+  { id: "sample-5", name: "Undermount Kitchen Sink, Stainless", webCategory: "Plumbing & Bath", brand: "Kraus", sellUnit: "each", price: 120, wasPrice: 240, qtyAvailable: 4, specs: "Stainless|Undermount|32 in", details: "Brand new, never used.", highlights: "Includes mounting hardware", webStatus: "In Stock", photos: [] },
+  { id: "sample-6", name: "Self-Propelled Gas Mower, 21 in", webCategory: "Lawn & Outdoor", brand: "Honda", sellUnit: "each", price: 429, wasPrice: 599, qtyAvailable: 3, specs: "21 in|Self-propelled|Gas", details: "Brand new, factory sealed.", highlights: "Mulch/bag/side-discharge 3-in-1", webStatus: "In Stock", photos: [] },
+  { id: "sample-7", name: "18V Cordless Drill Kit, 2 Batteries", webCategory: "Tools", brand: "DeWalt", sellUnit: "each", price: 89, wasPrice: 149, qtyAvailable: 6, specs: "18V|2 batteries|Brushless", details: "Brand new, never used.", highlights: "Includes both batteries + charger", webStatus: "In Stock", photos: [] },
+  { id: "sample-8", name: "Matte Black Barn Door Hardware Kit", webCategory: "Home Improvement", brand: "", sellUnit: "each", price: 65, wasPrice: 120, qtyAvailable: 5, specs: "6.6 ft track|Matte black|Soft-close", details: "Brand new, factory sealed.", highlights: "Fits doors up to 36 in wide", webStatus: "In Stock", photos: [] },
 ];
-
-function daysAgoLabel(days) {
-  if (days === 0) return "today";
-  if (days === 1) return "yesterday";
-  return `${days} days ago`;
-}
 
 async function fetchInventory() {
   const cached = localStorage.getItem(CACHE_KEY);
@@ -49,31 +61,37 @@ async function fetchInventory() {
     const records = json.records || [];
 
     const now = Date.now();
-    const items = records.map(r => {
-      const f = r.fields || {};
-      const dateAdded = f["Date Added"] ? new Date(f["Date Added"]) : null;
-      const dateReserved = f["Date Reserved"] ? new Date(f["Date Reserved"]) : null;
-      return {
-        id: r.id,
-        productKey: f["Product Key"] || "",
-        name: f["Name"] || "Untitled item",
-        category: f["Category"] || "Other",
-        brand: f["Brand"] || "",
-        model: f["Model"] || "",
-        retailer: f["Retailer"] || "",
-        price: f["Price"],
-        wasPrice: f["Was Price"],
-        boxPrice: f["Box Price"],
-        sqFtPerUnit: f["Sq Ft Per Unit"],
-        availableSqFt: f["Available Sq Ft"],
-        details: f["Details"] || "",
-        highlights: f["Highlights"] || "",
-        status: f["Status"] || "In Stock",
-        photos: (f["Photos"] || []).map(p => p.url),
-        isNew: dateAdded ? (now - dateAdded.getTime()) / 86400000 <= 7 : false,
-        daysAgo: dateReserved ? Math.floor((now - dateReserved.getTime()) / 86400000) : null,
-      };
-    });
+    const items = records
+      .map(r => {
+        const f = r.fields || {};
+        const dateAdded = f["Date Added"] ? new Date(f["Date Added"]) : null;
+        return {
+          id: r.id,
+          productKey: f["Product Key"] || "",
+          name: f["Name"] || "Untitled item",
+          webCategory: f["Web Category"] || "",
+          sellUnit: f["Sell Unit"] || "each",
+          specs: f["Specs"] || "",
+          brand: f["Brand"] || "",
+          model: f["Model"] || "",
+          retailer: f["Retailer"] || "",
+          price: f["Price"],
+          wasPrice: f["Was Price"],
+          qtyAvailable: f["Quantity Available"],
+          boxPrice: f["Box Price"],
+          sqFtPerUnit: f["Sq Ft Per Unit"],
+          availableSqFt: f["Available Sq Ft"],
+          details: f["Details"] || "",
+          highlights: f["Highlights"] || "",
+          webStatus: f["Web Status"] || "",
+          photos: (f["Photos"] || []).map(p => p.url),
+          isNew: dateAdded ? (now - dateAdded.getTime()) / 86400000 <= 7 : false,
+        };
+      })
+      // Belt-and-suspenders: the serverless function already filters to
+      // published/in-stock rows, but never trust a client-visible feed to
+      // have been filtered upstream — re-check here too.
+      .filter(item => WEB_CATEGORIES.includes(item.webCategory) && item.webStatus === "In Stock");
 
     localStorage.setItem(CACHE_KEY, JSON.stringify({ data: items, ts: Date.now() }));
     return items;
@@ -87,19 +105,35 @@ function money(n) {
   return typeof n === "number" ? `$${n.toLocaleString()}` : "";
 }
 
-// 2-decimal currency, used only for the flooring per-sq-ft/per-box pricing block.
+// 2-decimal currency, used for per-sq-ft/per-box pricing.
 function money2(n) {
   return typeof n === "number" ? `$${n.toFixed(2)}` : "";
-}
-
-// Fixed 2-decimal sq ft figure (e.g. "24.03"), used for the per-box coverage.
-function sqFt2(n) {
-  return typeof n === "number" ? n.toFixed(2) : "";
 }
 
 // Thousands-separated sq ft total; only shows decimals when the value actually has them.
 function sqFtAvailable(n) {
   return typeof n === "number" ? n.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "";
+}
+
+// Boxes available is derived, never entered directly: Available Sq Ft ÷ Sq
+// Ft Per Unit, rounded down (a partial box isn't a sellable whole box).
+function boxesAvailable(item) {
+  if (typeof item.availableSqFt !== "number" || typeof item.sqFtPerUnit !== "number" || item.sqFtPerUnit <= 0) return null;
+  return Math.floor(item.availableSqFt / item.sqFtPerUnit);
+}
+
+// Specs is a single "|"-separated field (e.g. "22 MIL|Waterproof|Click-lock")
+// — split into at most 3 short chips for the card.
+function specsArray(item) {
+  if (!item.specs) return [];
+  return item.specs.split("|").map(s => s.trim()).filter(Boolean).slice(0, 3);
+}
+
+// A generic stand-in for per-category structured filters (capacity, fuel
+// type, voltage, wear layer...) we don't have dedicated Airtable columns
+// for yet: any spec chip that looks like a thickness/wear-layer callout.
+function wearLayerSpec(item) {
+  return specsArray(item).find(s => /\d\s?(mil|mm)\b/i.test(s)) || "";
 }
 
 function photoBlock(item) {
@@ -117,44 +151,23 @@ function photoBlock(item) {
 }
 
 function statusBadge(item) {
-  if (item.status === "In Stock") return item.isNew ? `<span class="badge badge-new">New</span>` : "";
-  const cls = item.status === "Reserved" ? "badge-reserved" : "badge-sold";
-  return `<span class="badge ${cls}">${item.status}</span>`;
+  return item.isNew ? `<span class="badge badge-new">New</span>` : "";
 }
 
-// Builds the prefilled "Text Us" SMS body for a product. Flooring items get
-// the per-sq-ft/per-box wording; everything else gets the simpler single
-// price line. Never includes Available Sq Ft — inventory can change.
+// Builds the prefilled "Text about this item" SMS body — always includes
+// the product name and its SKU (Product Key, falling back to the Airtable
+// record id) so a reply doesn't require looking anything up.
 function smsMessageForItem(item) {
-  const isFlooringPriced = item.category === "Flooring"
-    && typeof item.price === "number"
-    && typeof item.boxPrice === "number";
-
-  if (isFlooringPriced) {
-    return `Hi, I'm interested in ${item.name}. I saw it on your website for ${money2(item.price)}/sq ft (${money2(item.boxPrice)}/box). Please send me more information.`;
-  }
-
-  const priceText = typeof item.price === "number" ? ` listed for ${money(item.price)}` : "";
-  return `Hi, I'm interested in ${item.name}${priceText}. Please send me more information.`;
+  const sku = item.productKey || item.id;
+  return `Hi, I'm interested in ${item.name} (SKU: ${sku}). Is it still available?`;
 }
 
-// Two CTAs for an in-stock item: "Get a Quote" (primary — for Flooring,
-// opens the on-site quote modal via data-quote-id; other categories keep
-// the plain button for now) and "Text Us" (secondary, functional — opens
-// the visitor's SMS app with a prefilled, product-specific message via the
-// existing business phone number in SITE_CONFIG). Out-of-stock items keep
-// the old status pill.
+// Single CTA per card, per the compact card design — no secondary button,
+// no on-site form. Opens the visitor's SMS app with a prefilled message.
 function actionButtons(item) {
-  if (item.status !== "In Stock") {
-    return `<span class="btn btn-outline btn-small" style="opacity:.5; cursor:default;">${item.status}</span>`;
-  }
   const phoneHref = window.SITE_CONFIG ? window.SITE_CONFIG.phoneHref : "";
   const smsHref = `sms:${phoneHref}?&body=${encodeURIComponent(smsMessageForItem(item))}`;
-  const quoteAttr = item.category === "Flooring" ? `data-quote-id="${item.id}"` : `data-quote-item="${item.name}"`;
-  return `
-    <button type="button" class="btn btn-dark btn-small btn-quote" ${quoteAttr}>Get a Quote</button>
-    <a href="${smsHref}" class="btn btn-outline btn-small">Text Us</a>
-  `;
+  return `<a href="${smsHref}" class="btn btn-dark btn-small btn-block">Text About This Item</a>`;
 }
 
 function highlightBullets(highlights) {
@@ -164,41 +177,57 @@ function highlightBullets(highlights) {
     .filter(Boolean);
 }
 
-// Flooring gets a per-sq-ft / per-box / available-sq-ft breakdown instead of
-// a single price, but only when Airtable actually supplies all four fields —
-// otherwise it falls back to the normal single-price display below.
+// Price block format depends on Sell Unit:
+//   sq ft  -> "$2.01 / sq ft" then "$42.11 / box · 49 boxes / 1,026 sq ft available"
+//   each   -> "$649 each"     then "Retail $1,049 · 2 available"
+//   box    -> "$42.11 / box"  then "Retail $89.00 · 12 boxes available"
 function priceBlock(item) {
-  const isFlooring = item.category === "Flooring"
-    && typeof item.price === "number"
-    && typeof item.boxPrice === "number"
-    && typeof item.sqFtPerUnit === "number"
-    && typeof item.availableSqFt === "number";
-
-  if (isFlooring) {
+  if (item.sellUnit === "sq ft" && typeof item.price === "number") {
+    const boxes = boxesAvailable(item);
+    const subParts = [];
+    if (typeof item.boxPrice === "number") subParts.push(`${money2(item.boxPrice)} / box`);
+    if (boxes !== null) subParts.push(`${boxes} boxes`);
+    if (typeof item.availableSqFt === "number") subParts.push(`${sqFtAvailable(item.availableSqFt)} sq ft available`);
     return `<div class="product-price product-price-flooring">
       <div class="price-line">${money2(item.price)} <span class="price-unit">/ sq ft</span></div>
-      <div class="price-sub"><span class="price-bold">${money2(item.boxPrice)} / box</span> &middot; ${sqFt2(item.sqFtPerUnit)} sq ft/box</div>
-      <div class="price-avail">${sqFtAvailable(item.availableSqFt)} sq ft available</div>
+      ${subParts.length ? `<div class="price-avail">${subParts.join(" &middot; ")}</div>` : ""}
     </div>`;
   }
 
-  return `<div class="product-price">${money(item.price)} ${item.wasPrice ? `<span class="was">${money(item.wasPrice)}</span>` : ""}</div>`;
+  const unitLabel = item.sellUnit === "box" ? "/ box" : "each";
+  const priceText = item.sellUnit === "box" && typeof item.price === "number" ? money2(item.price) : money(item.price);
+  const availParts = [];
+  if (typeof item.wasPrice === "number") availParts.push(`Retail ${money(item.wasPrice)}`);
+  if (typeof item.qtyAvailable === "number") availParts.push(`${item.qtyAvailable}${item.sellUnit === "box" ? " boxes" : ""} available`);
+  return `<div class="product-price">
+    <div class="price-line">${priceText} <span class="price-unit">${unitLabel}</span></div>
+    ${availParts.length ? `<div class="price-avail">${availParts.join(" &middot; ")}</div>` : ""}
+  </div>`;
 }
 
+// Compact card: square image -> category -> name -> up to 3 spec chips ->
+// price -> availability line -> one CTA. Long copy (Details/Highlights)
+// moves into a collapsed <details> section instead of living on the card.
 function productCard(item) {
+  const chips = specsArray(item);
   const bullets = highlightBullets(item.highlights);
+  const hasMore = Boolean(item.details) || bullets.length > 0;
   return `
-  <div class="product-card" data-category="${item.category}">
+  <div class="product-card" data-category="${item.webCategory}">
     <div class="photo-wrap">
       ${photoBlock(item)}
       ${statusBadge(item)}
     </div>
     <div class="product-info">
-      <span class="product-cat">${item.category}</span>
+      <span class="product-cat">${item.webCategory}</span>
       <h4>${item.name}</h4>
-      ${item.details ? `<p class="product-desc">${item.details}</p>` : ""}
-      ${bullets.length ? `<ul class="product-details">${bullets.map(b => `<li>${b}</li>`).join("")}</ul>` : ""}
+      ${chips.length ? `<div class="spec-chips">${chips.map(c => `<span class="spec-chip">${c}</span>`).join("")}</div>` : ""}
       ${priceBlock(item)}
+      ${hasMore ? `<details class="product-more">
+        <summary>More details</summary>
+        ${item.details ? `<p class="product-desc">${item.details}</p>` : ""}
+        ${bullets.length ? `<ul class="product-details">${bullets.map(b => `<li>${b}</li>`).join("")}</ul>` : ""}
+      </details>` : ""}
     </div>
     <div class="product-actions">
       ${actionButtons(item)}
@@ -222,35 +251,56 @@ function bindThumbClicks(container) {
 function renderGrid(items, containerId) {
   const el = document.getElementById(containerId);
   if (!el) return;
-  el.innerHTML = items.map(productCard).join("");
+  el.innerHTML = items.length
+    ? items.map(productCard).join("")
+    : `<p class="catalog-empty">No matching items right now — check back soon or text us what you're looking for.</p>`;
   bindThumbClicks(el);
 }
 
-function renderReservedTicker(items, containerId) {
-  const el = document.getElementById(containerId);
-  if (!el) return;
-  const recent = items
-    .filter(i => i.status !== "In Stock" && i.daysAgo !== null && i.daysAgo <= 14)
-    .sort((a, b) => a.daysAgo - b.daysAgo)
-    .slice(0, 6);
-  if (recent.length === 0) {
-    el.closest("section")?.setAttribute("style", "display:none;");
-    return;
+// ---------------------------------------------------------------------
+// Homepage "New This Week": deliberately mixes categories rather than
+// just showing whatever's newest — 2 Flooring, 1 Appliances, 1 Water
+// Heaters when available, topped up with other new/in-stock items so the
+// section never looks sparse just because one category is thin that week.
+// ---------------------------------------------------------------------
+function newFirst(items) {
+  return items.slice().sort((a, b) => (b.isNew === a.isNew ? 0 : b.isNew ? 1 : -1));
+}
+
+function pickNewArrivals(items, targetCount) {
+  const byCategory = cat => newFirst(items.filter(i => i.webCategory === cat));
+  const picks = [
+    ...byCategory("Flooring").slice(0, 2),
+    ...byCategory("Appliances").slice(0, 1),
+    ...byCategory("Water Heaters").slice(0, 1),
+  ];
+  const usedIds = new Set(picks.map(i => i.id));
+
+  if (picks.length < targetCount) {
+    for (const item of newFirst(items)) {
+      if (picks.length >= targetCount) break;
+      if (usedIds.has(item.id)) continue;
+      picks.push(item);
+      usedIds.add(item.id);
+    }
   }
-  el.innerHTML = recent.map(i =>
-    `<div class="ticker-item"><strong>${i.name}</strong> — ${i.status.toLowerCase()} ${daysAgoLabel(i.daysAgo)}</div>`
-  ).join("");
+  return picks;
 }
 
 // ---------------------------------------------------------------------
-// Shop page: category filter + sort. Sorting is client-side only, over
-// the array already fetched by fetchInventory() — no extra Airtable calls.
+// Shop page: category tabs + brand/spec filters + sort + search, over the
+// array already fetched by fetchInventory() — no extra Airtable calls.
+// Flooring renders as a contractor-style table; every other category
+// renders as the standard card grid — see renderShopCatalog().
 // ---------------------------------------------------------------------
 let shopItems = [];
 let itemsById = {};
 let currentCategory = "all";
 let currentSort = "featured";
 let currentSearch = "";
+let currentBrand = "";
+let currentSpec = "";
+let currentWearLayer = "";
 
 const SQFT_SORT_OPTIONS = [
   { value: "sqft-desc", label: "Sq Ft Available: High to Low" },
@@ -278,13 +328,17 @@ function sortItems(items, sortKey) {
     .map(entry => entry.item);
 }
 
+function isFlooringView() {
+  return currentCategory === "Flooring";
+}
+
 // Sq Ft Available sort options only make sense for Flooring — add/remove
 // them from the <select> based on the active category filter, and fall
 // back to Featured if an sqft sort was active when the category changed.
 function updateSortOptionsVisibility() {
   const select = document.getElementById("sort-select");
   if (!select) return;
-  const showSqft = currentCategory === "Flooring";
+  const showSqft = isFlooringView();
   const hasSqftOptions = !!select.querySelector('option[value="sqft-desc"]');
 
   if (showSqft && !hasSqftOptions) {
@@ -311,27 +365,134 @@ function updateSortOptionsVisibility() {
 function updateCalcButtonVisibility() {
   const btn = document.getElementById("calc-open-btn");
   if (!btn) return;
-  btn.style.display = (currentCategory === "all" || currentCategory === "Flooring") ? "" : "none";
+  btn.style.display = (currentCategory === "all" || isFlooringView()) ? "" : "none";
 }
 
-// Search matches Name, Brand, Model, Category and Retailer, case-insensitive.
-// Fields that are blank for a given item (Brand/Model/Retailer are optional
-// in Airtable) are simply skipped — no data means no match on that field.
+// Rebuilds the Brand / Spec / Wear Layer filter <select> options from
+// whatever's actually present in the current category — so a dropdown
+// never offers an option with zero matching items.
+function updateFacetFilterOptions(categoryItems) {
+  const brandSelect = document.getElementById("brand-filter");
+  const specSelect = document.getElementById("spec-filter");
+  const wearSelect = document.getElementById("wear-layer-filter");
+
+  if (brandSelect) {
+    const brands = [...new Set(categoryItems.map(i => i.brand).filter(Boolean))].sort();
+    if (!brands.includes(currentBrand)) currentBrand = "";
+    brandSelect.innerHTML = `<option value="">All Brands</option>` + brands.map(b => `<option value="${b}">${b}</option>`).join("");
+    brandSelect.value = currentBrand;
+  }
+  if (specSelect) {
+    const specs = [...new Set(categoryItems.flatMap(specsArray))].sort();
+    if (!specs.includes(currentSpec)) currentSpec = "";
+    specSelect.innerHTML = `<option value="">All Specs</option>` + specs.map(s => `<option value="${s}">${s}</option>`).join("");
+    specSelect.value = currentSpec;
+  }
+  if (wearSelect) {
+    const wears = [...new Set(categoryItems.map(wearLayerSpec).filter(Boolean))].sort();
+    if (!wears.includes(currentWearLayer)) currentWearLayer = "";
+    wearSelect.innerHTML = `<option value="">Any Thickness / Wear Layer</option>` + wears.map(w => `<option value="${w}">${w}</option>`).join("");
+    wearSelect.value = currentWearLayer;
+  }
+}
+
+// Flooring gets its own filter row (thickness/wear layer) instead of the
+// generic Brand/Spec row every other category uses, and renders as a
+// table instead of the card grid.
+function updateViewToggle() {
+  const grid = document.getElementById("catalog-grid");
+  const tableWrap = document.getElementById("catalog-table-wrap");
+  const facetRow = document.getElementById("facet-filter-row");
+  const flooringRow = document.getElementById("flooring-filter-row");
+  const flooring = isFlooringView();
+
+  if (grid) grid.hidden = flooring;
+  if (tableWrap) tableWrap.hidden = !flooring;
+  if (facetRow) facetRow.hidden = flooring;
+  if (flooringRow) flooringRow.hidden = !flooring;
+}
+
+// Search matches Name, Brand, Model, Category, Retailer and Specs, case-
+// insensitive. Fields that are blank for a given item are simply skipped.
 function searchMatches(item, query) {
   if (!query) return true;
-  const haystack = [item.name, item.brand, item.model, item.category, item.retailer]
+  const haystack = [item.name, item.brand, item.model, item.webCategory, item.retailer, item.specs]
     .filter(Boolean)
     .join(" \n ")
     .toLowerCase();
   return haystack.includes(query);
 }
 
+function renderFlooringTable(items) {
+  const tbody = document.querySelector("#flooring-table tbody");
+  if (!tbody) return;
+  if (items.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="table-empty">No flooring matches your filters right now — text us what you're looking for.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = items.map(item => {
+    const boxes = boxesAvailable(item);
+    const wear = wearLayerSpec(item) || "&mdash;";
+    const photo = item.photos && item.photos[0] ? item.photos[0] : "";
+    return `<tr>
+      <td class="table-product-cell">
+        <div class="table-product-photo"${photo ? ` style="background-image:url('${photo}');"` : ""}></div>
+        <div>
+          <div class="table-product-name">${item.name}</div>
+          ${item.brand ? `<div class="table-product-sub">${item.brand}</div>` : ""}
+        </div>
+      </td>
+      <td>${wear}</td>
+      <td>${typeof item.price === "number" ? money2(item.price) : "&mdash;"}</td>
+      <td>${typeof item.boxPrice === "number" ? money2(item.boxPrice) : "&mdash;"}</td>
+      <td>${boxes !== null ? boxes : "&mdash;"}</td>
+      <td>${typeof item.availableSqFt === "number" ? sqFtAvailable(item.availableSqFt) : "&mdash;"}</td>
+      <td class="table-actions-cell">
+        <button type="button" class="btn btn-dark btn-small btn-quote" data-quote-id="${item.id}">Get a Quote</button>
+      </td>
+    </tr>`;
+  }).join("");
+}
+
 function renderShopCatalog() {
   const query = currentSearch.trim().toLowerCase();
-  const filtered = shopItems
-    .filter(i => currentCategory === "all" || i.category === currentCategory)
+  const inCategory = shopItems
+    .filter(i => currentCategory === "all" || i.webCategory === currentCategory)
     .filter(i => searchMatches(i, query));
-  renderGrid(sortItems(filtered, currentSort), "catalog-grid");
+
+  updateFacetFilterOptions(inCategory);
+
+  if (isFlooringView()) {
+    const filtered = currentWearLayer ? inCategory.filter(i => specsArray(i).includes(currentWearLayer)) : inCategory;
+    renderFlooringTable(sortItems(filtered, currentSort));
+  } else {
+    let filtered = inCategory;
+    if (currentBrand) filtered = filtered.filter(i => i.brand === currentBrand);
+    if (currentSpec) filtered = filtered.filter(i => specsArray(i).includes(currentSpec));
+    renderGrid(sortItems(filtered, currentSort), "catalog-grid");
+  }
+  updateViewToggle();
+}
+
+// Lets footer/homepage links like shop.html#tools preselect a category tab.
+const CATEGORY_SLUGS = {
+  "flooring": "Flooring",
+  "water-heaters": "Water Heaters",
+  "appliances": "Appliances",
+  "plumbing-bath": "Plumbing & Bath",
+  "lawn-outdoor": "Lawn & Outdoor",
+  "tools": "Tools",
+  "home-improvement": "Home Improvement",
+};
+
+function applyCategoryFromHash() {
+  const slug = window.location.hash.replace("#", "");
+  const category = CATEGORY_SLUGS[slug];
+  if (!category) return;
+  currentCategory = category;
+  document.querySelectorAll(".filter-btn").forEach(b => {
+    b.classList.toggle("active", b.getAttribute("data-filter") === category);
+  });
 }
 
 function initShopControls(items) {
@@ -339,12 +500,17 @@ function initShopControls(items) {
   itemsById = {};
   items.forEach(i => { itemsById[i.id] = i; });
 
+  applyCategoryFromHash();
+
   const filterBtns = document.querySelectorAll(".filter-btn");
   filterBtns.forEach(btn => {
     btn.addEventListener("click", () => {
       filterBtns.forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
       currentCategory = btn.getAttribute("data-filter");
+      currentBrand = "";
+      currentSpec = "";
+      currentWearLayer = "";
       updateSortOptionsVisibility();
       updateCalcButtonVisibility();
       renderShopCatalog();
@@ -355,6 +521,28 @@ function initShopControls(items) {
   if (sortSelect) {
     sortSelect.addEventListener("change", () => {
       currentSort = sortSelect.value;
+      renderShopCatalog();
+    });
+  }
+
+  const brandSelect = document.getElementById("brand-filter");
+  if (brandSelect) {
+    brandSelect.addEventListener("change", () => {
+      currentBrand = brandSelect.value;
+      renderShopCatalog();
+    });
+  }
+  const specSelect = document.getElementById("spec-filter");
+  if (specSelect) {
+    specSelect.addEventListener("change", () => {
+      currentSpec = specSelect.value;
+      renderShopCatalog();
+    });
+  }
+  const wearSelect = document.getElementById("wear-layer-filter");
+  if (wearSelect) {
+    wearSelect.addEventListener("change", () => {
+      currentWearLayer = wearSelect.value;
       renderShopCatalog();
     });
   }
@@ -377,13 +565,10 @@ function initShopControls(items) {
     });
   }
 
-  const catalogGrid = document.getElementById("catalog-grid");
-  if (catalogGrid) {
-    catalogGrid.addEventListener("click", (e) => {
-      const btn = e.target.closest("[data-quote-id]");
-      if (btn) openQuoteModal(itemsById[btn.getAttribute("data-quote-id")]);
-    });
-  }
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-quote-id]");
+    if (btn) openQuoteModal(itemsById[btn.getAttribute("data-quote-id")]);
+  });
   bindQuoteModal();
   bindCalculatorModal();
 
@@ -393,18 +578,14 @@ function initShopControls(items) {
 }
 
 // ---------------------------------------------------------------------
-// Get a Quote modal (Flooring products). Carries the selected product's
-// name/price into the modal and submits to the "quote-request" Netlify
+// Get a Quote modal — used only for Flooring's contractor table, where a
+// sq-ft-needed quote makes sense. Submits to the "quote-request" Netlify
 // Form via fetch, so the page never navigates away. See the static hidden
 // form in shop.html for the field list Netlify expects.
 // ---------------------------------------------------------------------
-function isFlooringPriced(item) {
-  return item.category === "Flooring" && typeof item.price === "number" && typeof item.boxPrice === "number";
-}
-
 function quotePriceText(item) {
-  if (isFlooringPriced(item)) {
-    return `${money2(item.price)} / sq ft · ${money2(item.boxPrice)} / box`;
+  if (item.sellUnit === "sq ft" && typeof item.price === "number") {
+    return typeof item.boxPrice === "number" ? `${money2(item.price)} / sq ft · ${money2(item.boxPrice)} / box` : `${money2(item.price)} / sq ft`;
   }
   return money(item.price);
 }
@@ -725,16 +906,11 @@ async function initInventory() {
     initShopControls(items);
   }
 
-  // Home page: New This Week
+  // Home page: New This Week (mixed categories, see pickNewArrivals)
   if (document.getElementById("new-arrivals-grid")) {
-    const fresh = items.filter(i => i.isNew && i.status === "In Stock").slice(0, 8);
-    const fallback = fresh.length ? fresh : items.filter(i => i.status === "In Stock").slice(0, 4);
+    const picks = pickNewArrivals(items, 4);
+    const fallback = picks.length ? picks : items.slice(0, 4);
     renderGrid(fallback, "new-arrivals-grid");
-  }
-
-  // Home page: Recently Reserved ticker
-  if (document.getElementById("reserved-ticker")) {
-    renderReservedTicker(items, "reserved-ticker");
   }
 }
 
