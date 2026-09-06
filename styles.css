@@ -10,6 +10,7 @@
   --cream-dim: #e2e8da;
   --amber: #c14a26;
   --amber-dark: #9c3a1c;
+  --gold: #d9a441;
   --line: #d7ddd0;
   --text-muted: #667061;
   --radius: 3px;
@@ -53,17 +54,6 @@ img, svg { display: block; max-width: 100%; }
   padding: 0 32px;
 }
 
-/* ---------- Top announcement bar ---------- */
-.announce {
-  background: var(--charcoal);
-  color: var(--cream-dim);
-  text-align: center;
-  font-size: 0.78rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 8px 16px;
-}
-
 /* ---------- Header ---------- */
 header.site-header {
   background: var(--cream);
@@ -81,7 +71,12 @@ header.site-header {
   max-width: var(--max-width);
   margin: 0 auto;
   position: relative;
+  transition: padding 0.2s ease;
 }
+/* Compact sticky header once scrolled (~64px tall) — see the scroll
+   listener in app.js. Logo/nav sizes stay put; only vertical padding
+   shrinks, so nothing reflows or jumps in width. */
+.site-header.scrolled .nav-row { padding: 10px 32px; }
 
 .brand {
   display: flex;
@@ -91,6 +86,17 @@ header.site-header {
   font-size: 1.55rem;
   letter-spacing: 0.03em;
   text-transform: uppercase;
+  /* Without this, "Home Supply" wraps onto its own line inside the flex
+     row whenever the row is at all width-constrained, roughly doubling
+     the header's real height — a logo lockup should never wrap. */
+  white-space: nowrap;
+  /* .nav-row's flex children default to flex-shrink:1, so under real
+     webfonts (Zilla Slab/Inter, wider than any fallback) the row was
+     shrinking .brand's box below its nowrap content's actual width —
+     the content (including "Home Supply") then overflowed the shrunk
+     box and drew on top of the nav links next to it. The logo must
+     never shrink; if the row is tight, .primary-nav/.nav-cta give first. */
+  flex-shrink: 0;
 }
 
 .brand img {
@@ -103,7 +109,7 @@ header.site-header {
 
 nav.primary-nav {
   display: flex;
-  gap: 36px;
+  gap: 28px;
   font-size: 0.85rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -113,6 +119,10 @@ nav.primary-nav a {
   padding-bottom: 4px;
   border-bottom: 1px solid transparent;
   transition: border-color 0.2s ease;
+  /* A link wrapping to 2 lines nearly doubles its own height (24px ->
+     49px) and moves its active-state underline to a different height
+     than its single-line neighbors — a nav link must never wrap. */
+  white-space: nowrap;
 }
 
 nav.primary-nav a:hover,
@@ -124,7 +134,28 @@ nav.primary-nav a.active {
   display: flex;
   align-items: center;
   gap: 18px;
+  /* Never let this shrink below its content — the phone link and CTA
+     button both need white-space:nowrap to hold their width, and a
+     shrunk-but-not-actually-narrower box is what let this get clipped
+     past the container's right edge. (Do NOT also add margin-left:auto
+     here: .nav-row's justify-content:space-between already pins the
+     first/last flex children flush to the row's edges and splits the
+     leftover space evenly between all three items; an auto margin on
+     this item would swallow that entire leftover into its own margin,
+     collapsing the gap between .brand and .primary-nav to zero.) */
+  flex-shrink: 0;
 }
+
+.nav-phone {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.nav-phone:hover { color: var(--amber-dark); }
+.phone-icon { width: 17px; height: 17px; flex-shrink: 0; }
 
 .btn {
   display: inline-block;
@@ -137,6 +168,12 @@ nav.primary-nav a.active {
   transition: all 0.2s ease;
   cursor: pointer;
   background: none;
+  /* A button's label wrapping onto 2 lines always looks broken (it also
+     silently inflated the header's height well past the "compact"
+     target). Every flex row a .btn sits in already wraps the button as a
+     whole (flex-wrap: wrap) when space is short, which is the right
+     behavior — wrap the row, never the label. */
+  white-space: nowrap;
 }
 /* .btn/.btn-block both set their own `display`, which otherwise beats the
    browser's default [hidden]{display:none} on specificity — so any button
@@ -171,44 +208,102 @@ nav.primary-nav a.active {
   width: 24px;
   height: 2px;
   background: var(--charcoal);
+  transition: transform 0.2s ease, opacity 0.2s ease;
 }
+.menu-toggle.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+.menu-toggle.open span:nth-child(2) { opacity: 0; }
+.menu-toggle.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
 
 /* ---------- Hero ---------- */
 .hero {
   background: var(--charcoal);
   color: var(--cream);
-  padding: 110px 32px;
-  text-align: center;
+  padding: 90px 32px;
+}
+
+.hero-content {
+  max-width: var(--max-width);
+  margin: 0 auto;
+}
+
+/* Real-photo hero: a background image plus a left-to-right dark green
+   scrim so light, left-aligned text stays readable regardless of the
+   photo underneath. Swap --hero-photo's url() for a real inventory/
+   showroom/pallet shot (drop it in /assets and set the inline
+   custom property on the section) — until real photography is supplied,
+   a dark-green photographic-feel gradient stands in so nothing here
+   reads as generic stock imagery. */
+.hero-photo {
+  position: relative;
+  background:
+    linear-gradient(90deg, rgba(15, 22, 17, 0.94) 0%, rgba(20, 28, 22, 0.78) 45%, rgba(28, 40, 32, 0.5) 100%),
+    var(--hero-photo, linear-gradient(120deg, #2f4234 0%, #1c2820 55%, #24352a 100%));
+  background-size: cover;
+  background-position: center;
+}
+
+/* Fills the large empty gradient area to the right of the (left-aligned,
+   max-width:720px) text column on wide viewports with an on-brand
+   geometric watermark instead of leaving it blank — see the comment on
+   this element in index.html for why an actual photo isn't used yet.
+   Hidden below 1150px, where the hero's own padding leaves no real room
+   beside the text without it starting to overlap. */
+.hero-watermark {
+  display: none;
+  position: absolute;
+  top: 50%;
+  right: 6%;
+  width: 320px;
+  height: 320px;
+  transform: translateY(-50%) rotate(-8deg);
+  color: rgba(238, 241, 234, 0.08);
+  pointer-events: none;
+}
+@media (min-width: 1150px) {
+  .hero-watermark { display: block; }
 }
 
 .hero .eyebrow {
   text-transform: uppercase;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.16em;
   font-size: 0.78rem;
   color: var(--amber);
   margin-bottom: 18px;
 }
 
 .hero h1 {
-  font-size: clamp(2.2rem, 5vw, 3.6rem);
-  max-width: 820px;
-  margin: 0 auto 22px;
-  line-height: 1.15;
+  font-size: clamp(1.9rem, 4.2vw, 3.1rem);
+  max-width: 720px;
+  margin: 0 0 18px;
+  line-height: 1.2;
+}
+
+.hero-price {
+  color: var(--gold);
 }
 
 .hero p {
-  max-width: 560px;
-  margin: 0 auto 34px;
+  max-width: 520px;
+  margin: 0 0 30px;
   color: var(--cream-dim);
-  font-size: 1.05rem;
+  font-size: 1.02rem;
 }
 
 .hero-actions {
   display: flex;
-  gap: 16px;
-  justify-content: center;
+  align-items: center;
+  gap: 22px;
   flex-wrap: wrap;
 }
+
+.hero-text-link {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--cream);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.hero-text-link:hover { color: var(--gold); }
 
 .hero .btn-outline {
   color: var(--cream);
@@ -217,6 +312,33 @@ nav.primary-nav a.active {
 .hero .btn-outline:hover { background: var(--cream); color: var(--charcoal); }
 .hero .btn-dark { background: var(--amber); border-color: var(--amber); color: var(--cream); }
 .hero .btn-dark:hover { background: var(--amber-dark); border-color: var(--amber-dark); color: var(--cream); }
+
+/* ---------- Compact page heading (Inventory/About/Visit Us) — replaces
+   the old dark full-bleed hero on non-homepage pages, so content starts
+   much closer to the top of the viewport. ---------- */
+.page-heading {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 36px 32px 12px;
+}
+.page-heading .eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.72rem;
+  color: var(--amber-dark);
+  margin-bottom: 10px;
+  display: block;
+}
+.page-heading h1 {
+  font-size: clamp(1.75rem, 3.4vw, 2rem);
+  margin: 0 0 8px;
+}
+.page-heading p {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  max-width: 62ch;
+  margin: 0;
+}
 
 /* ---------- Section headings ---------- */
 .section {
@@ -237,13 +359,135 @@ nav.primary-nav a.active {
 }
 .section-head p { color: var(--text-muted); }
 
-/* ---------- Category grid ---------- */
+/* ---------- Homepage stat strip (dark green, computed + factual cells) ---------- */
+.stat-strip {
+  background: var(--charcoal-soft);
+  color: var(--cream);
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  max-width: var(--max-width);
+  margin: 0 auto;
+}
+.stat-cell {
+  padding: 22px 20px;
+  text-align: center;
+  border-left: 1px solid rgba(238,241,234,0.14);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.stat-cell:first-child { border-left: none; }
+.stat-cell strong {
+  font-family: 'Zilla Slab', Georgia, serif;
+  font-size: 1.5rem;
+  color: var(--gold);
+  line-height: 1.1;
+}
+.stat-cell span {
+  font-size: 0.8rem;
+  color: var(--cream-dim);
+  line-height: 1.35;
+}
+@media (max-width: 900px) {
+  .stat-strip { grid-template-columns: repeat(2, 1fr); }
+  .stat-cell:nth-child(3) { border-left: none; }
+  .stat-cell:nth-child(1), .stat-cell:nth-child(2) { border-bottom: 1px solid rgba(238,241,234,0.14); }
+}
+@media (max-width: 480px) {
+  .stat-strip { grid-template-columns: 1fr; }
+  .stat-cell { border-left: none !important; border-bottom: 1px solid rgba(238,241,234,0.14); }
+  .stat-cell:last-child { border-bottom: none; }
+}
+
+/* ---------- Category grid (icon cards, still used on About) ---------- */
 .category-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 24px;
   max-width: var(--max-width);
   margin: 0 auto;
+}
+
+/* ---------- Category tiles (homepage) — photo-style tiles standing in
+   for real category photography (a large faint icon watermark fills each
+   tile until real photos are supplied; see README for the placeholder
+   note). Fixed height per spec (~170-190px), not square, so a 7-across
+   row reads as a photo strip rather than icon cards. ---------- */
+.category-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 16px;
+  max-width: var(--max-width);
+  margin: 0 auto;
+}
+.category-tile {
+  position: relative;
+  height: 180px;
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  background: var(--tile-bg, linear-gradient(135deg, var(--charcoal-soft), var(--charcoal)));
+  display: block;
+  transition: transform 0.2s ease;
+}
+.category-tile:hover { transform: translateY(-3px); }
+/* Small watermark, pinned to the top-right corner and sized well below
+   the tile's text footer, so it never sits behind — or hangs off the
+   edge of — the title/subtitle. */
+.category-tile .icon {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 56px;
+  height: 56px;
+  color: rgba(238,241,234,0.35);
+}
+/* Fixed HEIGHT (not min-height) footer, tall enough for a 2-line title
+   plus the subtitle, pinned to the tile's bottom, with content
+   top-anchored inside it. A min-height + justify-content:flex-end here
+   looks equivalent for a single-line title, but the moment a title
+   actually wraps ("Home Improvement" vs "Tools") its content outgrows
+   the minimum, the box has to grow past it to fit, and bottom-anchoring
+   then shifts that title's top upward relative to every unwrapped tile
+   — exactly the ~20px misalignment this is fixing. A fixed height that
+   already fits the 2-line case never grows, so every title top-anchors
+   at the same offset regardless of how many lines its own copy takes;
+   the small unused gap below a short subtitle is a fair trade for
+   pixel-identical title positions and zero truncation. */
+.category-tile .tile-copy {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 76px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  background: linear-gradient(0deg, rgba(0,0,0,0.62), rgba(0,0,0,0.05) 80%);
+}
+.category-tile .tile-title {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--cream);
+  line-height: 1.25;
+}
+.category-tile .tile-sub {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--cream-dim);
+  margin-top: 2px;
+  line-height: 1.3;
+}
+@media (max-width: 900px) {
+  .category-tile-grid { grid-template-columns: repeat(4, 1fr); }
+}
+@media (max-width: 480px) {
+  .category-tile-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .category-tile { height: 130px; }
+  .category-tile .tile-title { font-size: 0.78rem; }
 }
 
 .category-card {
@@ -281,6 +525,11 @@ nav.primary-nav a.active {
   max-width: var(--max-width);
   margin: 0 auto;
 }
+/* Same issue as .btn[hidden] above: .product-grid sets its own `display`,
+   which otherwise beats the browser's default [hidden]{display:none} on
+   origin precedence — so toggling `hidden` on this grid wouldn't actually
+   hide it without this override. */
+.product-grid[hidden] { display: none; }
 
 .product-card {
   background: #fff;
@@ -292,8 +541,10 @@ nav.primary-nav a.active {
 }
 
 .product-photo {
-  aspect-ratio: 4/3;
+  aspect-ratio: 1 / 1;
   background: linear-gradient(135deg, var(--cream-dim), #fff);
+  background-size: cover;
+  background-position: center;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -301,6 +552,56 @@ nav.primary-nav a.active {
   color: var(--text-muted);
 }
 .product-photo svg { width: 34px; height: 34px; opacity: 0.5; }
+
+/* ---------- Spec chips ---------- */
+.spec-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.spec-chip {
+  background: var(--cream-dim);
+  color: var(--charcoal-soft);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 4px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+/* ---------- Expandable "More details" ---------- */
+.product-more {
+  font-size: 0.82rem;
+}
+.product-more summary {
+  cursor: pointer;
+  color: var(--amber-dark);
+  font-weight: 600;
+  font-size: 0.78rem;
+  list-style: none;
+}
+.product-more summary::-webkit-details-marker { display: none; }
+.product-more summary::before { content: "+ "; }
+/* A single trailing space after a CSS hex escape is consumed as the
+   escape's own terminator, not rendered as content — "\2212 " silently
+   produced "−More details" with no space. The extra space here is the
+   one that actually survives into the rendered content. */
+.product-more[open] summary::before { content: "\2212  "; }
+.product-more p,
+.product-more ul {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+}
+.product-more ul { padding-left: 18px; }
+.product-more li { margin-bottom: 2px; }
+.product-ref-link {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--amber-dark);
+  text-decoration: underline;
+  font-weight: 600;
+}
 
 .product-info {
   padding: 20px;
@@ -320,55 +621,48 @@ nav.primary-nav a.active {
 .product-info h4 {
   font-size: 1rem;
   margin: 0;
+  /* Max 2 lines — a long real product name (see the site's actual Name
+     field, never shortened/parsed) never pushes the card past its
+     target height. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
+.product-info h4 a { color: inherit; }
+.product-info h4 a:hover { color: var(--amber-dark); }
 
 .product-price {
-  font-family: 'Zilla Slab', Georgia, serif;
-  font-size: 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   margin-top: auto;
   padding-top: 10px;
 }
 
-.product-price .was {
-  text-decoration: line-through;
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  font-family: 'Inter', sans-serif;
-  margin-left: 8px;
-}
-
-.product-price-flooring {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.product-price-flooring .price-line {
+.product-price .price-line {
   font-family: 'Zilla Slab', Georgia, serif;
   font-size: 1.15rem;
   font-weight: 700;
 }
 
-.product-price-flooring .price-unit {
+.product-price .price-unit {
   font-family: 'Inter', sans-serif;
   font-size: 0.85rem;
   color: var(--text-muted);
   font-weight: 700;
 }
 
-.product-price-flooring .price-sub,
-.product-price-flooring .price-avail {
+.product-price .price-avail {
   font-family: 'Inter', sans-serif;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   color: var(--text-muted);
-  font-weight: 400;
+  font-weight: 500;
 }
-
-.product-price-flooring .price-avail {
-  font-weight: 700;
-}
-
-.product-price-flooring .price-bold {
+/* Low-stock messaging ("Last box"/"Only 1 left") gets rust emphasis
+   instead of the muted default, on cards and the Contractor View alike. */
+.low-stock-emph {
+  color: var(--amber-dark);
   font-weight: 700;
 }
 
@@ -380,22 +674,194 @@ nav.primary-nav a.active {
 }
 .product-actions .btn { flex: 1 1 130px; text-align: center; }
 
-.catalog-controls {
+/* ---------- Shop layout: sidebar + results ----------
+   A CSS grid, sidebar column fixed-width + results filling the rest, on
+   desktop; on narrower viewports (see the breakpoint further down) the
+   sidebar becomes a slide-in drawer instead of a second column. Applies
+   to every category, not just Flooring — Type/Brand always show (2
+   groups); Flooring additionally reveals its calculator card and 5 extra
+   facet groups (see updateViewToggle()/updateFacetFilterOptions() in
+   inventory.js). "Do not redesign the All view into a cluttered layout"
+   is why this stays a simple 2-group sidebar outside Flooring rather
+   than disappearing outright — Type/Brand filtering still needs to live
+   somewhere for every category, and one persistent, predictable spot
+   beats it jumping between a sidebar and a toolbar row depending on
+   category. */
+.shop-layout {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 32px;
+  align-items: start;
+}
+
+.shop-sidebar {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 84px;
+}
+.sidebar-mobile-head { display: none; }
+.sidebar-mobile-actions { display: none; }
+/* Holds everything scrollable (calc card, filter groups) as its own flex
+   region, separate from the mobile header/footer — see the mobile
+   breakpoint further down for why. */
+.sidebar-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sidebar-calc-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: 14px 16px;
+}
+.sidebar-calc-card[hidden] { display: none; }
+.sidebar-calc-card h3 {
+  font-size: 0.92rem;
+  margin: 0 0 10px;
+}
+/* The sidebar's ~220px usable width is too narrow for the input+button
+   side by side (the input's placeholder was truncating to "Roc...") —
+   stack them instead. */
+.sidebar-calc-card .flooring-calc-row {
+  flex-direction: column;
+  max-width: none;
+}
+.sidebar-calc-card .flooring-calc-row .btn { width: 100%; }
+
+.sidebar-filters-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+.sidebar-scroll > .sidebar-calc-card + .sidebar-filters-head { margin-top: 2px; }
+.sidebar-filters-head h3 {
+  font-size: 0.92rem;
+  margin: 0;
+}
+.clear-all-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.78rem;
+  color: var(--amber-dark);
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* Each facet is its own collapsible <details> group — native semantics,
+   no custom JS needed for expand/collapse. Groups for facets that don't
+   apply to the current category/selection hide outright (see
+   updateViewToggle()/updateFacetFilterOptions()) rather than showing an
+   empty or pointless "Any" dropdown. */
+.filter-group {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.filter-group[hidden] { display: none; }
+.filter-group summary {
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+  margin-bottom: 10px;
+}
+.filter-group summary::-webkit-details-marker { display: none; }
+.filter-group summary::before { content: "\2212  "; color: var(--text-muted); }
+.filter-group:not([open]) summary::before { content: "+  "; }
+.sidebar-select {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.82rem;
+  color: var(--charcoal);
+  cursor: pointer;
+}
+
+.shop-sidebar-backdrop { display: none; }
+
+.shop-results { min-width: 0; }
+
+/* One compact toolbar: search, mobile Filters button, live result count,
+   sort, and (Flooring only) the Card/Contractor View toggle. Every
+   control shares the same height/radius so the row reads as one unit. */
+.results-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 44px;
+  gap: 12px;
+  margin-bottom: 16px;
 }
-.catalog-controls .filter-row { margin-bottom: 0; }
-.catalog-controls .search-control { flex: 1 1 100%; order: -1; }
+.mobile-filters-btn {
+  display: none;
+  align-items: center;
+  gap: 6px;
+}
+.mobile-filters-btn svg { width: 15px; height: 15px; flex-shrink: 0; }
+.results-count {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.results-toolbar .sort-control { margin-left: auto; }
+
+.active-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.active-filter-chips[hidden] { display: none; }
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--cream-dim);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.75rem;
+  color: var(--charcoal);
+  cursor: pointer;
+}
+.filter-chip:hover { background: var(--line); }
+.filter-chip span { opacity: 0.6; }
+
+/* Accessible but visually invisible — for the page's real <h1> once its
+   visible eyebrow/heading/intro paragraph were removed as pure
+   repetition of the nav link and <title>. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 .search-control {
   position: relative;
   display: flex;
   align-items: center;
   max-width: 360px;
+  flex: 1 1 240px;
 }
 .search-icon {
   position: absolute;
@@ -449,6 +915,12 @@ nav.primary-nav a.active {
   cursor: pointer;
   border-radius: 999px;
 }
+.filter-btn[hidden] { display: none; }
+.filter-btn .filter-count {
+  opacity: 0.6;
+  font-weight: 500;
+  margin-left: 3px;
+}
 .filter-btn.active,
 .filter-btn:hover {
   background: var(--charcoal);
@@ -479,25 +951,288 @@ nav.primary-nav a.active {
   cursor: pointer;
 }
 
-.controls-right {
+
+.catalog-empty,
+.catalog-loading {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 40px 0;
+  grid-column: 1 / -1;
+}
+.catalog-error {
+  text-align: center;
+  color: var(--amber-dark);
+  padding: 40px 0;
+  grid-column: 1 / -1;
+  font-weight: 600;
+}
+.catalog-error a { text-decoration: underline; }
+
+.catalog-empty-category {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 48px 20px;
+  max-width: 480px;
+  margin: 0 auto;
+}
+.catalog-empty-category .catalog-empty-heading {
+  font-family: 'Zilla Slab', Georgia, serif;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--charcoal);
+  margin: 0 0 8px;
+}
+.catalog-empty-category p { color: var(--text-muted); margin: 0 0 20px; }
+.catalog-empty-category .catalog-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+/* ---------- Flooring: Card View / Contractor View toggle ---------- */
+.view-toggle {
+  display: flex;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px;
+  background: #fff;
+}
+.view-toggle[hidden] { display: none; }
+.view-toggle-btn {
+  padding: 6px 14px;
+  border: none;
+  background: none;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.view-toggle-btn.active {
+  background: var(--charcoal);
+  color: var(--cream);
+}
+
+/* ---------- Flooring Contractor View ---------- */
+.contractor-view {
+  max-width: var(--max-width);
+  margin: 0 auto;
+}
+.contractor-view[hidden] { display: none; }
+
+/* ---------- Flooring calculator — compact sidebar card (.sidebar-calc-card
+   above); shared by Card View and Contractor View alike. Element ids
+   below are unchanged from the previous full-width callout, only the
+   surrounding markup/class moved. ---------- */
+.flooring-calc-row {
+  display: flex;
+  gap: 8px;
+  max-width: 420px;
+}
+.flooring-calc-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.85rem;
+}
+.flooring-calc-hint {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+.flooring-calc-result {
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin-top: 10px;
+}
+.flooring-calc-result[hidden] { display: none; }
+/* Overrides .calc-link's white-space:nowrap (fine for its original short
+   "Calculate Sq Ft" label, but this button's longer text needs to wrap
+   instead of forcing the callout wider than its container). */
+#flooring-calc-full-link {
+  display: block;
+  margin-top: 10px;
+  white-space: normal;
+  text-align: left;
+}
+
+.contractor-table-wrap {
+  overflow-x: auto;
+}
+.contractor-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border: 1px solid var(--line);
+  font-size: 0.86rem;
+}
+.contractor-table th {
+  text-align: left;
+  padding: 12px 16px;
+  background: var(--cream-dim);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.contractor-table td {
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+  vertical-align: middle;
+}
+.contractor-product-cell {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 220px;
+}
+.contractor-product-photo {
+  display: block;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  border-radius: var(--radius);
+  background: var(--cream-dim) center / cover no-repeat;
+}
+.contractor-product-name { display: block; font-weight: 600; }
+.contractor-product-name:hover { color: var(--amber-dark); }
+.contractor-product-sub { font-size: 0.78rem; color: var(--text-muted); }
+.contractor-actions-cell { text-align: right; white-space: nowrap; }
+.contractor-low-stock { color: var(--amber-dark); font-weight: 700; white-space: nowrap; }
+.contractor-table .table-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 40px 16px;
+}
+
+/* ---------- Contractor View on mobile: stacked cards, never a
+   horizontally-scrolling table. Same row data as the desktop table
+   (renderContractorMobileCards() in inventory.js renders both from the
+   same filtered/sorted array — CSS just picks which one is visible). ---------- */
+.contractor-cards { display: none; }
+.contractor-card {
+  display: flex;
+  gap: 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.contractor-card-photo {
+  display: block;
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  border-radius: var(--radius);
+  background: var(--cream-dim) center / cover no-repeat;
+}
+.contractor-card-body { flex: 1; min-width: 0; }
+.contractor-card-name { display: block; font-weight: 600; font-size: 0.92rem; }
+.contractor-card-name:hover { color: var(--amber-dark); }
+.contractor-card-sub { font-size: 0.76rem; color: var(--text-muted); margin-top: 2px; }
+.contractor-card-specs { margin-top: 8px; }
+.contractor-card-prices {
+  display: flex;
   flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 8px;
+  font-size: 0.82rem;
 }
-.calc-trigger-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-.calc-icon { width: 15px; height: 15px; flex-shrink: 0; }
+.contractor-card-prices strong { font-family: 'Zilla Slab', Georgia, serif; }
+.contractor-card-avail { font-size: 0.8rem; margin-top: 4px; }
+.contractor-card-cta { margin-top: 10px; }
+.contractor-card-cta .btn { width: 100%; text-align: center; }
 
 @media (max-width: 700px) {
-  .catalog-controls { flex-direction: column; align-items: stretch; }
-  .catalog-controls .search-control { max-width: none; }
-  .sort-control { justify-content: center; }
-  .controls-right { justify-content: center; }
+  .contractor-table-wrap { display: none; }
+  .contractor-cards { display: block; }
+}
+
+/* ---------- Shop sidebar -> mobile/tablet filter drawer ----------
+   Below this width there isn't room for a permanent sidebar beside the
+   product grid, so it becomes a slide-in drawer instead: fixed to the
+   left edge, off-screen until .open (toggled by the "Filters" button —
+   see bindSidebarFilterExtras() in inventory.js), over a dimmed
+   backdrop. Desktop's "Clear all" + collapsible groups are unchanged —
+   same DOM, only its position/visibility differs — plus an Apply/Show
+   results and a second Clear all in the drawer's own footer, since a
+   drawer (unlike an always-visible sidebar) benefits from an explicit
+   "done" action. */
+@media (max-width: 880px) {
+  .shop-layout { display: block; }
+  .shop-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(320px, 86vw);
+    max-width: none;
+    border-radius: 0;
+    border: none;
+    box-shadow: 2px 0 24px rgba(0,0,0,0.18);
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    z-index: 1001;
+    /* The sidebar itself no longer scrolls — .sidebar-scroll below does,
+       as its own flex region between the fixed header and footer. A
+       position:sticky footer *inside* the same scrolling list it was
+       previously in visually overlapped whichever filter group the
+       drawer happened to open onto, since sticky positioning doesn't
+       reserve space for what's still below it in flow. */
+    overflow: hidden;
+  }
+  .shop-sidebar.open { transform: translateX(0); }
+  .sidebar-mobile-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 700;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--line);
+    flex-shrink: 0;
+  }
+  .sidebar-close-btn {
+    background: none;
+    border: none;
+    font-size: 1.4rem;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 4px;
+  }
+  .sidebar-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding-top: 16px;
+  }
+  .sidebar-mobile-actions {
+    display: flex;
+    gap: 10px;
+    flex-shrink: 0;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+    background: #fff;
+  }
+  .sidebar-mobile-actions .btn { flex: 1 1 0; text-align: center; }
+  .shop-sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 1000;
+  }
+  .shop-sidebar-backdrop[hidden] { display: none; }
+  .mobile-filters-btn { display: inline-flex; }
+  .results-toolbar .sort-control { margin-left: 0; }
 }
 
 /* ---------- Strip / banner ---------- */
@@ -585,7 +1320,15 @@ nav.primary-nav a.active {
   font-size: 0.94rem;
 }
 .contact-line:last-child { border-bottom: none; }
-.contact-line strong { min-width: 90px; color: var(--text-muted); font-weight: 500; }
+.contact-line strong { min-width: 90px; color: var(--text-muted); font-weight: 500; flex-shrink: 0; }
+/* A flex item's default min-width is auto, not 0 — for text content that
+   means "as wide as its longest unbreakable run," which an email address
+   (one long run with no spaces to wrap at) hits immediately: at 320px
+   this pushed the row 41px past the viewport instead of wrapping. */
+.contact-line > :not(strong) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 
 .faq-item {
   border-bottom: 1px solid var(--line);
@@ -644,9 +1387,34 @@ footer.site-footer {
   .footer-grid { grid-template-columns: 1fr; gap: 24px; }
 }
 
-@media (max-width: 700px) {
+/* The full desktop nav row (logo + 4 links + phone/CTA, none of which
+   shrink — see .brand/.nav-cta's own comments) needs ~1100px of content
+   width to fit without wrapping or clipping; .max-width's 1200px
+   container has margin to spare at that size (verified: ctaRight stays
+   inside the row at 1200/1440), but tablet widths below that don't. This
+   is its own breakpoint, separate from the narrower one below, so the
+   hamburger menu takes over as soon as the row would genuinely overflow
+   (measured: 1102px content in a 768/1024px viewport before this) without
+   also forcing the narrower breakpoint's hero/section/grid rules — which
+   are a mobile layout decision, not a nav-fit one — down into tablet
+   widths that have plenty of room for them. */
+@media (max-width: 1150px) {
   nav.primary-nav { display: none; }
   .menu-toggle { display: flex; }
+  /* Hiding the nav links alone isn't enough here — .nav-cta's phone
+     label + "See what's in stock" button together are ~400px and don't
+     shrink (see .nav-cta's own comment), so between roughly 480-1150px
+     the row still overflowed (measured 810px content in a 768px
+     viewport) even with the links gone. Compact to icon-only phone +
+     no CTA button at the same breakpoint the hamburger takes over,
+     instead of leaving a gap where tablet widths are neither the full
+     desktop row nor the already-compacted <=480px one below. */
+  .nav-cta .btn-small { display: none; }
+  .nav-phone span { display: none; }
+  .nav-phone { padding: 6px; }
+}
+
+@media (max-width: 700px) {
   .nav-row { padding: 16px 20px; }
   .hero { padding: 72px 20px; }
   .section { padding: 56px 20px; }
@@ -656,8 +1424,24 @@ footer.site-footer {
 
 @media (max-width: 480px) {
   .category-grid, .product-grid { grid-template-columns: 1fr; }
-  .nav-cta .btn-small { display: none; }
-  .brand img { height: 26px; }
+  /* .brand has flex-shrink:0 (deliberately, so the desktop row never
+     crushes the logo below its own content width — see .brand's own
+     comment) — on narrow viewports that same protection means the
+     wordmark's real content width has to actually fit the viewport on
+     its own, since nothing will shrink it. Scaling font-size/gap/image
+     down here shrinks that real content width instead of just visually
+     compressing an already-sized box, which is what a scrollable
+     header (measured 417px content in a 320-390px viewport before this)
+     needs. */
+  .brand { font-size: 1.15rem; gap: 7px; }
+  .brand img { height: 24px; }
+}
+
+@media (max-width: 360px) {
+  /* Reserves enough room for the phone-icon tap target and hamburger
+     next to the logo at the very narrowest supported width (320px). */
+  .brand { font-size: 0.98rem; gap: 6px; }
+  .brand img { height: 21px; }
 }
 
 /* ---------- Photo gallery / product card additions ---------- */
@@ -818,6 +1602,16 @@ footer.site-footer {
   color: var(--text-muted);
   font-size: 0.92rem;
   margin: 0;
+}
+/* .audience-grid is declared after the shared "Responsive" section's
+   `.steps, .audience-grid { grid-template-columns: 1fr; }` media-query
+   rule (same file, further up) — later source order wins at equal
+   specificity, so that rule was silently losing to this file's own
+   repeat(3, 1fr) at every width, and the grid never actually collapsed
+   on mobile. Repeating the override here, after this block, fixes it
+   without reordering the rest of the stylesheet. */
+@media (max-width: 900px) {
+  .audience-grid { grid-template-columns: 1fr; }
 }
 
 /* ---------- Get a Quote modal ---------- */
@@ -1100,4 +1894,131 @@ nav.primary-nav.open {
   border-bottom: 1px solid var(--line);
   padding: 20px 32px 28px;
   gap: 18px;
+}
+
+/* ---------- Product detail page (product.html) ---------- */
+.product-detail {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 32px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px;
+  align-items: start;
+}
+.product-detail-media .product-photo {
+  aspect-ratio: 1 / 1;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--line);
+}
+.product-detail-media .thumb-row { border-bottom: none; border-top: 1px solid var(--line); }
+/* A sibling of .product-detail, not a child of it — without its own
+   matching max-width/centering it sat flush against the viewport's left
+   edge while .product-detail's actual content was inset to the 1200px
+   container below it, visibly misaligned on anything wider than that. */
+.product-detail-back {
+  display: block;
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 20px 32px 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+.product-detail-back:hover { color: var(--charcoal); }
+.product-detail-info .product-cat {
+  display: block;
+  margin-bottom: 8px;
+}
+.product-detail-info h1 {
+  font-size: clamp(1.4rem, 2.6vw, 1.9rem);
+  margin: 0 0 12px;
+}
+.product-detail-info .spec-chips { margin-bottom: 16px; }
+.product-detail-price {
+  margin: 16px 0;
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.product-detail-price .price-line {
+  font-family: 'Zilla Slab', Georgia, serif;
+  font-size: 1.7rem;
+  font-weight: 700;
+}
+.product-detail-price .price-unit {
+  font-size: 1rem;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+.product-detail-price .price-avail {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.product-detail-specs {
+  margin: 16px 0;
+}
+.product-detail-specs table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.product-detail-specs td { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.product-detail-specs td:first-child { color: var(--text-muted); width: 45%; }
+.product-detail-desc {
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  margin: 16px 0;
+}
+.product-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 24px;
+}
+.product-detail-actions .btn { flex: 1 1 160px; text-align: center; }
+.product-detail-notfound {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 80px 32px;
+  text-align: center;
+  color: var(--text-muted);
+}
+@media (max-width: 800px) {
+  .product-detail { grid-template-columns: 1fr; gap: 24px; padding: 20px; }
+}
+
+/* ---------- About page image slots ---------- */
+.about-image-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  max-width: var(--max-width);
+  margin: 0 auto;
+}
+.about-image-slot {
+  /* Shorter than the previous 4/3 — a tall placeholder box for an icon
+     this small reads as an oversized empty tile rather than an
+     intentional layout choice. */
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-card);
+  background: linear-gradient(135deg, var(--charcoal-soft), var(--charcoal));
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+  position: relative;
+}
+.about-image-slot svg {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 20%; height: 20%;
+  transform: translate(-50%, -50%);
+  color: rgba(238,241,234,0.18);
+}
+.about-image-slot span {
+  position: relative;
+  padding: 12px 16px;
+  font-size: 0.78rem;
+  color: var(--cream);
+  background: linear-gradient(0deg, rgba(0,0,0,0.55), transparent);
+  width: 100%;
+}
+@media (max-width: 700px) {
+  .about-image-grid { grid-template-columns: 1fr; }
 }

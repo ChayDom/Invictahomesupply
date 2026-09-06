@@ -29,8 +29,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.querySelectorAll("a[data-tel-link]").forEach(el => el.href = `tel:${cfg.phoneHref}`);
   document.querySelectorAll("a[data-sms-link]").forEach(el => {
+    const explicitBody = el.getAttribute("data-body");
     const item = el.getAttribute("data-item") || "";
-    const body = item ? `Hi! I'd like to check availability for: ${item}` : "Hi! I have a question about a product I saw on the Invicta Home Supply website.";
+    const body = explicitBody || (item ? `Hi! I'd like to check availability for: ${item}` : "Hi! I have a question about a product I saw on the Invicta Home Supply website.");
     el.href = `sms:${cfg.phoneHref}?&body=${encodeURIComponent(body)}`;
   });
   document.querySelectorAll("a[data-sms-optin]").forEach(el => {
@@ -40,11 +41,38 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll("a[data-fb-link]").forEach(el => el.href = cfg.facebookUrl);
   document.querySelectorAll("a[data-ig-link]").forEach(el => el.href = cfg.instagramUrl);
 
+  // Copyright year, generated so it never goes stale.
+  document.querySelectorAll("[data-year]").forEach(el => el.textContent = new Date().getFullYear());
+
   // Mobile nav toggle
   const toggle = document.querySelector(".menu-toggle");
   const nav = document.querySelector("nav.primary-nav");
   if (toggle && nav) {
-    toggle.addEventListener("click", () => nav.classList.toggle("open"));
+    toggle.addEventListener("click", () => {
+      const open = nav.classList.toggle("open");
+      toggle.classList.toggle("open", open);
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+  }
+
+  // Compact sticky header on scroll — toggles .scrolled once the page has
+  // scrolled past a small threshold, and back off near the top. Threshold
+  // has a little hysteresis (24px on, 8px off) so it doesn't flicker.
+  const header = document.querySelector(".site-header");
+  if (header) {
+    let scrolled = false;
+    const onScroll = () => {
+      const y = window.scrollY || document.documentElement.scrollTop;
+      if (!scrolled && y > 24) {
+        scrolled = true;
+        header.classList.add("scrolled");
+      } else if (scrolled && y < 8) {
+        scrolled = false;
+        header.classList.remove("scrolled");
+      }
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
   }
 
   // Shop page category filter + sort is handled in inventory.js, since
