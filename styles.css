@@ -242,6 +242,27 @@ nav.primary-nav a.active {
   background-position: center;
 }
 
+/* Fills the large empty gradient area to the right of the (left-aligned,
+   max-width:720px) text column on wide viewports with an on-brand
+   geometric watermark instead of leaving it blank — see the comment on
+   this element in index.html for why an actual photo isn't used yet.
+   Hidden below 1150px, where the hero's own padding leaves no real room
+   beside the text without it starting to overlap. */
+.hero-watermark {
+  display: none;
+  position: absolute;
+  top: 50%;
+  right: 6%;
+  width: 320px;
+  height: 320px;
+  transform: translateY(-50%) rotate(-8deg);
+  color: rgba(238, 241, 234, 0.08);
+  pointer-events: none;
+}
+@media (min-width: 1150px) {
+  .hero-watermark { display: block; }
+}
+
 .hero .eyebrow {
   text-transform: uppercase;
   letter-spacing: 0.16em;
@@ -838,6 +859,28 @@ nav.primary-nav a.active {
 }
 .catalog-error a { text-decoration: underline; }
 
+.catalog-empty-category {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 48px 20px;
+  max-width: 480px;
+  margin: 0 auto;
+}
+.catalog-empty-category .catalog-empty-heading {
+  font-family: 'Zilla Slab', Georgia, serif;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--charcoal);
+  margin: 0 0 8px;
+}
+.catalog-empty-category p { color: var(--text-muted); margin: 0 0 20px; }
+.catalog-empty-category .catalog-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
 /* ---------- Flooring: Card View / Contractor View toggle ---------- */
 .view-toggle {
   display: flex;
@@ -1172,7 +1215,15 @@ nav.primary-nav a.active {
   font-size: 0.94rem;
 }
 .contact-line:last-child { border-bottom: none; }
-.contact-line strong { min-width: 90px; color: var(--text-muted); font-weight: 500; }
+.contact-line strong { min-width: 90px; color: var(--text-muted); font-weight: 500; flex-shrink: 0; }
+/* A flex item's default min-width is auto, not 0 — for text content that
+   means "as wide as its longest unbreakable run," which an email address
+   (one long run with no spaces to wrap at) hits immediately: at 320px
+   this pushed the row 41px past the viewport instead of wrapping. */
+.contact-line > :not(strong) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 
 .faq-item {
   border-bottom: 1px solid var(--line);
@@ -1231,9 +1282,34 @@ footer.site-footer {
   .footer-grid { grid-template-columns: 1fr; gap: 24px; }
 }
 
-@media (max-width: 700px) {
+/* The full desktop nav row (logo + 4 links + phone/CTA, none of which
+   shrink — see .brand/.nav-cta's own comments) needs ~1100px of content
+   width to fit without wrapping or clipping; .max-width's 1200px
+   container has margin to spare at that size (verified: ctaRight stays
+   inside the row at 1200/1440), but tablet widths below that don't. This
+   is its own breakpoint, separate from the narrower one below, so the
+   hamburger menu takes over as soon as the row would genuinely overflow
+   (measured: 1102px content in a 768/1024px viewport before this) without
+   also forcing the narrower breakpoint's hero/section/grid rules — which
+   are a mobile layout decision, not a nav-fit one — down into tablet
+   widths that have plenty of room for them. */
+@media (max-width: 1150px) {
   nav.primary-nav { display: none; }
   .menu-toggle { display: flex; }
+  /* Hiding the nav links alone isn't enough here — .nav-cta's phone
+     label + "See what's in stock" button together are ~400px and don't
+     shrink (see .nav-cta's own comment), so between roughly 480-1150px
+     the row still overflowed (measured 810px content in a 768px
+     viewport) even with the links gone. Compact to icon-only phone +
+     no CTA button at the same breakpoint the hamburger takes over,
+     instead of leaving a gap where tablet widths are neither the full
+     desktop row nor the already-compacted <=480px one below. */
+  .nav-cta .btn-small { display: none; }
+  .nav-phone span { display: none; }
+  .nav-phone { padding: 6px; }
+}
+
+@media (max-width: 700px) {
   .nav-row { padding: 16px 20px; }
   .hero { padding: 72px 20px; }
   .section { padding: 56px 20px; }
@@ -1243,13 +1319,24 @@ footer.site-footer {
 
 @media (max-width: 480px) {
   .category-grid, .product-grid { grid-template-columns: 1fr; }
-  .nav-cta .btn-small { display: none; }
-  /* ~390px header: logo + phone icon + hamburger only — the "Call or
-     text" label and See what's in stock button both drop, but the phone
-     icon stays a real tap target (href is still tel:+...). */
-  .nav-phone span { display: none; }
-  .nav-phone { padding: 6px; }
-  .brand img { height: 26px; }
+  /* .brand has flex-shrink:0 (deliberately, so the desktop row never
+     crushes the logo below its own content width — see .brand's own
+     comment) — on narrow viewports that same protection means the
+     wordmark's real content width has to actually fit the viewport on
+     its own, since nothing will shrink it. Scaling font-size/gap/image
+     down here shrinks that real content width instead of just visually
+     compressing an already-sized box, which is what a scrollable
+     header (measured 417px content in a 320-390px viewport before this)
+     needs. */
+  .brand { font-size: 1.15rem; gap: 7px; }
+  .brand img { height: 24px; }
+}
+
+@media (max-width: 360px) {
+  /* Reserves enough room for the phone-icon tap target and hamburger
+     next to the logo at the very narrowest supported width (320px). */
+  .brand { font-size: 0.98rem; gap: 6px; }
+  .brand img { height: 21px; }
 }
 
 /* ---------- Photo gallery / product card additions ---------- */
@@ -1720,9 +1807,15 @@ nav.primary-nav.open {
   border: 1px solid var(--line);
 }
 .product-detail-media .thumb-row { border-bottom: none; border-top: 1px solid var(--line); }
+/* A sibling of .product-detail, not a child of it — without its own
+   matching max-width/centering it sat flush against the viewport's left
+   edge while .product-detail's actual content was inset to the 1200px
+   container below it, visibly misaligned on anything wider than that. */
 .product-detail-back {
-  display: inline-block;
-  margin-bottom: 16px;
+  display: block;
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 20px 32px 0;
   font-size: 0.82rem;
   color: var(--text-muted);
 }
@@ -1795,7 +1888,10 @@ nav.primary-nav.open {
   margin: 0 auto;
 }
 .about-image-slot {
-  aspect-ratio: 4 / 3;
+  /* Shorter than the previous 4/3 — a tall placeholder box for an icon
+     this small reads as an oversized empty tile rather than an
+     intentional layout choice. */
+  aspect-ratio: 16 / 9;
   border-radius: var(--radius-card);
   background: linear-gradient(135deg, var(--charcoal-soft), var(--charcoal));
   display: flex;
@@ -1806,7 +1902,7 @@ nav.primary-nav.open {
 .about-image-slot svg {
   position: absolute;
   top: 50%; left: 50%;
-  width: 30%; height: 30%;
+  width: 20%; height: 20%;
   transform: translate(-50%, -50%);
   color: rgba(238,241,234,0.18);
 }

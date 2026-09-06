@@ -82,10 +82,19 @@
      available; the left-to-right dark green scrim in styles.css will keep
      working the same way over a photo. -->
 <section class="hero hero-photo">
+  <!-- Decorative watermark filling the empty space to the right of the
+       text column on wide viewports — the same flooring-plank glyph used
+       elsewhere on the site (category tile/icon), not a fabricated
+       warehouse/customer photo. Purely decorative: aria-hidden, and
+       hidden outright on narrower viewports where there's no spare room
+       for it (see styles.css). Swap for a real photo per the comment
+       above once one is supplied — the scrim already reads correctly
+       over either. -->
+  <svg class="hero-watermark" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><rect x="4" y="18" width="18" height="9"/><rect x="22" y="18" width="18" height="9"/><rect x="4" y="27" width="18" height="9"/><rect x="22" y="9" width="18" height="9"/><rect x="4" y="9" width="18" height="9"/><rect x="22" y="27" width="18" height="9"/></svg>
   <div class="hero-content">
     <div class="eyebrow">Flooring &middot; Appliances &middot; Water heaters &middot; Tools &middot; Lawn &amp; outdoor</div>
     <h1>Brand-new LVP flooring from <span class="hero-price" id="hero-price">$1.50</span> / sq ft. In stock in McKinney.</h1>
-    <p>DFW delivery available. Text us to hold an item — no account, no online payment.</p>
+    <p>DFW delivery available. Text to request a hold — no account, no online payment.</p>
     <div class="hero-actions">
       <a href="shop.html" class="btn btn-dark">Browse inventory</a>
       <a href="sms:" data-sms-link data-body="Hi! I'd like to send a photo of my space to see what flooring might work." class="hero-text-link">Text us a photo of your space &rarr;</a>
@@ -175,12 +184,12 @@
     <div class="step">
       <div class="num">2</div>
       <h4>Call or text to check availability</h4>
-      <p>One tap holds your item — no account, no online payment needed.</p>
+      <p>Text to request a hold — we'll confirm it's still available, no account or online payment needed.</p>
     </div>
     <div class="step">
       <div class="num">3</div>
       <h4>Pick up &amp; pay locally</h4>
-      <p>Swing by, inspect it in person, and pay on pickup.</p>
+      <p>Once we confirm, visit by appointment to inspect it in person and pay on pickup.</p>
     </div>
   </div>
 </section>
@@ -215,6 +224,69 @@
     <span>Local pickup &amp; delivery &middot; No online payments</span>
   </div>
 </footer>
+
+<!-- Get a Quote modal (Flooring products) — populated/opened by
+     inventory.js's initQuoteModal()/openQuoteModal(), shared with
+     shop.html and product.html. Markup (including field names/ids) must
+     match those pages exactly. No "Calculate Sq Ft" shortcut here — the
+     Flooring Calculator modal it opens only exists on shop.html — but
+     the sq ft field is still directly fillable. Netlify's static
+     "quote-request" form detection lives once, on shop.html; this AJAX
+     form submits to that same endpoint. -->
+<div class="modal-overlay" id="quote-modal-overlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="quote-product-name">
+    <button type="button" class="modal-close" id="quote-modal-close" aria-label="Close">&times;</button>
+
+    <div id="quote-modal-form-view">
+      <div class="eyebrow">Get A Quote</div>
+      <h3 class="quote-product-name" id="quote-product-name"></h3>
+      <div class="quote-product-price" id="quote-product-price"></div>
+
+      <form id="quote-form" class="quote-form">
+        <input type="hidden" name="form-name" value="quote-request">
+        <input type="hidden" name="product-name" id="quote-field-product-name">
+        <input type="hidden" name="product-key" id="quote-field-product-key">
+        <input type="hidden" name="price-per-sqft" id="quote-field-price-per-sqft">
+        <input type="hidden" name="box-price" id="quote-field-box-price">
+        <input type="hidden" name="submitted-at" id="quote-field-submitted-at">
+        <p class="hp-field" aria-hidden="true">
+          <label>Leave this field blank<input type="text" name="bot-field" tabindex="-1" autocomplete="off"></label>
+        </p>
+
+        <div class="form-field">
+          <label for="quote-sqft-input">Approx. Sq Ft Needed <em>*</em></label>
+          <input type="number" name="sqft-needed" id="quote-sqft-input" min="1" step="any" required>
+        </div>
+        <label class="form-field">
+          <span>Name <em>*</em></span>
+          <input type="text" name="name" required autocomplete="name">
+        </label>
+        <label class="form-field">
+          <span>Phone <em>*</em></span>
+          <input type="tel" name="phone" required autocomplete="tel">
+        </label>
+        <label class="form-field">
+          <span>ZIP Code</span>
+          <input type="text" name="zip" inputmode="numeric" autocomplete="postal-code">
+        </label>
+        <label class="form-field form-field-checkbox">
+          <input type="checkbox" name="installation-needed" value="Yes">
+          <span>I also need installation</span>
+        </label>
+
+        <div class="quote-form-error" id="quote-form-error" hidden>Something went wrong sending your request — please try again, or text us instead.</div>
+
+        <button type="submit" class="btn btn-dark btn-block" id="quote-submit-btn">Request Quote</button>
+        <a href="sms:" data-sms-link class="btn btn-outline btn-block" id="quote-text-us-link">Text Us</a>
+      </form>
+    </div>
+
+    <div id="quote-modal-success-view" hidden>
+      <p class="quote-success-message">Thank you! We received your quote request and will contact you shortly.</p>
+      <button type="button" class="btn btn-dark" id="quote-modal-done">Close</button>
+    </div>
+  </div>
+</div>
 
 <script src="app.js"></script>
 <script src="inventory.js"></script>

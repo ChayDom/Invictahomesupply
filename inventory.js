@@ -165,6 +165,45 @@ function isAvailable(item) {
 // or returns null if the item should not be published (see
 // resolveWebCategory) — category is the one field that can legitimately
 // mean "don't show this." Everything else has a graceful fallback.
+// Canonicalizes Water Resistance to the same 4-value set the Airtable
+// sync enforces (see appscripts/WebsiteExport_Airtable_Sync_v2.js
+// IWA_WATER_RESISTANCE_VALUES) — exact-match only there, so a source
+// sheet cell with different wording/casing ("100% Waterproof", "fully
+// waterproof", stray spacing) fails that validation and reaches this
+// site as a blank field, even though the product genuinely is
+// waterproof. Every consumer of item.waterResistance — the filter
+// dropdown/pill, the spec-chip badge, and the spec table row — reads
+// this one normalized value, so fixing it here fixes all three at once
+// rather than only the one a page-specific patch happened to touch.
+// Falling back to the product name only recovers the unambiguous case
+// (name clearly says "waterproof"); it never guesses the narrower
+// "Water Resistant" claim from a name, since that's not implied by
+// ordinary marketing copy the way "waterproof" is.
+function normalizeWaterResistance(raw, name) {
+  const text = (raw || "").trim();
+  if (/waterproof/i.test(text)) return "Waterproof";
+  if (/water[\s-]*resistant/i.test(text) && !/not/i.test(text)) return "Water Resistant";
+  if (/not[\s-]*water[\s-]*resistant/i.test(text)) return "Not Water Resistant";
+  if (text && text !== "Unknown") return text;
+  if (/waterproof/i.test(name || "")) return "Waterproof";
+  return text;
+}
+
+// Case-only brand duplicates (e.g. "LifeProof" vs "Lifeproof" from
+// inconsistent manual data entry) would otherwise show as two separate
+// buckets in the Brand dropdown/pill filter for what's really one brand.
+// This canonicalizes display casing only — Product Key/id (the real
+// identity used for URLs, SMS text, and joins) is completely untouched,
+// so merging brand casing here can't affect any of that.
+const BRAND_CASE_CANONICAL = {
+  "lifeproof": "LifeProof",
+};
+function normalizeBrand(raw) {
+  const text = (raw || "").trim();
+  if (!text) return text;
+  return BRAND_CASE_CANONICAL[text.toLowerCase()] || text;
+}
+
 function mapAirtableRecord(id, f) {
   const webCategory = resolveWebCategory(f);
   if (!webCategory) return null;
@@ -181,7 +220,7 @@ function mapAirtableRecord(id, f) {
     webCategory,
     webSubcategory: f["Subcategory"] || "",
     sellUnit: resolveSellUnit(f, webCategory),
-    brand: f["Brand"] || "",
+    brand: normalizeBrand(f["Brand"]),
     model: f["Model"] || "",
     retailSku: f["Retail SKU"] || "",
     retailer: f["Retailer"] || "",
@@ -194,7 +233,7 @@ function mapAirtableRecord(id, f) {
     thicknessMm: f["Thickness MM"],
     wearLayerMil: f["Wear Layer MIL"],
     underlaymentAttached: (f["Underlayment Attached"] || "").trim(),
-    waterResistance: (f["Water Resistance"] || "").trim(),
+    waterResistance: normalizeWaterResistance(f["Water Resistance"], f["Name"]),
     details: f["Details"] || "",
     highlights: f["Highlights"] || "",
     productUrl: f["Product URL"] || "",
@@ -217,6 +256,30 @@ const CATALOG_MESSAGES = {
   emptyFiltered: "No matching items right now — text us what you're looking for.",
   error: "We couldn't load inventory right now — text us and we'll check availability for you.",
 };
+
+// Richer empty state for a whole category with zero published items
+// (e.g. landing on Water Heaters via its homepage tile while nothing is
+// currently in stock) — names the category so it's clear the visitor
+// landed where they meant to (the category tab itself is hidden when its
+// count is 0, so nothing in the tab row shows it as selected), states
+// that this is a stock gap rather than a category the business doesn't
+// carry, and gives a working way forward instead of a dead end: a
+// prefilled "text about upcoming stock" SMS link and a link back to the
+// full catalog. Used only for a genuinely empty category (see
+// renderShopCatalog); a search/filter that narrows a non-empty category
+// to zero results keeps the plain CATALOG_MESSAGES.emptyFiltered text.
+function emptyCategoryMarkup(category) {
+  const phoneHref = window.SITE_CONFIG ? window.SITE_CONFIG.phoneHref : "";
+  const smsBody = encodeURIComponent(`Hi, do you have any ${category} coming in stock soon?`);
+  return `<div class="catalog-empty-category">
+    <p class="catalog-empty-heading">No ${category} in stock right now</p>
+    <p>We do carry ${category} — this is a temporary stock gap, not a category we've dropped. New inventory is added weekly.</p>
+    <div class="catalog-empty-actions">
+      <a href="sms:${phoneHref}?&body=${smsBody}" class="btn btn-dark btn-small">Text about upcoming stock</a>
+      <a href="shop.html" class="btn btn-outline btn-small">View all inventory</a>
+    </div>
+  </div>`;
+}
 
 // Fetches real inventory only — there is no sample/demo fallback. A fresh
 // cache (< cacheMinutes old) short-circuits the network call. On a fetch
@@ -271,11 +334,25 @@ function sqFtAvailable(n) {
   return typeof n === "number" ? n.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "";
 }
 
-// Boxes available is derived, never entered directly: Available Sq Ft ÷ Sq
-// Ft Per Unit, rounded down (a partial box isn't a sellable whole box).
+// Single source of truth for a flooring row's box count — every card,
+// the Contractor View table, and the mobile Contractor cards all call
+// this one function (never re-derive it locally) so a fix here can't
+// drift out of sync between views.
+//
+// Quantity Available is an authoritative integer entered/synced from the
+// source data and is preferred whenever present. The sq-ft division
+// fallback is for rows that don't have it, and needs the epsilon below:
+// Available Sq Ft / Sq Ft Per Unit is exact math (e.g. 301.5 / 20.1 = 15)
+// but not exact IEEE-754 floating point (301.5 / 20.1 === 14.999999999999998
+// in JS) — Math.floor() on the raw division silently truncated a correct
+// 15-box count down to 14 for any pair of figures that don't happen to
+// divide evenly in binary. The epsilon nudges only true floating-point
+// noise across the boundary; it's far too small to turn a genuinely
+// partial box (say 14.6) into a false whole one.
 function boxesAvailable(item) {
+  if (typeof item.qtyAvailable === "number") return Math.round(item.qtyAvailable);
   if (typeof item.availableSqFt !== "number" || typeof item.sqFtPerUnit !== "number" || item.sqFtPerUnit <= 0) return null;
-  return Math.floor(item.availableSqFt / item.sqFtPerUnit);
+  return Math.floor(item.availableSqFt / item.sqFtPerUnit + 1e-9);
 }
 
 function highlightBullets(highlights) {
@@ -332,8 +409,21 @@ function flooringAvailabilityLabel(item) {
 // the Product Key (URL-encoded), falling back to the Airtable record id
 // only for the rare item with no Product Key, same fallback chain used
 // everywhere else an identifier is needed.
+// On the shop page, carries the current filter/search/sort state (its
+// own full query string — category, search text, brand/type, sort,
+// flooring facets) forward as ?from= so product.html's "Back to
+// inventory" can return to exactly what the visitor was looking at
+// instead of resetting to a bare category. Card/Contractor View mode
+// isn't part of this — it already persists via sessionStorage
+// (saveFlooringViewMode), so it survives the round trip on its own.
+// Only shop.html has this state to carry, so the homepage/product-detail
+// cards linking here just get the plain id link.
 function productDetailHref(item) {
-  return `product.html?id=${encodeURIComponent(item.productKey || item.id)}`;
+  const base = `product.html?id=${encodeURIComponent(item.productKey || item.id)}`;
+  if (document.getElementById("catalog-grid")) {
+    return `${base}&from=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+  }
+  return base;
 }
 
 function photoBlock(item) {
@@ -399,6 +489,26 @@ function actionButtons(item) {
     <button type="button" class="btn btn-outline btn-small" data-quote-id="${item.id}">Get a Quote</button>`;
 }
 
+// Single source of truth for a flooring row's per-box price, shared by
+// the card price block, the Contractor View table, and the Contractor
+// View mobile cards — so a Box Price field and a computed fallback are
+// never independently re-derived (and inconsistently labeled) per view.
+// The real Box Price field is a stored selling price and is always
+// preferred as-is, even when it doesn't exactly equal price-per-sqft x
+// sqft-per-box (a $2.00/sq ft x 20.95 sq ft/box item stored at $42.00 is
+// a legitimate rounded selling price, not a bug to "correct" to $41.90 —
+// never overwrite a valid stored price just to force arithmetic
+// agreement). Only when Box Price is genuinely absent does this compute
+// an estimate, which callers must label as such (≈) so a stored price
+// and a computed one are never visually indistinguishable.
+function boxPriceInfo(item) {
+  if (typeof item.boxPrice === "number") return { amount: item.boxPrice, computed: false };
+  if (typeof item.price === "number" && typeof item.sqFtPerUnit === "number" && item.sqFtPerUnit > 0) {
+    return { amount: item.price * item.sqFtPerUnit, computed: true };
+  }
+  return null;
+}
+
 // Price block format is driven by webCategory, not the Airtable "Unit
 // Type" field: Flooring's Price is *always* dollars-per-sq-ft in this
 // data model (see file header), regardless of what Unit Type says — a
@@ -416,13 +526,12 @@ function actionButtons(item) {
 function priceBlock(item) {
   if (item.webCategory === "Flooring" && typeof item.price === "number") {
     const subParts = [];
-    let boxLine = null;
-    if (typeof item.boxPrice === "number") {
-      boxLine = `${money2(item.boxPrice)} / box`;
-    } else if (typeof item.sqFtPerUnit === "number" && item.sqFtPerUnit > 0) {
-      boxLine = `&asymp; ${money2(item.price * item.sqFtPerUnit)} / box (${sqFtAvailable(item.sqFtPerUnit)} sq ft)`;
+    const boxInfo = boxPriceInfo(item);
+    if (boxInfo) {
+      subParts.push(boxInfo.computed
+        ? `&asymp; ${money2(boxInfo.amount)} / box (${sqFtAvailable(item.sqFtPerUnit)} sq ft)`
+        : `${money2(boxInfo.amount)} / box`);
     }
-    if (boxLine) subParts.push(boxLine);
     const availLabel = flooringAvailabilityLabel(item);
     if (availLabel) subParts.push(availLabel);
     return `<div class="product-price product-price-flooring">
@@ -511,7 +620,7 @@ function renderGrid(items, containerId, emptyMessage = CATALOG_MESSAGES.emptyFil
   if (!el) return;
   el.innerHTML = items.length
     ? items.map(productCard).join("")
-    : `<p class="${lastFetchError ? "catalog-error" : "catalog-empty"}">${emptyStateMessage(emptyMessage)}</p>`;
+    : `<div class="${lastFetchError ? "catalog-error" : "catalog-empty"}">${emptyStateMessage(emptyMessage)}</div>`;
   bindThumbClicks(el);
 }
 
@@ -543,6 +652,19 @@ function updateContractorHero(items) {
 // on the site, just relabeled for this denser layout), or the disabled
 // status pill when out of stock — the table has no separate quote button
 // since Get a Quote is already reachable from the Card View.
+// Per Box column/line for the Contractor View table and mobile cards —
+// same boxPriceInfo() the card price block uses, so a row with no stored
+// Box Price shows the same "≈" estimate instead of a blank cell, and an
+// estimate is never confused for a stored selling price.
+function contractorBoxPriceText(item) {
+  const boxInfo = boxPriceInfo(item);
+  if (!boxInfo) return null;
+  return boxInfo.computed ? `&asymp; ${money2(boxInfo.amount)}` : money2(boxInfo.amount);
+}
+function contractorBoxPriceCell(item) {
+  return contractorBoxPriceText(item) || "&mdash;";
+}
+
 function contractorRowCta(item) {
   if (!isAvailable(item)) {
     return `<span class="btn btn-outline btn-small" style="opacity:.5; cursor:default;">${item.statusLabel}</span>`;
@@ -573,7 +695,7 @@ function renderContractorTable(items, emptyMessage = CATALOG_MESSAGES.emptyFilte
       </td>
       <td>${chips.length ? `<div class="spec-chips">${chips.map(c => `<span class="spec-chip">${c}</span>`).join("")}</div>` : "&mdash;"}</td>
       <td>${typeof item.price === "number" ? money2(item.price) : "&mdash;"}</td>
-      <td>${typeof item.boxPrice === "number" ? money2(item.boxPrice) : "&mdash;"}</td>
+      <td>${contractorBoxPriceCell(item)}</td>
       <td class="${lowStock ? "low-stock-emph" : ""}">${availLabel}</td>
       <td class="contractor-actions-cell">${contractorRowCta(item)}</td>
     </tr>`;
@@ -588,7 +710,7 @@ function renderContractorMobileCards(items, emptyMessage = CATALOG_MESSAGES.empt
   const container = document.getElementById("contractor-cards");
   if (!container) return;
   if (items.length === 0) {
-    container.innerHTML = `<p class="${lastFetchError ? "catalog-error" : "catalog-empty"}">${emptyStateMessage(emptyMessage)}</p>`;
+    container.innerHTML = `<div class="${lastFetchError ? "catalog-error" : "catalog-empty"}">${emptyStateMessage(emptyMessage)}</div>`;
     return;
   }
   container.innerHTML = items.map(item => {
@@ -606,7 +728,7 @@ function renderContractorMobileCards(items, emptyMessage = CATALOG_MESSAGES.empt
         ${chips.length ? `<div class="contractor-card-specs spec-chips">${chips.map(c => `<span class="spec-chip">${c}</span>`).join("")}</div>` : ""}
         <div class="contractor-card-prices">
           ${typeof item.price === "number" ? `<span><strong>${money2(item.price)}</strong> / sq ft</span>` : ""}
-          ${typeof item.boxPrice === "number" ? `<span><strong>${money2(item.boxPrice)}</strong> / box</span>` : ""}
+          ${contractorBoxPriceText(item) ? `<span><strong>${contractorBoxPriceText(item)}</strong> / box</span>` : ""}
         </div>
         <div class="contractor-card-avail${lowStock ? " low-stock-emph" : ""}">${availLabel}</div>
         <div class="contractor-card-cta">${contractorRowCta(item)}</div>
@@ -1008,7 +1130,9 @@ function renderShopCatalog() {
     if (currentAvailability) filtered = filtered.filter(i => matchesAvailability(i, currentAvailability));
   }
   const sorted = sortItems(filtered, currentSort);
-  const emptyMessage = wholeCategory.length === 0 ? CATALOG_MESSAGES.emptyCategory : CATALOG_MESSAGES.emptyFiltered;
+  const emptyMessage = wholeCategory.length === 0
+    ? (currentCategory === "all" ? CATALOG_MESSAGES.emptyCategory : emptyCategoryMarkup(currentCategory))
+    : CATALOG_MESSAGES.emptyFiltered;
   renderGrid(sorted, "catalog-grid", emptyMessage);
   if (isFlooringView()) {
     updateContractorHero(sorted);
@@ -1039,20 +1163,34 @@ function categoryFromUrl() {
   return CATEGORY_SLUGS[slug] || null;
 }
 
+// Only the search text is round-tripped through the URL alongside
+// category (not sort/brand/facets) — it's the piece a visitor most
+// expects "back" to restore, and it's a small, low-risk addition to the
+// existing cat= sync below. Full filter-state restoration is a larger
+// change than "where practical" calls for here.
+function searchFromUrl() {
+  return new URLSearchParams(window.location.search).get("q") || "";
+}
+
 function setActiveCategoryTab(category) {
   document.querySelectorAll(".filter-btn").forEach(b => {
     b.classList.toggle("active", b.getAttribute("data-filter") === category);
   });
 }
 
-// Pushes ?cat= onto the URL without a full page reload — pushState so
+// Pushes ?cat=&q= onto the URL without a full page reload — pushState so
 // Back/Forward move between categories, replaceState for the very first
-// render so opening a plain shop.html doesn't create a spurious history
-// entry.
-function syncCategoryUrl(category, replace) {
+// render (so opening a plain shop.html doesn't create a spurious history
+// entry) and for search-as-you-type (so every keystroke doesn't spam
+// history). This is also what lets product.html's "Back to inventory"
+// (see productDetailHref()/initProductDetail()) restore category+search
+// instead of just resetting to the bare category.
+function syncShopUrl(replace) {
   const url = new URL(window.location.href);
-  if (category === "all") url.searchParams.delete("cat");
-  else url.searchParams.set("cat", category);
+  if (currentCategory === "all") url.searchParams.delete("cat");
+  else url.searchParams.set("cat", currentCategory);
+  if (currentSearch) url.searchParams.set("q", currentSearch);
+  else url.searchParams.delete("q");
   url.hash = "";
   const method = replace ? "replaceState" : "pushState";
   window.history[method]({}, "", url.pathname + url.search);
@@ -1060,9 +1198,12 @@ function syncCategoryUrl(category, replace) {
 
 function applyCategoryFromUrl() {
   const category = categoryFromUrl();
-  if (!category) return;
-  currentCategory = category;
-  setActiveCategoryTab(category);
+  if (category) {
+    currentCategory = category;
+    setActiveCategoryTab(category);
+  }
+  const search = searchFromUrl();
+  if (search) currentSearch = search;
 }
 
 // One item count per category tab (e.g. "Flooring (18)"), computed from
@@ -1083,14 +1224,32 @@ function updateCategoryTabCounts() {
   });
 }
 
+// Wires the "Get a Quote" delegated click handler + modal bindings once
+// per page load, and keeps itemsById current. Called from initInventory()
+// for every page that has a #quote-modal-overlay — shop, homepage, and
+// product detail all render data-quote-id buttons (Flooring cards'
+// actionButtons(), and the product detail page), but only shop.html used
+// to call this (as part of initShopControls); the button did nothing
+// anywhere else because there was no delegated listener AND no modal
+// markup on those pages to open. Fixing it here, once, fixes every page.
+let quoteModalInitialized = false;
+function initQuoteModal(items) {
+  items.forEach(i => { itemsById[i.id] = i; });
+  if (quoteModalInitialized) return;
+  quoteModalInitialized = true;
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-quote-id]");
+    if (btn) openQuoteModal(itemsById[btn.getAttribute("data-quote-id")]);
+  });
+  bindQuoteModal();
+}
+
 function initShopControls(items) {
   shopItems = items;
-  itemsById = {};
-  items.forEach(i => { itemsById[i.id] = i; });
 
   updateCategoryTabCounts();
   applyCategoryFromUrl();
-  syncCategoryUrl(currentCategory, true);
+  syncShopUrl(true);
 
   const filterBtns = document.querySelectorAll(".filter-btn");
   filterBtns.forEach(btn => {
@@ -1105,7 +1264,7 @@ function initShopControls(items) {
       currentUnderlayment = "";
       currentWaterResistance = "";
       currentAvailability = "";
-      syncCategoryUrl(currentCategory, false);
+      syncShopUrl(false);
       updateSortOptionsVisibility();
       updateCalcButtonVisibility();
       renderShopCatalog();
@@ -1158,9 +1317,18 @@ function initShopControls(items) {
   const searchInput = document.getElementById("search-input");
   const searchClear = document.getElementById("search-clear");
   if (searchInput) {
+    // Restores a ?q= carried forward from a "Back to inventory" link
+    // (see productDetailHref()/syncShopUrl()) — currentSearch is already
+    // set from the URL by applyCategoryFromUrl() above; the input itself
+    // still needs its value/clear-button state to match.
+    if (currentSearch) {
+      searchInput.value = currentSearch;
+      if (searchClear) searchClear.hidden = false;
+    }
     searchInput.addEventListener("input", () => {
       currentSearch = searchInput.value;
       if (searchClear) searchClear.hidden = currentSearch.length === 0;
+      syncShopUrl(true);
       renderShopCatalog();
     });
   }
@@ -1169,15 +1337,11 @@ function initShopControls(items) {
       currentSearch = "";
       if (searchInput) { searchInput.value = ""; searchInput.focus(); }
       searchClear.hidden = true;
+      syncShopUrl(true);
       renderShopCatalog();
     });
   }
 
-  document.addEventListener("click", (e) => {
-    const btn = e.target.closest("[data-quote-id]");
-    if (btn) openQuoteModal(itemsById[btn.getAttribute("data-quote-id")]);
-  });
-  bindQuoteModal();
   bindCalculatorModal();
 
   updateSortOptionsVisibility();
@@ -1261,6 +1425,11 @@ function bindQuoteModal() {
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !overlay.hidden) closeQuoteModal(); });
 
   document.getElementById("quote-calc-link")?.addEventListener("click", () => {
+    // The Flooring Calculator modal only exists on shop.html — guard so
+    // a page without it (this link itself is omitted from the homepage/
+    // product-detail copies of this modal, but stay defensive) never
+    // hides the quote modal with nothing to replace it.
+    if (!document.getElementById("calc-modal-overlay")) return;
     overlay.hidden = true;
     openCalculatorModal(true);
   });
@@ -1612,7 +1781,16 @@ function initProductDetail(items) {
   const categoryLabel = item.webSubcategory ? `${item.webCategory} &middot; ${item.webSubcategory}` : item.webCategory;
   const specRows = productDetailSpecRows(item);
   const highlightLines = highlightBullets(item.highlights);
-  const backHref = `shop.html?cat=${encodeURIComponent(item.webCategory)}`;
+  // Prefer the shop page's own carried-forward state (?from=, set by
+  // productDetailHref()) so "Back to inventory" restores category+search
+  // (see syncShopUrl()), not just the bare category. window.location.
+  // pathname always has a leading "/" (productDetailHref() built this
+  // from that same property), so the same-site check has to match that,
+  // not a bare "shop.html" — this keeps it to an actual same-site
+  // shop.html path rather than trusting the query param as an arbitrary
+  // redirect target.
+  const fromParam = new URLSearchParams(window.location.search).get("from");
+  const backHref = fromParam && /(^|\/)shop\.html(\?|$)/.test(fromParam) ? fromParam : `shop.html?cat=${encodeURIComponent(item.webCategory)}`;
 
   container.innerHTML = `
     <a class="product-detail-back" href="${backHref}">&larr; Back to inventory</a>
@@ -1625,6 +1803,9 @@ function initProductDetail(items) {
         <h1>${item.name}</h1>
         ${statusBadge(item)}
         ${priceBlock(item)}
+        ${item.webCategory === "Flooring" && isAvailable(item)
+          ? `<button type="button" class="btn btn-outline btn-small" data-quote-id="${item.id}">Get a Quote</button>`
+          : ""}
         ${specRows.length ? `<div class="product-detail-specs"><table>${specRows.map(([l, v]) => `<tr><td>${l}</td><td>${v}</td></tr>`).join("")}</table></div>` : ""}
         ${item.details ? `<p class="product-detail-desc">${item.details}</p>` : ""}
         ${highlightLines.length ? `<ul class="product-details">${highlightLines.map(h => `<li>${h}</li>`).join("")}</ul>` : ""}
@@ -1657,6 +1838,13 @@ function initProductDetail(items) {
 async function initInventory() {
   const { items, error } = await fetchInventory();
   lastFetchError = error;
+
+  // Get a Quote modal: shared across every page that can render a
+  // data-quote-id button. Must run before the page-specific branches
+  // below so their first render's buttons are already wired.
+  if (document.getElementById("quote-modal-overlay")) {
+    initQuoteModal(items);
+  }
 
   // Shop page: full catalog (filtering + sorting handled together)
   if (document.getElementById("catalog-grid")) {

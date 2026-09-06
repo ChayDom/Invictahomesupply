@@ -90,6 +90,64 @@
   </div>
 </footer>
 
+<!-- Get a Quote modal (Flooring products) — see index.html's copy of
+     this same block for the full explanation; markup/ids must match
+     shop.html and index.html exactly. -->
+<div class="modal-overlay" id="quote-modal-overlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="quote-product-name">
+    <button type="button" class="modal-close" id="quote-modal-close" aria-label="Close">&times;</button>
+
+    <div id="quote-modal-form-view">
+      <div class="eyebrow">Get A Quote</div>
+      <h3 class="quote-product-name" id="quote-product-name"></h3>
+      <div class="quote-product-price" id="quote-product-price"></div>
+
+      <form id="quote-form" class="quote-form">
+        <input type="hidden" name="form-name" value="quote-request">
+        <input type="hidden" name="product-name" id="quote-field-product-name">
+        <input type="hidden" name="product-key" id="quote-field-product-key">
+        <input type="hidden" name="price-per-sqft" id="quote-field-price-per-sqft">
+        <input type="hidden" name="box-price" id="quote-field-box-price">
+        <input type="hidden" name="submitted-at" id="quote-field-submitted-at">
+        <p class="hp-field" aria-hidden="true">
+          <label>Leave this field blank<input type="text" name="bot-field" tabindex="-1" autocomplete="off"></label>
+        </p>
+
+        <div class="form-field">
+          <label for="quote-sqft-input">Approx. Sq Ft Needed <em>*</em></label>
+          <input type="number" name="sqft-needed" id="quote-sqft-input" min="1" step="any" required>
+        </div>
+        <label class="form-field">
+          <span>Name <em>*</em></span>
+          <input type="text" name="name" required autocomplete="name">
+        </label>
+        <label class="form-field">
+          <span>Phone <em>*</em></span>
+          <input type="tel" name="phone" required autocomplete="tel">
+        </label>
+        <label class="form-field">
+          <span>ZIP Code</span>
+          <input type="text" name="zip" inputmode="numeric" autocomplete="postal-code">
+        </label>
+        <label class="form-field form-field-checkbox">
+          <input type="checkbox" name="installation-needed" value="Yes">
+          <span>I also need installation</span>
+        </label>
+
+        <div class="quote-form-error" id="quote-form-error" hidden>Something went wrong sending your request — please try again, or text us instead.</div>
+
+        <button type="submit" class="btn btn-dark btn-block" id="quote-submit-btn">Request Quote</button>
+        <a href="sms:" data-sms-link class="btn btn-outline btn-block" id="quote-text-us-link">Text Us</a>
+      </form>
+    </div>
+
+    <div id="quote-modal-success-view" hidden>
+      <p class="quote-success-message">Thank you! We received your quote request and will contact you shortly.</p>
+      <button type="button" class="btn btn-dark" id="quote-modal-done">Close</button>
+    </div>
+  </div>
+</div>
+
 <script src="app.js"></script>
 <script src="inventory.js"></script>
 </body>
