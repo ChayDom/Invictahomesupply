@@ -320,6 +320,21 @@ async function fetchInventory() {
   }
 }
 
+// Escapes text for safe use inside an HTML attribute (e.g. alt="...") —
+// item.name/brand come from Airtable, a trusted internal source, but a
+// stray quote or angle bracket in a product name shouldn't be able to
+// break out of the attribute and corrupt the surrounding markup. Every
+// other interpolation in this file that already puts item text into a
+// text node (not an attribute) doesn't need this — only new attribute
+// contexts introduced for image alt text do.
+function escapeAttr(str) {
+  return String(str == null ? "" : str)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 function money(n) {
   return typeof n === "number" ? `$${n.toLocaleString()}` : "";
 }
@@ -429,16 +444,18 @@ function productDetailHref(item) {
 function photoBlock(item) {
   const href = productDetailHref(item);
   if (!item.photos || item.photos.length === 0) {
-    return `<a class="product-photo main-photo" href="${href}">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M9 3v18"/></svg>
+    return `<a class="product-photo main-photo" href="${href}" aria-label="${escapeAttr(item.name)} — no photo available">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M9 3v18"/></svg>
     </a>`;
   }
-  const main = item.photos[0];
+  const alt = escapeAttr(item.name);
   const thumbs = item.photos.length > 1
     ? `<div class="thumb-row">${item.photos.map((p, i) =>
-        `<img class="thumb${i === 0 ? " active" : ""}" src="${p}" data-full="${p}" alt="">`).join("")}</div>`
+        `<img class="thumb${i === 0 ? " active" : ""}" src="${p}" data-full="${p}" alt="" loading="lazy" width="40" height="40">`).join("")}</div>`
     : "";
-  return `<a class="product-photo main-photo" href="${href}" style="background-image:url('${main}'); background-size:cover; background-position:center;" data-main-photo></a>${thumbs}`;
+  return `<a class="product-photo main-photo" href="${href}">
+    <img src="${item.photos[0]}" alt="${alt}" loading="lazy" width="600" height="600" data-main-photo>
+  </a>${thumbs}`;
 }
 
 // Out-of-stock items are never hidden here — they're shown with a
@@ -599,7 +616,7 @@ function bindThumbClicks(container) {
       thumb.addEventListener("click", () => {
         card.querySelectorAll(".thumb").forEach(t => t.classList.remove("active"));
         thumb.classList.add("active");
-        if (main) main.style.backgroundImage = `url('${thumb.getAttribute("data-full")}')`;
+        if (main) main.src = thumb.getAttribute("data-full");
       });
     });
   });
@@ -676,9 +693,10 @@ function renderContractorTable(items, emptyMessage = CATALOG_MESSAGES.emptyFilte
     const boxes = boxesAvailable(item);
     const availLabel = flooringAvailabilityLabel(item) || "&mdash;";
     const lowStock = typeof boxes === "number" && boxes <= 2;
+    const photoImg = photo ? `<img src="${photo}" alt="" loading="lazy" width="48" height="48">` : "";
     return `<tr>
       <td class="contractor-product-cell">
-        <a class="contractor-product-photo" href="${productDetailHref(item)}"${photo ? ` style="background-image:url('${photo}');"` : ""}></a>
+        <a class="contractor-product-photo" href="${productDetailHref(item)}">${photoImg}</a>
         <div>
           <a class="contractor-product-name" href="${productDetailHref(item)}">${item.name}</a>
           ${item.brand || item.webSubcategory ? `<div class="contractor-product-sub">${[item.brand, item.webSubcategory].filter(Boolean).join(" &middot; ")}</div>` : ""}
@@ -711,8 +729,9 @@ function renderContractorMobileCards(items, emptyMessage = CATALOG_MESSAGES.empt
     const availLabel = flooringAvailabilityLabel(item) || "&mdash;";
     const lowStock = typeof boxes === "number" && boxes <= 2;
     const href = productDetailHref(item);
+    const photoImg = photo ? `<img src="${photo}" alt="" loading="lazy" width="64" height="64">` : "";
     return `<div class="contractor-card">
-      <a class="contractor-card-photo" href="${href}"${photo ? ` style="background-image:url('${photo}');"` : ""}></a>
+      <a class="contractor-card-photo" href="${href}">${photoImg}</a>
       <div class="contractor-card-body">
         <a class="contractor-card-name" href="${href}">${item.name}</a>
         ${item.brand || item.webSubcategory ? `<div class="contractor-card-sub">${[item.brand, item.webSubcategory].filter(Boolean).join(" &middot; ")}</div>` : ""}
@@ -1771,18 +1790,25 @@ function updateHomepageDynamicContent(items) {
 // Reads from the same fetched inventory as every other page; no separate
 // API call, no Airtable credentials involved.
 // ---------------------------------------------------------------------
+// Detail-page main image uses the full-size photo (item.photos[0]), not
+// the card-sized variant — this is the one place a visitor is actually
+// looking closely at the product, per the "larger image for product
+// detail/gallery views" requirement. Thumb-row icons still use the small
+// variant, same as the card gallery.
 function productDetailPhotoBlock(item) {
   if (!item.photos || item.photos.length === 0) {
-    return `<div class="product-photo main-photo">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M9 3v18"/></svg>
+    return `<div class="product-photo main-photo" role="img" aria-label="${escapeAttr(item.name)} — no photo available">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M9 3v18"/></svg>
     </div>`;
   }
-  const main = item.photos[0];
+  const alt = escapeAttr(item.name);
   const thumbs = item.photos.length > 1
     ? `<div class="thumb-row">${item.photos.map((p, i) =>
-        `<img class="thumb${i === 0 ? " active" : ""}" src="${p}" data-full="${p}" alt="">`).join("")}</div>`
+        `<img class="thumb${i === 0 ? " active" : ""}" src="${p}" data-full="${p}" alt="" loading="lazy" width="40" height="40">`).join("")}</div>`
     : "";
-  return `<div class="product-photo main-photo" style="background-image:url('${main}'); background-size:cover; background-position:center;" data-main-photo></div>${thumbs}`;
+  return `<div class="product-photo main-photo">
+    <img src="${item.photos[0]}" alt="${alt}" width="800" height="800" data-main-photo>
+  </div>${thumbs}`;
 }
 
 // Every real field worth showing in full, beyond the card's 3-chip
@@ -1891,7 +1917,7 @@ function initProductDetail(items) {
       container.querySelectorAll(".thumb").forEach(t => t.classList.remove("active"));
       thumb.classList.add("active");
       const main = container.querySelector("[data-main-photo]");
-      if (main) main.style.backgroundImage = `url('${thumb.getAttribute("data-full")}')`;
+      if (main) main.src = thumb.getAttribute("data-full");
     });
   });
 }

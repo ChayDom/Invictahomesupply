@@ -551,15 +551,26 @@ nav.primary-nav a.active {
 .product-photo {
   aspect-ratio: 1 / 1;
   background: linear-gradient(135deg, var(--cream-dim), #fff);
-  background-size: cover;
-  background-position: center;
   display: flex;
   align-items: center;
   justify-content: center;
   border-bottom: 1px solid var(--line);
   color: var(--text-muted);
+  overflow: hidden;
 }
 .product-photo svg { width: 34px; height: 34px; opacity: 0.5; }
+/* object-fit:contain (not cover) so the whole product/flooring plank is
+   visible — a customer judging a floor's actual look shouldn't have the
+   edges of the photo cropped away. width/height attributes on the <img>
+   itself (see photoBlock()/productDetailPhotoBlock() in inventory.js)
+   plus this container's aspect-ratio together reserve the box's space
+   before the image loads, so nothing shifts into place late. */
+.product-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
 
 /* ---------- Spec chips ---------- */
 .spec-chips {
@@ -1130,8 +1141,10 @@ nav.primary-nav a.active {
   height: 48px;
   flex-shrink: 0;
   border-radius: var(--radius);
-  background: var(--cream-dim) center / cover no-repeat;
+  background: var(--cream-dim);
+  overflow: hidden;
 }
+.contractor-product-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .contractor-product-name { display: block; font-weight: 600; }
 .contractor-product-name:hover { color: var(--amber-dark); }
 .contractor-product-sub { font-size: 0.78rem; color: var(--text-muted); }
@@ -1163,8 +1176,10 @@ nav.primary-nav a.active {
   height: 64px;
   flex-shrink: 0;
   border-radius: var(--radius);
-  background: var(--cream-dim) center / cover no-repeat;
+  background: var(--cream-dim);
+  overflow: hidden;
 }
+.contractor-card-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .contractor-card-body { flex: 1; min-width: 0; }
 .contractor-card-name { display: block; font-weight: 600; font-size: 0.92rem; }
 .contractor-card-name:hover { color: var(--amber-dark); }
