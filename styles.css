@@ -521,7 +521,7 @@ nav.primary-nav a.active {
 .product-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 28px;
+  gap: 16px;
   max-width: var(--max-width);
   margin: 0 auto;
 }
@@ -672,7 +672,12 @@ nav.primary-nav a.active {
   gap: 8px;
   padding: 0 20px 20px;
 }
-.product-actions .btn { flex: 1 1 130px; text-align: center; }
+/* Card width varies a lot with the sidebar/gap sizing above (as narrow as
+   ~190px around 1024-1150px), and "Text About This Item" doesn't fit
+   .btn's own white-space:nowrap at that width — wrap the label onto a
+   second line instead of letting it get clipped by .product-card's
+   overflow:hidden. */
+.product-actions .btn { flex: 1 1 130px; text-align: center; white-space: normal; }
 
 /* ---------- Shop layout: sidebar + results ----------
    A CSS grid, sidebar column fixed-width + results filling the rest, on
@@ -691,8 +696,8 @@ nav.primary-nav a.active {
   max-width: var(--max-width);
   margin: 0 auto;
   display: grid;
-  grid-template-columns: 260px 1fr;
-  gap: 32px;
+  grid-template-columns: 200px 1fr;
+  gap: 24px;
   align-items: start;
 }
 
@@ -700,7 +705,7 @@ nav.primary-nav a.active {
   background: #fff;
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
-  padding: 20px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
   position: sticky;
@@ -727,7 +732,7 @@ nav.primary-nav a.active {
   font-size: 0.92rem;
   margin: 0 0 10px;
 }
-/* The sidebar's ~220px usable width is too narrow for the input+button
+/* The sidebar's ~168px usable width is too narrow for the input+button
    side by side (the input's placeholder was truncating to "Roc...") —
    stack them instead. */
 .sidebar-calc-card .flooring-calc-row {
