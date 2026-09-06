@@ -524,6 +524,14 @@ nav.primary-nav a.active {
   gap: 16px;
   max-width: var(--max-width);
   margin: 0 auto;
+  /* Grid's default align-items:stretch forces every card in a row to the
+     height of the tallest one — fine while all cards are collapsed, but
+     once "More details" is expanded on some cards and not others, the
+     shorter ones get stretched with nothing to fill that height, and
+     .product-price's margin-top:auto (below) turns that slack into an
+     ugly gap above the price instead of below it. Sizing each card to
+     its own content avoids the whole class of bug. */
+  align-items: start;
 }
 /* Same issue as .btn[hidden] above: .product-grid sets its own `display`,
    which otherwise beats the browser's default [hidden]{display:none} on
