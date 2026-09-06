@@ -674,33 +674,186 @@ nav.primary-nav a.active {
 }
 .product-actions .btn { flex: 1 1 130px; text-align: center; }
 
-.catalog-controls {
+/* ---------- Shop layout: sidebar + results ----------
+   A CSS grid, sidebar column fixed-width + results filling the rest, on
+   desktop; on narrower viewports (see the breakpoint further down) the
+   sidebar becomes a slide-in drawer instead of a second column. Applies
+   to every category, not just Flooring — Type/Brand always show (2
+   groups); Flooring additionally reveals its calculator card and 5 extra
+   facet groups (see updateViewToggle()/updateFacetFilterOptions() in
+   inventory.js). "Do not redesign the All view into a cluttered layout"
+   is why this stays a simple 2-group sidebar outside Flooring rather
+   than disappearing outright — Type/Brand filtering still needs to live
+   somewhere for every category, and one persistent, predictable spot
+   beats it jumping between a sidebar and a toolbar row depending on
+   category. */
+.shop-layout {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 32px;
+  align-items: start;
+}
+
+.shop-sidebar {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: 20px;
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  position: sticky;
+  top: 84px;
+}
+.sidebar-mobile-head { display: none; }
+.sidebar-mobile-actions { display: none; }
+/* Holds everything scrollable (calc card, filter groups) as its own flex
+   region, separate from the mobile header/footer — see the mobile
+   breakpoint further down for why. */
+.sidebar-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sidebar-calc-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: 14px 16px;
+}
+.sidebar-calc-card[hidden] { display: none; }
+.sidebar-calc-card h3 {
+  font-size: 0.92rem;
+  margin: 0 0 10px;
+}
+/* The sidebar's ~220px usable width is too narrow for the input+button
+   side by side (the input's placeholder was truncating to "Roc...") —
+   stack them instead. */
+.sidebar-calc-card .flooring-calc-row {
+  flex-direction: column;
+  max-width: none;
+}
+.sidebar-calc-card .flooring-calc-row .btn { width: 100%; }
+
+.sidebar-filters-head {
+  display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  max-width: var(--max-width);
-  margin: 0 auto 44px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
 }
-.catalog-controls .search-control { flex: 1 1 240px; }
+.sidebar-scroll > .sidebar-calc-card + .sidebar-filters-head { margin-top: 2px; }
+.sidebar-filters-head h3 {
+  font-size: 0.92rem;
+  margin: 0;
+}
+.clear-all-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.78rem;
+  color: var(--amber-dark);
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
 
-/* Search + Type/Brand selects share one left-aligned filter group so the
-   bar reads as a single row instead of two stacked ones. */
-.catalog-controls-left {
+/* Each facet is its own collapsible <details> group — native semantics,
+   no custom JS needed for expand/collapse. Groups for facets that don't
+   apply to the current category/selection hide outright (see
+   updateViewToggle()/updateFacetFilterOptions()) rather than showing an
+   empty or pointless "Any" dropdown. */
+.filter-group {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.filter-group[hidden] { display: none; }
+.filter-group summary {
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+  margin-bottom: 10px;
+}
+.filter-group summary::-webkit-details-marker { display: none; }
+.filter-group summary::before { content: "\2212  "; color: var(--text-muted); }
+.filter-group:not([open]) summary::before { content: "+  "; }
+.sidebar-select {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.82rem;
+  color: var(--charcoal);
+  cursor: pointer;
+}
+
+.shop-sidebar-backdrop { display: none; }
+
+.shop-results { min-width: 0; }
+
+/* One compact toolbar: search, mobile Filters button, live result count,
+   sort, and (Flooring only) the Card/Contractor View toggle. Every
+   control shares the same height/radius so the row reads as one unit. */
+.results-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 12px;
-  flex: 1 1 auto;
+  margin-bottom: 16px;
 }
-/* Overrides #facet-filter-row's standalone-row spacing (see
-   .facet-filter-row below) now that it's nested inline here instead of
-   sitting on its own row under catalog-controls. */
-.catalog-controls-left #facet-filter-row {
-  margin: 0;
-  max-width: none;
-  justify-content: flex-start;
+.mobile-filters-btn {
+  display: none;
+  align-items: center;
+  gap: 6px;
+}
+.mobile-filters-btn svg { width: 15px; height: 15px; flex-shrink: 0; }
+.results-count {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.results-toolbar .sort-control { margin-left: auto; }
+
+.active-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.active-filter-chips[hidden] { display: none; }
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--cream-dim);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.75rem;
+  color: var(--charcoal);
+  cursor: pointer;
+}
+.filter-chip:hover { background: var(--line); }
+.filter-chip span { opacity: 0.6; }
+
+/* Accessible but visually invisible — for the page's real <h1> once its
+   visible eyebrow/heading/intro paragraph were removed as pure
+   repetition of the nav link and <title>. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .search-control {
@@ -708,6 +861,7 @@ nav.primary-nav a.active {
   display: flex;
   align-items: center;
   max-width: 360px;
+  flex: 1 1 240px;
 }
 .search-icon {
   position: absolute;
@@ -797,51 +951,6 @@ nav.primary-nav a.active {
   cursor: pointer;
 }
 
-.controls-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.calc-trigger-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-.calc-icon { width: 15px; height: 15px; flex-shrink: 0; }
-
-/* ---------- Category-specific filter rows (Brand/Spec, or Flooring's
-   thickness/wear-layer) — swapped in/out by inventory.js based on the
-   active category tab. Reuses .sort-control's select styling. ---------- */
-.facet-filter-row {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 10px;
-  margin: -28px auto 44px;
-  max-width: var(--max-width);
-}
-.facet-filter-row select {
-  padding: 9px 14px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: #fff;
-  font-family: 'Inter', sans-serif;
-  font-size: 0.78rem;
-  color: var(--charcoal);
-  cursor: pointer;
-}
-/* Same [hidden] override as .btn/.product-grid above — needed because this
-   class sets its own `display`. */
-.facet-filter-row[hidden] { display: none; }
-
-/* Wrapper around the Wear Layer select so it can be hidden as a unit
-   (e.g. while viewing Laminate, which has no wear-layer rating) without
-   leaving a gap — display:contents makes the <select> itself the flex
-   item. Needs the same [hidden] override as above for the same reason. */
-#wear-layer-filter-item { display: contents; }
-#wear-layer-filter-item[hidden] { display: none; }
 
 .catalog-empty,
 .catalog-loading {
@@ -914,54 +1023,10 @@ nav.primary-nav a.active {
 }
 .contractor-view[hidden] { display: none; }
 
-.contractor-hero {
-  background: var(--cream-dim);
-  border-radius: var(--radius-card);
-  padding: 20px 24px;
-  margin-bottom: 20px;
-}
-.contractor-eyebrow {
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-size: 0.72rem;
-  color: var(--amber-dark);
-  margin-bottom: 8px;
-}
-.contractor-hero h2 {
-  font-size: clamp(1.2rem, 2.4vw, 1.5rem);
-  margin: 0 0 6px;
-}
-.contractor-hero p {
-  color: var(--text-muted);
-  font-size: 0.88rem;
-  max-width: 62ch;
-  margin: 0;
-}
-
-/* ---------- Flooring calculator callout — shared by Card View and
-   Contractor View alike (appears near the top of the results area
-   whenever Flooring is the active category). A native <details> so the
-   mobile "collapsed behind a button" behavior needs no JS: open by
-   default on desktop, closed by default on mobile (set once via
-   .open in inventory.js based on viewport width at render time). ---------- */
-.flooring-calc-callout {
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-card);
-  padding: 16px 18px;
-  margin-bottom: 20px;
-}
-.flooring-calc-callout[hidden] { display: none; }
-.flooring-calc-callout summary {
-  font-weight: 700;
-  font-size: 0.92rem;
-  cursor: pointer;
-  list-style: none;
-}
-.flooring-calc-callout summary::-webkit-details-marker { display: none; }
-.flooring-calc-callout summary::before { content: "+ "; color: var(--amber-dark); }
-.flooring-calc-callout[open] summary::before { content: "\2212 "; }
-.flooring-calc-callout-body { padding-top: 14px; }
+/* ---------- Flooring calculator — compact sidebar card (.sidebar-calc-card
+   above); shared by Card View and Contractor View alike. Element ids
+   below are unchanged from the previous full-width callout, only the
+   surrounding markup/class moved. ---------- */
 .flooring-calc-row {
   display: flex;
   gap: 8px;
@@ -995,34 +1060,6 @@ nav.primary-nav a.active {
   margin-top: 10px;
   white-space: normal;
   text-align: left;
-}
-
-.contractor-pill-filters {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 24px;
-}
-.pill-filter-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.pill-btn {
-  padding: 7px 16px;
-  border: 1px solid var(--line);
-  background: #fff;
-  font-family: 'Inter', sans-serif;
-  font-size: 0.75rem;
-  color: var(--charcoal);
-  border-radius: 999px;
-  cursor: pointer;
-}
-.pill-btn.active,
-.pill-btn:hover {
-  background: var(--charcoal);
-  color: var(--cream);
-  border-color: var(--charcoal);
 }
 
 .contractor-table-wrap {
@@ -1119,15 +1156,83 @@ nav.primary-nav a.active {
   .contractor-cards { display: block; }
 }
 
-@media (max-width: 700px) {
-  .facet-filter-row { margin-top: -14px; }
-}
-
-@media (max-width: 700px) {
-  .catalog-controls { flex-direction: column; align-items: stretch; }
-  .catalog-controls .search-control { max-width: none; }
-  .sort-control { justify-content: center; }
-  .controls-right { justify-content: center; }
+/* ---------- Shop sidebar -> mobile/tablet filter drawer ----------
+   Below this width there isn't room for a permanent sidebar beside the
+   product grid, so it becomes a slide-in drawer instead: fixed to the
+   left edge, off-screen until .open (toggled by the "Filters" button —
+   see bindSidebarFilterExtras() in inventory.js), over a dimmed
+   backdrop. Desktop's "Clear all" + collapsible groups are unchanged —
+   same DOM, only its position/visibility differs — plus an Apply/Show
+   results and a second Clear all in the drawer's own footer, since a
+   drawer (unlike an always-visible sidebar) benefits from an explicit
+   "done" action. */
+@media (max-width: 880px) {
+  .shop-layout { display: block; }
+  .shop-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(320px, 86vw);
+    max-width: none;
+    border-radius: 0;
+    border: none;
+    box-shadow: 2px 0 24px rgba(0,0,0,0.18);
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    z-index: 1001;
+    /* The sidebar itself no longer scrolls — .sidebar-scroll below does,
+       as its own flex region between the fixed header and footer. A
+       position:sticky footer *inside* the same scrolling list it was
+       previously in visually overlapped whichever filter group the
+       drawer happened to open onto, since sticky positioning doesn't
+       reserve space for what's still below it in flow. */
+    overflow: hidden;
+  }
+  .shop-sidebar.open { transform: translateX(0); }
+  .sidebar-mobile-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 700;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--line);
+    flex-shrink: 0;
+  }
+  .sidebar-close-btn {
+    background: none;
+    border: none;
+    font-size: 1.4rem;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 4px;
+  }
+  .sidebar-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding-top: 16px;
+  }
+  .sidebar-mobile-actions {
+    display: flex;
+    gap: 10px;
+    flex-shrink: 0;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+    background: #fff;
+  }
+  .sidebar-mobile-actions .btn { flex: 1 1 0; text-align: center; }
+  .shop-sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 1000;
+  }
+  .shop-sidebar-backdrop[hidden] { display: none; }
+  .mobile-filters-btn { display: inline-flex; }
+  .results-toolbar .sort-control { margin-left: 0; }
 }
 
 /* ---------- Strip / banner ---------- */

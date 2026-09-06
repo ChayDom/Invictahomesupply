@@ -51,13 +51,14 @@
   </div>
 </header>
 
-<div class="page-heading">
-  <div class="eyebrow">Full Catalog</div>
-  <h1>Browse our inventory</h1>
-  <p>Real photos, real prices, updated weekly. Text any item to check availability and hold it.</p>
-</div>
+<!-- Visible page content starts with the category tabs/toolbar/results —
+     the old "Full Catalog" eyebrow + "Browse our inventory" headline +
+     intro paragraph were pure repetition of what the nav link and page
+     <title> already say. This heading is still here for screen readers/
+     document outline, just not taking up visible space. -->
+<h1 class="visually-hidden">Browse our inventory</h1>
 
-<section class="section" style="padding-top:8px;">
+<section class="section shop-section" style="padding-top:20px;">
   <!-- 1. category tabs, with a live item count per category — zero-count
        tabs hide automatically (see updateCategoryTabCounts() in
        inventory.js). Reads/writes ?cat= on the URL. -->
@@ -72,140 +73,174 @@
     <button class="filter-btn" data-filter="Home Improvement">Home Improvement</button>
   </div>
 
-  <!-- 2. search + sort (+ Flooring's view toggle / calculator shortcut,
-       which only ever show while the Flooring tab is active). -->
-  <div class="catalog-controls">
-    <div class="catalog-controls-left">
-      <div class="search-control">
-        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-        <input type="search" id="search-input" class="search-input" placeholder="Search products..." autocomplete="off" aria-label="Search products">
-        <button type="button" id="search-clear" class="search-clear" aria-label="Clear search" hidden>&times;</button>
+  <!-- Sidebar (desktop) / drawer (mobile, see .mobile-filters-btn below and
+       styles.css) holding every filter control — Type/Brand apply to
+       every category, so this shows even outside Flooring (just with
+       fewer groups and no calculator card); Thickness/Wear Layer/
+       Underlayment/Water Resistance/Availability and the calculator card
+       only show for Flooring (see updateViewToggle() in inventory.js). No
+       separate pill-button row duplicating these for Contractor View
+       anymore — one filter UI drives both Card View and Contractor View. -->
+  <div class="shop-layout">
+    <aside class="shop-sidebar" id="shop-sidebar">
+      <div class="sidebar-mobile-head">
+        <span>Filters</span>
+        <button type="button" class="sidebar-close-btn" id="sidebar-close-btn" aria-label="Close filters">&times;</button>
       </div>
-      <!-- Type (Subcategory, e.g. Luxury Vinyl Plank/Laminate/Tile for
-           Flooring, Gas/Electric for Water Heaters) and Brand apply to every
-           category — never hidden by category. Options are populated
-           dynamically by inventory.js; a dropdown simply keeps its "Any/All"
-           option when a category hasn't been given any values for that facet
-           yet. -->
-      <div class="facet-filter-row" id="facet-filter-row">
-        <select id="subcategory-filter" aria-label="Filter by type">
+
+      <!-- Everything between the mobile header and the mobile Clear all/
+           Show results footer scrolls as one region on mobile, so that
+           footer can stay pinned to the drawer's actual bottom edge
+           instead of a position:sticky element inside the same scroll
+           list overlapping whichever group happens to be there when the
+           drawer opens (a real bug this replaced — see .sidebar-scroll
+           in styles.css). No effect on desktop, where the sidebar is
+           short enough not to scroll at all. -->
+      <div class="sidebar-scroll">
+      <div class="sidebar-calc-card" id="sidebar-calc-card" hidden>
+        <h3>Flooring calculator</h3>
+        <div class="flooring-calc-row">
+          <input type="number" id="flooring-calc-sqft" min="0" step="any" placeholder="Room sq ft" aria-label="Room square footage, for a quick estimate">
+          <button type="button" class="btn btn-dark btn-small" id="flooring-calc-btn">Calculate</button>
+        </div>
+        <div class="flooring-calc-hint">Adds 10% for cuts and waste.</div>
+        <div class="flooring-calc-result" id="flooring-calc-result" hidden></div>
+        <button type="button" class="calc-link" id="flooring-calc-full-link">Calculate multiple rooms</button>
+      </div>
+
+      <div class="sidebar-filters-head">
+        <h3>Filters</h3>
+        <button type="button" class="clear-all-btn" id="clear-all-filters-btn">Clear all</button>
+      </div>
+
+      <details class="filter-group" open>
+        <summary>Type</summary>
+        <select id="subcategory-filter" class="sidebar-select" aria-label="Filter by type">
           <option value="">All Types</option>
         </select>
-        <select id="brand-filter" aria-label="Filter by brand">
+      </details>
+      <details class="filter-group" open>
+        <summary>Brand</summary>
+        <select id="brand-filter" class="sidebar-select" aria-label="Filter by brand">
           <option value="">All Brands</option>
         </select>
-      </div>
-    </div>
-    <div class="controls-right">
-      <div class="sort-control">
-        <label for="sort-select">Sort by</label>
-        <select id="sort-select">
-          <option value="featured">Featured</option>
-          <option value="price-asc">Price: Low to High</option>
-          <option value="price-desc">Price: High to Low</option>
+      </details>
+      <!-- Flooring-only groups below — hidden outright (not just empty)
+           for every other category; Wear Layer is additionally hidden
+           within Flooring itself when nothing in view has a wear-layer
+           rating, e.g. while viewing Laminate (see
+           updateFacetFilterOptions()). -->
+      <details class="filter-group" id="thickness-filter-group" open hidden>
+        <summary>Thickness</summary>
+        <select id="thickness-filter" class="sidebar-select" aria-label="Filter by thickness">
+          <option value="">Any Thickness</option>
         </select>
+      </details>
+      <details class="filter-group" id="wear-layer-filter-item" open hidden>
+        <summary>Wear Layer</summary>
+        <select id="wear-layer-filter" class="sidebar-select" aria-label="Filter by wear layer">
+          <option value="">Any Wear Layer</option>
+        </select>
+      </details>
+      <details class="filter-group" id="underlayment-filter-group" open hidden>
+        <summary>Underlayment</summary>
+        <select id="underlayment-filter" class="sidebar-select" aria-label="Filter by underlayment">
+          <option value="">Any Underlayment</option>
+        </select>
+      </details>
+      <details class="filter-group" id="water-resistance-filter-group" open hidden>
+        <summary>Water Resistance</summary>
+        <select id="water-resistance-filter" class="sidebar-select" aria-label="Filter by water resistance">
+          <option value="">Any Water Resistance</option>
+        </select>
+      </details>
+      <details class="filter-group" id="availability-filter-group" open hidden>
+        <summary>Availability</summary>
+        <select id="availability-filter" class="sidebar-select" aria-label="Filter by availability">
+          <option value="">Any Availability</option>
+          <option value="500">500+ sq ft</option>
+          <option value="1000">1,000+ sq ft</option>
+        </select>
+      </details>
       </div>
-      <!-- Flooring-only: switches between the standard card grid and the
-           Contractor View table below. Hidden for every other category. -->
-      <div class="view-toggle" id="flooring-view-toggle" role="group" aria-label="Flooring view" hidden>
-        <button type="button" class="view-toggle-btn active" data-view="card">Card View</button>
-        <button type="button" class="view-toggle-btn" data-view="contractor">Contractor View</button>
+
+      <div class="sidebar-mobile-actions">
+        <button type="button" class="btn btn-outline" id="sidebar-clear-btn-mobile">Clear all</button>
+        <button type="button" class="btn btn-dark" id="sidebar-apply-btn-mobile">Show results</button>
       </div>
-      <button type="button" id="calc-open-btn" class="btn btn-outline btn-small calc-trigger-btn">
-        <svg class="calc-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="11" x2="8" y2="11.01"/><line x1="12" y1="11" x2="12" y2="11.01"/><line x1="16" y1="11" x2="16" y2="11.01"/><line x1="8" y1="15" x2="8" y2="15.01"/><line x1="12" y1="15" x2="12" y2="15.01"/><line x1="16" y1="15" x2="16" y2="15.01"/><line x1="8" y1="19" x2="16" y2="19"/></svg>
-        Flooring Calculator
-      </button>
-    </div>
-  </div>
+    </aside>
+    <div class="shop-sidebar-backdrop" id="shop-sidebar-backdrop" hidden></div>
 
-  <!-- Flooring-only structured filters — logical groups per attribute
-       rather than a mixed row of buttons. Wear Layer is hidden entirely
-       (not just left empty) when nothing in view has a wear-layer rating,
-       e.g. while viewing Laminate. -->
-  <div class="facet-filter-row" id="flooring-filter-row" hidden>
-    <select id="thickness-filter" aria-label="Filter by thickness">
-      <option value="">Any Thickness</option>
-    </select>
-    <span id="wear-layer-filter-item">
-      <select id="wear-layer-filter" aria-label="Filter by wear layer">
-        <option value="">Any Wear Layer</option>
-      </select>
-    </span>
-    <select id="underlayment-filter" aria-label="Filter by underlayment">
-      <option value="">Any Underlayment</option>
-    </select>
-    <select id="water-resistance-filter" aria-label="Filter by water resistance">
-      <option value="">Any Water Resistance</option>
-    </select>
-    <select id="availability-filter" aria-label="Filter by availability">
-      <option value="">Any Availability</option>
-      <option value="500">500+ sq ft</option>
-      <option value="1000">1,000+ sq ft</option>
-    </select>
-  </div>
-
-  <!-- 5. results, plus (Flooring only) a compact calculator callout right
-       above them. Shared by Card View and Contractor View alike — see
-       inventory.js. A native <details> so mobile's "collapsed behind a
-       button" needs no extra JS: open by default on desktop, closed by
-       default on mobile. -->
-  <details class="flooring-calc-callout" id="flooring-calc-callout" hidden>
-    <summary>How much flooring do I need?</summary>
-    <div class="flooring-calc-callout-body">
-      <div class="flooring-calc-row">
-        <input type="number" id="flooring-calc-sqft" min="0" step="any" placeholder="Room sq ft" aria-label="Room square footage, for a quick estimate">
-        <button type="button" class="btn btn-dark btn-small" id="flooring-calc-btn">Calculate</button>
+    <div class="shop-results">
+      <!-- 2. One compact toolbar: search, a live result count, sort, and
+           (Flooring only) the Card/Contractor View toggle. The mobile
+           "Filters" button (hidden on desktop, where the sidebar is
+           already visible) opens the drawer above. -->
+      <div class="results-toolbar">
+        <div class="search-control">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          <input type="search" id="search-input" class="search-input" placeholder="Search products..." autocomplete="off" aria-label="Search products">
+          <button type="button" id="search-clear" class="search-clear" aria-label="Clear search" hidden>&times;</button>
+        </div>
+        <button type="button" class="btn btn-outline btn-small mobile-filters-btn" id="mobile-filters-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
+          Filters
+        </button>
+        <div class="results-count" id="results-count" aria-live="polite"></div>
+        <div class="sort-control">
+          <label for="sort-select">Sort by</label>
+          <select id="sort-select">
+            <option value="featured">Featured</option>
+            <option value="price-asc">Price: Low to High</option>
+            <option value="price-desc">Price: High to Low</option>
+          </select>
+        </div>
+        <!-- Flooring-only: switches between the standard card grid and the
+             Contractor View table below. Hidden for every other category. -->
+        <div class="view-toggle" id="flooring-view-toggle" role="group" aria-label="Flooring view" hidden>
+          <button type="button" class="view-toggle-btn active" data-view="card">Card View</button>
+          <button type="button" class="view-toggle-btn" data-view="contractor">Contractor View</button>
+        </div>
       </div>
-      <div class="flooring-calc-hint">Adds 10% for cuts and waste.</div>
-      <div class="flooring-calc-result" id="flooring-calc-result" hidden></div>
-      <button type="button" class="calc-link" id="flooring-calc-full-link">Multiple rooms? Use the full calculator</button>
+
+      <!-- Removable chips for whichever filters are currently active —
+           empty/hidden when none are. -->
+      <div class="active-filter-chips" id="active-filter-chips" hidden></div>
+
+      <div class="product-grid" id="catalog-grid">
+        <p class="catalog-loading">Loading inventory…</p>
+      </div>
+
+      <!-- Flooring's Contractor View: an alternate to the card grid above,
+           swapped in only while Flooring + Contractor View are both active
+           (see updateViewToggle() in inventory.js). Shares the exact same
+           filter state as the sidebar controls above — not a separate
+           filter system. -->
+      <div class="contractor-view" id="contractor-view" hidden>
+        <!-- Desktop: comparison table. Mobile (≤700px): stacked cards instead
+             of a horizontally-scrolling table — see .contractor-cards in
+             styles.css and renderContractorMobileCards() in inventory.js.
+             Both render from the same filtered/sorted array. -->
+        <div class="contractor-table-wrap">
+          <table class="contractor-table" id="contractor-table">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Specs</th>
+                <th>Per Sq Ft</th>
+                <th>Per Box</th>
+                <th>Available</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="contractor-table-body">
+              <tr><td colspan="6" class="table-empty">Loading inventory…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="contractor-cards" id="contractor-cards"></div>
+      </div>
     </div>
-  </details>
-
-  <div class="product-grid" id="catalog-grid">
-    <p class="catalog-loading">Loading inventory…</p>
-  </div>
-
-  <!-- Flooring's Contractor View: an alternate to the card grid above,
-       swapped in only while Flooring + Contractor View are both active
-       (see updateViewToggle() in inventory.js). Shares the same filter
-       state as the dropdowns above — the pill buttons here are just a
-       different control bound to the same currentBrand/currentThickness/
-       etc. variables, not a separate filter system. -->
-  <div class="contractor-view" id="contractor-view" hidden>
-    <div class="contractor-hero">
-      <div class="contractor-eyebrow" id="contractor-eyebrow"></div>
-      <h2 id="contractor-heading">Flooring, priced by the box.</h2>
-      <p>Every count below is live — boxes leave as they're sold. Text us a SKU to hold it, then pick up or arrange delivery.</p>
-    </div>
-
-    <!-- Populated by inventory.js — same Type/Brand/Thickness/Wear
-         Layer/Underlayment/Water Resistance/Availability facets as the
-         dropdowns above, rendered as pill buttons instead. -->
-    <div class="contractor-pill-filters" id="contractor-pill-filters"></div>
-
-    <!-- Desktop: comparison table. Mobile (≤700px): stacked cards instead
-         of a horizontally-scrolling table — see .contractor-cards in
-         styles.css and renderContractorMobileCards() in inventory.js.
-         Both render from the same filtered/sorted array. -->
-    <div class="contractor-table-wrap">
-      <table class="contractor-table" id="contractor-table">
-        <thead>
-          <tr>
-            <th>Product</th>
-            <th>Specs</th>
-            <th>Per Sq Ft</th>
-            <th>Per Box</th>
-            <th>Available</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="contractor-table-body">
-          <tr><td colspan="6" class="table-empty">Loading inventory…</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="contractor-cards" id="contractor-cards"></div>
   </div>
 </section>
 

@@ -633,20 +633,11 @@ function renderGrid(items, containerId, emptyMessage = CATALOG_MESSAGES.emptyFil
 
 // Eyebrow (live SKU/sq ft counts) and heading — both computed from
 // `items`, the currently-filtered/visible set, so they read as "here's
-// what's live right now" rather than a static category-wide count. The
-// heading names the active Type filter when one is selected ("Luxury
-// Vinyl Plank, priced by the box."), and stays generic otherwise.
-function updateContractorHero(items) {
-  const eyebrowEl = document.getElementById("contractor-eyebrow");
-  const headingEl = document.getElementById("contractor-heading");
-  if (eyebrowEl) {
-    const totalSqFt = items.reduce((sum, i) => sum + (typeof i.availableSqFt === "number" ? i.availableSqFt : 0), 0);
-    eyebrowEl.textContent = `Flooring · ${items.length} SKU${items.length === 1 ? "" : "s"} · ${sqFtAvailable(totalSqFt)} sq ft in stock`;
-  }
-  if (headingEl) {
-    headingEl.textContent = currentSubcategory ? `${currentSubcategory}, priced by the box.` : "Flooring, priced by the box.";
-  }
-}
+// what's live right now" rather than a static category-wide count. Its
+// old eyebrow/heading text lived in the removed Contractor View hero
+// block — the shared results-count in the toolbar (updateResultsCount())
+// now covers "how much is in view" for both Card View and Contractor
+// View instead of duplicating it here.
 
 // Single CTA per row: "Text to Hold" (the same SMS CTA as everywhere else
 // on the site, just relabeled for this denser layout), or the disabled
@@ -737,16 +728,18 @@ function renderContractorMobileCards(items, emptyMessage = CATALOG_MESSAGES.empt
   }).join("");
 }
 
-// Quick, product-independent sq-ft estimate for the "How much flooring
-// do I need?" callout — shared by Card View and Contractor View alike,
-// shown near the top of the results area whenever Flooring is the active
-// category (see updateFlooringCalcCalloutVisibility()). Mirrors the real
+// Quick, product-independent sq-ft estimate — shared by Card View and
+// Contractor View alike, shown whenever Flooring is the active category
+// (visibility set in updateViewToggle()). Mirrors the real
 // Flooring Calculator modal's own default 10% waste rate but is
 // otherwise independent of it (no shared state, doesn't touch
 // calcWasteRate). "Multiple rooms?" opens the real modal for anything
-// more than this single quick number.
+// more than this single quick number. Lives in the sidebar (desktop) /
+// filter drawer (mobile) as a compact bordered card — the drawer itself
+// is what's collapsed behind the "Filters" button on mobile now, so this
+// card no longer needs its own collapse/expand state.
 const FLOORING_CALC_WASTE_RATE = 0.10;
-function bindFlooringCalcCallout() {
+function bindFlooringCalcCard() {
   const input = document.getElementById("flooring-calc-sqft");
   const btn = document.getElementById("flooring-calc-btn");
   const result = document.getElementById("flooring-calc-result");
@@ -766,28 +759,44 @@ function bindFlooringCalcCallout() {
   btn?.addEventListener("click", runEstimate);
   input?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); runEstimate(); } });
   fullLink?.addEventListener("click", () => openCalculatorModal(false));
-
-  // Once a visitor has opened/closed the callout themselves, stop
-  // resetting .open on every filter-triggered re-render.
-  document.getElementById("flooring-calc-callout")?.addEventListener("toggle", (e) => {
-    e.target.dataset.userToggled = "1";
-  });
 }
 
-// Shows the callout only while Flooring is active; a native <details> so
-// the mobile "collapsed behind a button" behavior needs no ongoing JS —
-// just set .open once per render based on viewport width (open on
-// desktop/tablet, closed on mobile) rather than fighting the user's own
-// toggle on every re-render.
-const FLOORING_CALC_MOBILE_BREAKPOINT = 700;
-function updateFlooringCalcCalloutVisibility() {
-  const callout = document.getElementById("flooring-calc-callout");
-  if (!callout) return;
-  const flooring = isFlooringView();
-  callout.hidden = !flooring;
-  if (flooring && !callout.dataset.userToggled) {
-    callout.open = window.innerWidth > FLOORING_CALC_MOBILE_BREAKPOINT;
-  }
+// Wires everything around the sidebar that isn't a single facet <select>
+// itself (those are bound individually in initShopControls): the removable
+// filter chips, both "Clear all" buttons (desktop sidebar + mobile drawer
+// footer), and the mobile drawer's open/close (Filters button, close X,
+// backdrop click, and "Show results" — filtering itself already happens
+// live as each select changes, so "Show results" is just a close). The
+// same #shop-sidebar markup serves as a static sidebar on desktop and a
+// slide-in drawer on mobile purely via CSS (see .shop-sidebar.open in
+// styles.css) — one DOM tree, no content duplicated between the two.
+function bindSidebarFilterExtras() {
+  document.getElementById("active-filter-chips")?.addEventListener("click", (e) => {
+    const chip = e.target.closest("[data-chip-key]");
+    if (!chip) return;
+    const clear = CLEAR_FILTER_SETTERS[chip.getAttribute("data-chip-key")];
+    if (clear) { clear(); syncShopUrl(true); renderShopCatalog(); }
+  });
+
+  document.getElementById("clear-all-filters-btn")?.addEventListener("click", clearAllFilters);
+  document.getElementById("sidebar-clear-btn-mobile")?.addEventListener("click", clearAllFilters);
+
+  const sidebar = document.getElementById("shop-sidebar");
+  const backdrop = document.getElementById("shop-sidebar-backdrop");
+  const openDrawer = () => {
+    sidebar?.classList.add("open");
+    if (backdrop) backdrop.hidden = false;
+    document.body.classList.add("modal-open");
+  };
+  const closeDrawer = () => {
+    sidebar?.classList.remove("open");
+    if (backdrop) backdrop.hidden = true;
+    document.body.classList.remove("modal-open");
+  };
+  document.getElementById("mobile-filters-btn")?.addEventListener("click", openDrawer);
+  document.getElementById("sidebar-close-btn")?.addEventListener("click", closeDrawer);
+  document.getElementById("sidebar-apply-btn-mobile")?.addEventListener("click", closeDrawer);
+  backdrop?.addEventListener("click", closeDrawer);
 }
 
 // ---------------------------------------------------------------------
@@ -912,19 +921,10 @@ function updateSortOptionsVisibility() {
   }
 }
 
-// The Flooring Calculator is primarily useful for flooring — keep it visible
-// whenever Flooring items are in view (the "All" filter included) and hide
-// it for categories where a sq ft estimate doesn't apply.
-function updateCalcButtonVisibility() {
-  const btn = document.getElementById("calc-open-btn");
-  if (!btn) return;
-  btn.style.display = (currentCategory === "all" || isFlooringView()) ? "" : "none";
-}
 
-// Shared option-derivation for every Flooring/category facet — both the
-// Card View dropdowns (updateFacetFilterOptions) and the Contractor View
-// pill buttons (updateContractorPillFilters) call these same functions,
-// so "what counts as a valid option" is defined exactly once. Type
+// Shared option-derivation for every Flooring/category facet — the one
+// sidebar filter UI drives both Card View and Contractor View, so "what
+// counts as a valid option" only needs to be defined once. Type
 // (Subcategory) and Brand are computed from categoryItems (every item in
 // the category — independent facets); the Flooring-only structured
 // facets come from narrowedItems (already filtered by Type/Brand) since
@@ -978,82 +978,119 @@ function updateFacetFilterOptions(categoryItems, narrowedItems) {
 
   if (!isFlooringView()) return;
 
+  const thicknessGroup = document.getElementById("thickness-filter-group");
   const thicknessSelect = document.getElementById("thickness-filter");
   const wearRow = document.getElementById("wear-layer-filter-item");
   const wearSelect = document.getElementById("wear-layer-filter");
+  const underlaymentGroup = document.getElementById("underlayment-filter-group");
   const underlaymentSelect = document.getElementById("underlayment-filter");
+  const waterResistanceGroup = document.getElementById("water-resistance-filter-group");
   const waterResistanceSelect = document.getElementById("water-resistance-filter");
+  const availabilityGroup = document.getElementById("availability-filter-group");
 
-  if (thicknessSelect) {
+  // Each Flooring-only sidebar group hides itself when it would have zero
+  // options — showing one that can only ever narrow to "none of these"
+  // (e.g. Wear Layer while viewing Laminate) is worse than not showing it.
+  // Availability's options are static thresholds, never data-driven, so
+  // it's always shown once Flooring is active (this is the only place
+  // that reveals it — updateViewToggle() only ever hides it).
+  if (thicknessGroup && thicknessSelect) {
     const thicknesses = facetThicknessOptions(narrowedItems);
+    thicknessGroup.hidden = thicknesses.length === 0;
     if (!thicknesses.includes(Number(currentThickness))) currentThickness = "";
     thicknessSelect.innerHTML = `<option value="">Any Thickness</option>` + thicknesses.map(t => `<option value="${t}">${t} mm</option>`).join("");
     thicknessSelect.value = currentThickness;
   }
   if (wearSelect) {
     const wears = facetWearLayerOptions(narrowedItems);
-    // Wear layer doesn't apply to every flooring type (e.g. laminate) —
-    // hide the whole filter rather than show one that can only ever
-    // narrow to "none of these."
     if (wearRow) wearRow.hidden = wears.length === 0;
     if (!wears.includes(Number(currentWearLayer))) currentWearLayer = "";
     wearSelect.innerHTML = `<option value="">Any Wear Layer</option>` + wears.map(w => `<option value="${w}">${w} MIL</option>`).join("");
     wearSelect.value = currentWearLayer;
   }
-  if (underlaymentSelect) {
+  if (underlaymentGroup && underlaymentSelect) {
     const options = facetUnderlaymentOptions(narrowedItems);
+    underlaymentGroup.hidden = options.length === 0;
     if (!options.some(o => o.value === currentUnderlayment)) currentUnderlayment = "";
     underlaymentSelect.innerHTML = `<option value="">Any Underlayment</option>` + options.map(o => `<option value="${o.value}">${o.label}</option>`).join("");
     underlaymentSelect.value = currentUnderlayment;
   }
-  if (waterResistanceSelect) {
+  if (waterResistanceGroup && waterResistanceSelect) {
     const values = facetWaterResistanceOptions(narrowedItems);
+    waterResistanceGroup.hidden = values.length === 0;
     if (!values.includes(currentWaterResistance)) currentWaterResistance = "";
     waterResistanceSelect.innerHTML = `<option value="">Any Water Resistance</option>` + values.map(v => `<option value="${v}">${v}</option>`).join("");
     waterResistanceSelect.value = currentWaterResistance;
   }
+  if (availabilityGroup) availabilityGroup.hidden = false;
 }
 
-// One pill button per option, grouped by facet, for Contractor View —
-// same option lists and same currentX state variables as the Card View
-// dropdowns above (updateFacetFilterOptions must run first each render so
-// an invalid selection is already reset to "Any/All" before this reads
-// it). A facet group renders nothing (not even an "Any" pill) when there
-// are zero options, same as a dropdown that would otherwise be pointless.
-function pillGroup(id, label, options, currentValue) {
-  if (options.length === 0) return "";
-  const pill = (value, text, active) => `<button type="button" class="pill-btn${active ? " active" : ""}" data-pill-group="${id}" data-pill-value="${value}">${text}</button>`;
-  return `<div class="pill-filter-group" data-pill-group-wrap="${id}">
-    ${pill("", `All ${label}`, !currentValue)}
-    ${options.map(o => pill(o.value, o.label, currentValue === o.value)).join("")}
-  </div>`;
+// Live "N items" (or "N item") count in the results toolbar — the one
+// place both Card View and Contractor View report how much is currently
+// in view, replacing the old Contractor-only hero eyebrow.
+function updateResultsCount(count) {
+  const el = document.getElementById("results-count");
+  if (!el) return;
+  el.textContent = `${count} item${count === 1 ? "" : "s"}`;
 }
-function updateContractorPillFilters(categoryItems, narrowedItems) {
-  const container = document.getElementById("contractor-pill-filters");
+
+function underlaymentChipLabel(value) {
+  return value === "Yes" ? "Pad Attached" : value === "No" ? "No Attached Pad" : value;
+}
+function availabilityChipLabel(value) {
+  return value === "500" ? "500+ sq ft" : value === "1000" ? "1,000+ sq ft" : `${value}+ sq ft`;
+}
+
+// Removable chips for every currently-active filter (search text plus
+// every sidebar facet) — the sidebar's own selects already show what's
+// selected, but at a glance across a whole results page a chip row is
+// what actually answers "what am I filtered by right now," and gives a
+// one-click way to drop just one without opening the sidebar/drawer.
+// Rebuilt on every render from the same currentX state the filtering
+// itself reads, so it can never drift out of sync with what's actually
+// applied.
+function updateActiveFilterChips() {
+  const container = document.getElementById("active-filter-chips");
   if (!container) return;
 
-  const toOpts = arr => arr.map(v => ({ value: String(v), label: String(v) }));
-  const groups = [
-    pillGroup("subcategory", "Types", toOpts(facetSubcategoryOptions(categoryItems)), currentSubcategory),
-    pillGroup("brand", "Brands", toOpts(facetBrandOptions(categoryItems)), currentBrand),
-    pillGroup("thickness", "Thickness", facetThicknessOptions(narrowedItems).map(t => ({ value: String(t), label: `${t} mm` })), currentThickness),
-    pillGroup("wearLayer", "Wear Layer", facetWearLayerOptions(narrowedItems).map(w => ({ value: String(w), label: `${w} MIL` })), currentWearLayer),
-    pillGroup("underlayment", "Underlayment", facetUnderlaymentOptions(narrowedItems), currentUnderlayment),
-    pillGroup("waterResistance", "Water Resistance", toOpts(facetWaterResistanceOptions(narrowedItems)), currentWaterResistance),
-    pillGroup("availability", "Availability", [{ value: "500", label: "500+ sq ft" }, { value: "1000", label: "1,000+ sq ft" }], currentAvailability),
-  ];
-  container.innerHTML = groups.join("");
+  const chips = [];
+  const add = (key, label) => chips.push({ key, label });
+  if (currentSearch) add("search", `"${currentSearch}"`);
+  if (currentSubcategory) add("subcategory", currentSubcategory);
+  if (currentBrand) add("brand", currentBrand);
+  if (isFlooringView()) {
+    if (currentThickness) add("thickness", `${currentThickness} mm`);
+    if (currentWearLayer) add("wearLayer", `${currentWearLayer} MIL`);
+    if (currentUnderlayment) add("underlayment", underlaymentChipLabel(currentUnderlayment));
+    if (currentWaterResistance) add("waterResistance", currentWaterResistance);
+    if (currentAvailability) add("availability", availabilityChipLabel(currentAvailability));
+  }
+
+  container.hidden = chips.length === 0;
+  container.innerHTML = chips.map(c =>
+    `<button type="button" class="filter-chip" data-chip-key="${c.key}">${c.label} <span aria-hidden="true">&times;</span></button>`
+  ).join("");
 }
 
-const PILL_FILTER_SETTERS = {
-  subcategory: v => { currentSubcategory = v; },
-  brand: v => { currentBrand = v; },
-  thickness: v => { currentThickness = v; },
-  wearLayer: v => { currentWearLayer = v; },
-  underlayment: v => { currentUnderlayment = v; },
-  waterResistance: v => { currentWaterResistance = v; },
-  availability: v => { currentAvailability = v; },
+// One handler per chip key, so both the chip row and (via CLEAR_FILTER_
+// SETTERS below) "Clear all" share the exact same reset logic per filter
+// — never two places deciding what "cleared" means for a given facet.
+const CLEAR_FILTER_SETTERS = {
+  search: () => { currentSearch = ""; const el = document.getElementById("search-input"); if (el) el.value = ""; const clearBtn = document.getElementById("search-clear"); if (clearBtn) clearBtn.hidden = true; },
+  subcategory: () => { currentSubcategory = ""; },
+  brand: () => { currentBrand = ""; },
+  thickness: () => { currentThickness = ""; },
+  wearLayer: () => { currentWearLayer = ""; },
+  underlayment: () => { currentUnderlayment = ""; },
+  waterResistance: () => { currentWaterResistance = ""; },
+  availability: () => { currentAvailability = ""; },
 };
+
+function clearAllFilters() {
+  Object.values(CLEAR_FILTER_SETTERS).forEach(fn => fn());
+  syncShopUrl(true);
+  renderShopCatalog();
+}
 
 // Availability filter is a simple minimum-sq-ft threshold derived from
 // Available Sq Ft, not a stored field — options are static in shop.html
@@ -1072,6 +1109,22 @@ function matchesAvailability(item, threshold) {
 function isContractorView() {
   return isFlooringView() && flooringViewMode === "contractor";
 }
+// Flooring-only sidebar groups (Type/Brand apply to every category, so
+// they're never touched here). One filter UI now drives both Card View
+// and Contractor View — no more separate pill-button row for the latter
+// — so unlike the old facetRow/flooringRow split, these groups no longer
+// hide for Contractor View, only for a non-Flooring category. This only
+// ever *hides* a group; *showing* one back (when it also has options) is
+// updateFacetFilterOptions()'s job, since some groups (Wear Layer) also
+// hide when they'd have zero options — one-directional here avoids the
+// two functions fighting over the same attribute regardless of call order.
+const FLOORING_ONLY_SIDEBAR_GROUP_IDS = [
+  "thickness-filter-group",
+  "wear-layer-filter-item",
+  "underlayment-filter-group",
+  "water-resistance-filter-group",
+  "availability-filter-group",
+];
 function updateViewToggle() {
   const flooring = isFlooringView();
   const contractor = isContractorView();
@@ -1079,19 +1132,21 @@ function updateViewToggle() {
   const viewToggle = document.getElementById("flooring-view-toggle");
   if (viewToggle) viewToggle.hidden = !flooring;
 
-  const facetRow = document.getElementById("facet-filter-row");
-  if (facetRow) facetRow.hidden = contractor;
+  if (!flooring) {
+    FLOORING_ONLY_SIDEBAR_GROUP_IDS.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.hidden = true;
+    });
+  }
 
-  const flooringRow = document.getElementById("flooring-filter-row");
-  if (flooringRow) flooringRow.hidden = !flooring || contractor;
+  const calcCard = document.getElementById("sidebar-calc-card");
+  if (calcCard) calcCard.hidden = !flooring;
 
   const grid = document.getElementById("catalog-grid");
   if (grid) grid.hidden = contractor;
 
   const contractorView = document.getElementById("contractor-view");
   if (contractorView) contractorView.hidden = !contractor;
-
-  updateFlooringCalcCalloutVisibility();
 }
 
 // Search matches Name, Brand, Model, Category, Subcategory, Retailer and
@@ -1120,7 +1175,6 @@ function renderShopCatalog() {
   if (currentSubcategory) filtered = filtered.filter(i => i.webSubcategory === currentSubcategory);
 
   updateFacetFilterOptions(inCategory, filtered);
-  if (isFlooringView()) updateContractorPillFilters(inCategory, filtered);
 
   if (isFlooringView()) {
     if (currentThickness) filtered = filtered.filter(i => i.thicknessMm === Number(currentThickness));
@@ -1135,10 +1189,11 @@ function renderShopCatalog() {
     : CATALOG_MESSAGES.emptyFiltered;
   renderGrid(sorted, "catalog-grid", emptyMessage);
   if (isFlooringView()) {
-    updateContractorHero(sorted);
     renderContractorTable(sorted, emptyMessage);
     renderContractorMobileCards(sorted, emptyMessage);
   }
+  updateResultsCount(sorted.length);
+  updateActiveFilterChips();
   updateViewToggle();
 }
 
@@ -1266,7 +1321,6 @@ function initShopControls(items) {
       currentAvailability = "";
       syncShopUrl(false);
       updateSortOptionsVisibility();
-      updateCalcButtonVisibility();
       renderShopCatalog();
     });
   });
@@ -1302,17 +1356,8 @@ function initShopControls(items) {
     });
   });
 
-  // Contractor View's pill filters are delegated (the container's
-  // innerHTML is rebuilt every render, same reason the quote-button
-  // listener below is delegated on `document` rather than per-button).
-  document.getElementById("contractor-pill-filters")?.addEventListener("click", (e) => {
-    const btn = e.target.closest("[data-pill-group]");
-    if (!btn) return;
-    const setter = PILL_FILTER_SETTERS[btn.getAttribute("data-pill-group")];
-    if (setter) { setter(btn.getAttribute("data-pill-value")); renderShopCatalog(); }
-  });
-
-  bindFlooringCalcCallout();
+  bindFlooringCalcCard();
+  bindSidebarFilterExtras();
 
   const searchInput = document.getElementById("search-input");
   const searchClear = document.getElementById("search-clear");
@@ -1345,7 +1390,6 @@ function initShopControls(items) {
   bindCalculatorModal();
 
   updateSortOptionsVisibility();
-  updateCalcButtonVisibility();
   renderShopCatalog();
 
   // ?cat=Flooring&calc=1 opens straight into the calculator modal with
@@ -1639,7 +1683,6 @@ function bindCalculatorModal() {
   const roomsContainer = document.getElementById("calc-rooms");
   if (!overlay || !roomsContainer) return;
 
-  document.getElementById("calc-open-btn")?.addEventListener("click", () => openCalculatorModal(false));
   document.getElementById("calc-modal-close")?.addEventListener("click", closeCalculatorModal);
   document.getElementById("calc-done")?.addEventListener("click", closeCalculatorModal);
   overlay.addEventListener("click", (e) => { if (e.target === overlay) closeCalculatorModal(); });
