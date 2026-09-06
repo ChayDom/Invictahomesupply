@@ -274,9 +274,12 @@ nav.primary-nav a.active {
 }
 
 /* ---------- Product grid ---------- */
+/* auto-fit sizes columns off the actual available width instead of a fixed
+   count, so cards stay wide enough to keep flooring names readable at
+   typical desktop widths (~1200-1440px this yields 3/row, not 4). */
 .product-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 28px;
   max-width: var(--max-width);
   margin: 0 auto;
@@ -289,6 +292,7 @@ nav.primary-nav a.active {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  height: 100%;
 }
 
 .product-photo {
