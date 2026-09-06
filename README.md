@@ -1,10 +1,12 @@
 # Invicta Home Supply — website
 
-A 5-page static site (Home, Inventory, Flooring Calculator shortcut,
-About, Visit Us, plus a shareable Product detail view) with a live
-inventory catalog powered by Airtable, hosted on **Netlify** (not
-Cloudflare). No monthly hosting fee, no online payment, no code editing
-required to add/remove/update items once it's set up.
+A static site (Home, Inventory, About, Visit Us, plus a shareable
+Product detail view) with a live inventory catalog powered by Airtable,
+hosted on **Netlify** (not Cloudflare). No monthly hosting fee, no online
+payment, no code editing required to add/remove/update items once it's
+set up. The Flooring Calculator lives entirely on the Inventory page
+(its own "Flooring Calculator" button in the filter bar) — it's not a
+separate page or header nav link.
 
 `shop.html` and `contact.html` keep their original filenames/URLs (for
 existing links and SEO) even though their nav labels/on-page branding now

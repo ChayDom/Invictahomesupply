@@ -399,15 +399,30 @@ function actionButtons(item) {
     <button type="button" class="btn btn-outline btn-small" data-quote-id="${item.id}">Get a Quote</button>`;
 }
 
-// Price block format depends on Unit Type:
-//   sq ft  -> "$2.01 / sq ft" then "$42.11 / box · 1,026 sq ft (49 boxes)" (or "Last box"/"Only 2 boxes left" when low)
-//   each   -> "$649 each"     then "Retail $1,049 · 2 available"
-//   box    -> "$42.11 / box"  then "Retail $89.00 · 12 boxes available"
-//   roll   -> "$42.11 / roll" then "Retail $89.00 · 12 rolls available"
+// Price block format is driven by webCategory, not the Airtable "Unit
+// Type" field: Flooring's Price is *always* dollars-per-sq-ft in this
+// data model (see file header), regardless of what Unit Type says — a
+// flooring row is routinely tagged Unit Type "Box" (that's how a
+// contractor thinks of it) even though Price is per sq ft. Branching on
+// sellUnit (derived from Unit Type) instead of webCategory here used to
+// render that same $/sqft number with a "/ box" label for any such row —
+// wrong by roughly an order of magnitude. A per-box price is still shown
+// as a secondary line, using the real Box Price field when present or
+// computing one (price/sqft x sqft/box) when it's not.
+//   Flooring     -> "$2.01 / sq ft" then "$42.11 / box · 1,026 sq ft (49 boxes)" (or "Last box"/"Only 2 boxes left" when low)
+//   each         -> "$649 each"     then "Retail $1,049 · 2 available"
+//   box (non-flooring) -> "$42.11 / box"  then "Retail $89.00 · 12 boxes available"
+//   roll         -> "$42.11 / roll" then "Retail $89.00 · 12 rolls available"
 function priceBlock(item) {
-  if (item.sellUnit === "sq ft" && typeof item.price === "number") {
+  if (item.webCategory === "Flooring" && typeof item.price === "number") {
     const subParts = [];
-    if (typeof item.boxPrice === "number") subParts.push(`${money2(item.boxPrice)} / box`);
+    let boxLine = null;
+    if (typeof item.boxPrice === "number") {
+      boxLine = `${money2(item.boxPrice)} / box`;
+    } else if (typeof item.sqFtPerUnit === "number" && item.sqFtPerUnit > 0) {
+      boxLine = `&asymp; ${money2(item.price * item.sqFtPerUnit)} / box (${sqFtAvailable(item.sqFtPerUnit)} sq ft)`;
+    }
+    if (boxLine) subParts.push(boxLine);
     const availLabel = flooringAvailabilityLabel(item);
     if (availLabel) subParts.push(availLabel);
     return `<div class="product-price product-price-flooring">
@@ -1169,10 +1184,11 @@ function initShopControls(items) {
   updateCalcButtonVisibility();
   renderShopCatalog();
 
-  // The "Flooring Calculator" nav link (shop.html?cat=Flooring&calc=1)
-  // lands here with the category already applied — calc=1 additionally
-  // opens the real calculator modal so the nav item is a genuine
-  // shortcut, not just a filtered page.
+  // ?cat=Flooring&calc=1 opens straight into the calculator modal with
+  // Flooring already applied. No longer linked from the header nav (that
+  // duplicated the "Flooring Calculator" button in this page's own
+  // filter bar, which is the calculator's one entry point now) — kept
+  // for any other shop.html?...&calc=1 deep link.
   if (new URLSearchParams(window.location.search).get("calc") === "1") {
     openCalculatorModal(false);
   }
@@ -1186,7 +1202,7 @@ function initShopControls(items) {
 // field list Netlify expects.
 // ---------------------------------------------------------------------
 function quotePriceText(item) {
-  if (item.sellUnit === "sq ft" && typeof item.price === "number") {
+  if (item.webCategory === "Flooring" && typeof item.price === "number") {
     return typeof item.boxPrice === "number" ? `${money2(item.price)} / sq ft · ${money2(item.boxPrice)} / box` : `${money2(item.price)} / sq ft`;
   }
   return money(item.price);

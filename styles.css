@@ -90,6 +90,13 @@ header.site-header {
      row whenever the row is at all width-constrained, roughly doubling
      the header's real height — a logo lockup should never wrap. */
   white-space: nowrap;
+  /* .nav-row's flex children default to flex-shrink:1, so under real
+     webfonts (Zilla Slab/Inter, wider than any fallback) the row was
+     shrinking .brand's box below its nowrap content's actual width —
+     the content (including "Home Supply") then overflowed the shrunk
+     box and drew on top of the nav links next to it. The logo must
+     never shrink; if the row is tight, .primary-nav/.nav-cta give first. */
+  flex-shrink: 0;
 }
 
 .brand img {
@@ -102,7 +109,7 @@ header.site-header {
 
 nav.primary-nav {
   display: flex;
-  gap: 36px;
+  gap: 28px;
   font-size: 0.85rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -112,6 +119,10 @@ nav.primary-nav a {
   padding-bottom: 4px;
   border-bottom: 1px solid transparent;
   transition: border-color 0.2s ease;
+  /* A link wrapping to 2 lines nearly doubles its own height (24px ->
+     49px) and moves its active-state underline to a different height
+     than its single-line neighbors — a nav link must never wrap. */
+  white-space: nowrap;
 }
 
 nav.primary-nav a:hover,
@@ -123,6 +134,16 @@ nav.primary-nav a.active {
   display: flex;
   align-items: center;
   gap: 18px;
+  /* Never let this shrink below its content — the phone link and CTA
+     button both need white-space:nowrap to hold their width, and a
+     shrunk-but-not-actually-narrower box is what let this get clipped
+     past the container's right edge. (Do NOT also add margin-left:auto
+     here: .nav-row's justify-content:space-between already pins the
+     first/last flex children flush to the row's edges and splits the
+     leftover space evenly between all three items; an auto margin on
+     this item would swallow that entire leftover into its own margin,
+     collapsing the gap between .brand and .primary-nav to zero.) */
+  flex-shrink: 0;
 }
 
 .nav-phone {
@@ -390,28 +411,39 @@ nav.primary-nav a.active {
   transition: transform 0.2s ease;
 }
 .category-tile:hover { transform: translateY(-3px); }
+/* Small watermark, pinned to the top-right corner and sized well below
+   the tile's text footer, so it never sits behind — or hangs off the
+   edge of — the title/subtitle. */
 .category-tile .icon {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 68%;
-  height: 68%;
-  transform: translate(-50%, -50%);
-  color: rgba(238,241,234,0.16);
+  top: 14px;
+  right: 14px;
+  width: 56px;
+  height: 56px;
+  color: rgba(238,241,234,0.35);
 }
-/* Fixed-height footer, pinned to the tile's bottom, so every title sits at
-   the same baseline regardless of whether a given tile's copy wraps to a
-   second line (e.g. "Home Improvement" vs "Tools"). */
+/* Fixed HEIGHT (not min-height) footer, tall enough for a 2-line title
+   plus the subtitle, pinned to the tile's bottom, with content
+   top-anchored inside it. A min-height + justify-content:flex-end here
+   looks equivalent for a single-line title, but the moment a title
+   actually wraps ("Home Improvement" vs "Tools") its content outgrows
+   the minimum, the box has to grow past it to fit, and bottom-anchoring
+   then shifts that title's top upward relative to every unwrapped tile
+   — exactly the ~20px misalignment this is fixing. A fixed height that
+   already fits the 2-line case never grows, so every title top-anchors
+   at the same offset regardless of how many lines its own copy takes;
+   the small unused gap below a short subtitle is a fair trade for
+   pixel-identical title positions and zero truncation. */
 .category-tile .tile-copy {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  min-height: 60px;
+  height: 76px;
   padding: 12px 14px;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  justify-content: flex-start;
   background: linear-gradient(0deg, rgba(0,0,0,0.62), rgba(0,0,0,0.05) 80%);
 }
 .category-tile .tile-title {
@@ -419,18 +451,14 @@ nav.primary-nav a.active {
   font-size: 0.85rem;
   font-weight: 700;
   color: var(--cream);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.25;
 }
 .category-tile .tile-sub {
   display: block;
   font-size: 0.68rem;
   color: var(--cream-dim);
   margin-top: 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.3;
 }
 @media (max-width: 900px) {
   .category-tile-grid { grid-template-columns: repeat(4, 1fr); }
@@ -534,7 +562,11 @@ nav.primary-nav a.active {
 }
 .product-more summary::-webkit-details-marker { display: none; }
 .product-more summary::before { content: "+ "; }
-.product-more[open] summary::before { content: "\2212 "; }
+/* A single trailing space after a CSS hex escape is consumed as the
+   escape's own terminator, not rendered as content — "\2212 " silently
+   produced "−More details" with no space. The extra space here is the
+   one that actually survives into the rendered content. */
+.product-more[open] summary::before { content: "\2212  "; }
 .product-more p,
 .product-more ul {
   margin: 8px 0 0;
@@ -627,9 +659,28 @@ nav.primary-nav a.active {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 44px;
+  max-width: var(--max-width);
+  margin: 0 auto 44px;
 }
 .catalog-controls .search-control { flex: 1 1 240px; }
+
+/* Search + Type/Brand selects share one left-aligned filter group so the
+   bar reads as a single row instead of two stacked ones. */
+.catalog-controls-left {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  flex: 1 1 auto;
+}
+/* Overrides #facet-filter-row's standalone-row spacing (see
+   .facet-filter-row below) now that it's nested inline here instead of
+   sitting on its own row under catalog-controls. */
+.catalog-controls-left #facet-filter-row {
+  margin: 0;
+  max-width: none;
+  justify-content: flex-start;
+}
 
 .search-control {
   position: relative;

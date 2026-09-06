@@ -40,7 +40,6 @@
     <nav class="primary-nav">
       <a href="index.html">Home</a>
       <a href="shop.html" class="active">Inventory</a>
-      <a href="shop.html?cat=Flooring&calc=1">Flooring Calculator</a>
       <a href="about.html">About</a>
       <a href="contact.html">Visit Us</a>
     </nav>
@@ -76,10 +75,26 @@
   <!-- 2. search + sort (+ Flooring's view toggle / calculator shortcut,
        which only ever show while the Flooring tab is active). -->
   <div class="catalog-controls">
-    <div class="search-control">
-      <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-      <input type="search" id="search-input" class="search-input" placeholder="Search products..." autocomplete="off" aria-label="Search products">
-      <button type="button" id="search-clear" class="search-clear" aria-label="Clear search" hidden>&times;</button>
+    <div class="catalog-controls-left">
+      <div class="search-control">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input type="search" id="search-input" class="search-input" placeholder="Search products..." autocomplete="off" aria-label="Search products">
+        <button type="button" id="search-clear" class="search-clear" aria-label="Clear search" hidden>&times;</button>
+      </div>
+      <!-- Type (Subcategory, e.g. Luxury Vinyl Plank/Laminate/Tile for
+           Flooring, Gas/Electric for Water Heaters) and Brand apply to every
+           category — never hidden by category. Options are populated
+           dynamically by inventory.js; a dropdown simply keeps its "Any/All"
+           option when a category hasn't been given any values for that facet
+           yet. -->
+      <div class="facet-filter-row" id="facet-filter-row">
+        <select id="subcategory-filter" aria-label="Filter by type">
+          <option value="">All Types</option>
+        </select>
+        <select id="brand-filter" aria-label="Filter by brand">
+          <option value="">All Brands</option>
+        </select>
+      </div>
     </div>
     <div class="controls-right">
       <div class="sort-control">
@@ -101,21 +116,6 @@
         Flooring Calculator
       </button>
     </div>
-  </div>
-
-  <!-- Type (Subcategory, e.g. Luxury Vinyl Plank/Laminate/Tile for
-       Flooring, Gas/Electric for Water Heaters) and Brand apply to every
-       category — never hidden by category. Options are populated
-       dynamically by inventory.js; a dropdown simply keeps its "Any/All"
-       option when a category hasn't been given any values for that facet
-       yet. -->
-  <div class="facet-filter-row" id="facet-filter-row">
-    <select id="subcategory-filter" aria-label="Filter by type">
-      <option value="">All Types</option>
-    </select>
-    <select id="brand-filter" aria-label="Filter by brand">
-      <option value="">All Brands</option>
-    </select>
   </div>
 
   <!-- Flooring-only structured filters — logical groups per attribute
