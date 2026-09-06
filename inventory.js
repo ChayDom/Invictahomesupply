@@ -585,9 +585,15 @@ function priceBlock(item) {
     const subParts = [];
     const boxInfo = boxPriceInfo(item);
     if (boxInfo) {
-      subParts.push(boxInfo.computed
-        ? `&asymp; ${money2(boxInfo.amount)} / box (${sqFtAvailable(item.sqFtPerUnit)} sq ft)`
-        : `${money2(boxInfo.amount)} / box`);
+      subParts.push(boxInfo.computed ? `&asymp; ${money2(boxInfo.amount)} / box` : `${money2(boxInfo.amount)} / box`);
+    }
+    // Sq-ft-per-box coverage is its own fact, independent of whether the
+    // box price above came from a real Box Price field or was computed —
+    // it used to only show up bundled inside the computed-box-price
+    // branch, silently disappearing for the common case of a row with
+    // both a real Box Price AND Sq Ft Per Unit populated.
+    if (typeof item.sqFtPerUnit === "number" && item.sqFtPerUnit > 0) {
+      subParts.push(`${sqFtAvailable(item.sqFtPerUnit)} sq ft / box`);
     }
     const availLabel = flooringAvailabilityLabel(item);
     if (availLabel) subParts.push(availLabel);
@@ -1342,6 +1348,17 @@ function applyCategoryFromUrl() {
 // that should shift around based on what's in stock this week) — a
 // category with zero published items shows "Coming Soon" in place of a
 // count instead of hiding the tab or showing a bare "(0)".
+// Shared wording for "how many published items are in this category" —
+// used by the homepage category tiles (see updateHomepageDynamicContent())
+// with the same counting rule as the shop tabs below (every published
+// item, in or out of stock — a tab/tile answers "does this category
+// exist here," not "can I buy one right now"), so the two never disagree
+// about the same category's count.
+function categoryProductCountLabel(count) {
+  if (count === 0) return "Coming Soon";
+  return `${count} product${count === 1 ? "" : "s"}`;
+}
+
 function updateCategoryTabCounts() {
   document.querySelectorAll(".filter-btn").forEach(btn => {
     const category = btn.getAttribute("data-filter");
@@ -1824,6 +1841,30 @@ function updateHomepageDynamicContent(items) {
     const totalSqFt = flooring.reduce((sum, i) => sum + (typeof i.availableSqFt === "number" ? i.availableSqFt : 0), 0);
     sqftEl.textContent = totalSqFt > 0 ? Math.round(totalSqFt).toLocaleString("en-US") : "—";
   }
+
+  // Category tiles: real counts from the live feed, not hardcoded. The
+  // category comes from each tile's own href (?cat=...) rather than a
+  // separate data attribute — one source of truth for which tile is
+  // which category. Replaces (rather than appends to) the tile's static
+  // description once loaded: .tile-copy's footer is a fixed height sized
+  // for exactly a title + one short subtitle line (see .category-tile
+  // .tile-copy in styles.css), and "LVP, laminate & tile · 22 products"
+  // is long enough to wrap and overflow that box on the narrow 7-across
+  // desktop grid — "22 products" / "Coming Soon" alone always fits.
+  // data-base (the original static copy) is left in the DOM either way,
+  // as the pre-JS/no-JS fallback text already rendered.
+  document.querySelectorAll(".category-tile[href]").forEach(tile => {
+    let cat;
+    try {
+      cat = new URL(tile.href, window.location.origin).searchParams.get("cat");
+    } catch (e) { cat = null; }
+    if (!cat || !WEB_CATEGORIES.includes(cat)) return;
+    const sub = tile.querySelector(".tile-sub");
+    if (!sub) return;
+    const count = items.filter(i => i.webCategory === cat).length;
+    sub.textContent = categoryProductCountLabel(count);
+    tile.classList.toggle("category-tile-empty", count === 0);
+  });
 }
 
 // ---------------------------------------------------------------------
@@ -1867,8 +1908,10 @@ function productDetailSpecRows(item) {
   add("Retailer", item.retailer);
   if (item.webCategory === "Flooring") {
     add("Subcategory", item.webSubcategory);
-    add("Thickness", typeof item.thicknessMm === "number" && item.thicknessMm > 0 ? `${item.thicknessMm} mm` : "");
+    // Same priority order as flooringStructuredChips(): Wear Layer,
+    // Thickness, Underlayment, Water Resistance.
     add("Wear Layer", typeof item.wearLayerMil === "number" && item.wearLayerMil > 0 ? `${item.wearLayerMil} MIL` : "");
+    add("Thickness", typeof item.thicknessMm === "number" && item.thicknessMm > 0 ? `${item.thicknessMm} mm` : "");
     add("Underlayment Attached", item.underlaymentAttached);
     add("Water Resistance", item.waterResistance && item.waterResistance !== "Unknown" ? item.waterResistance : "");
     add("Coverage Per Box", typeof item.sqFtPerUnit === "number" ? `${sqFtAvailable(item.sqFtPerUnit)} sq ft` : "");

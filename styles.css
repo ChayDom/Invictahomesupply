@@ -422,6 +422,16 @@ nav.primary-nav a.active {
   max-width: var(--max-width);
   margin: 0 auto;
 }
+/* Tightens the gap between the stat strip above and these cards — the
+   generic .section/.section-head spacing (88px top padding + 52px below
+   the heading) reads as too much dead air stacked directly under the
+   already-padded dark stat strip. Scoped to this section only (via
+   .category-section on the <section> in index.html) so no other
+   .section on the site is affected. Bottom padding (below the cards,
+   into whatever follows) is untouched — only asked to close up the
+   stats-strip -> heading -> cards side. */
+.category-section { padding-top: 50px; }
+.category-section .section-head { margin-bottom: 30px; }
 .category-tile {
   position: relative;
   height: 180px;
@@ -481,6 +491,13 @@ nav.primary-nav a.active {
   margin-top: 2px;
   line-height: 1.3;
 }
+/* A category with zero published items still links to a real (if empty)
+   shop view — see updateHomepageDynamicContent() in inventory.js — this
+   just reads as "not stocked yet" rather than a normal, browsable tile:
+   slightly dimmed photo + a muted, italic count instead of the usual
+   cream-dim tone. */
+.category-tile.category-tile-empty { opacity: 0.72; }
+.category-tile.category-tile-empty .tile-sub { font-style: italic; }
 @media (max-width: 900px) {
   .category-tile-grid { grid-template-columns: repeat(4, 1fr); }
 }
