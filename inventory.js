@@ -113,10 +113,7 @@ function photoBlock(item) {
     ? `<div class="thumb-row">${item.photos.map((p, i) =>
         `<img class="thumb${i === 0 ? " active" : ""}" src="${p}" data-full="${p}" alt="">`).join("")}</div>`
     : "";
-  // "contain" (not "cover") so plank close-ups and wider room/lifestyle shots
-  // both display at their real proportions on the fixed-height card image
-  // area — never stretched, never cropped into.
-  return `<div class="product-photo main-photo" style="background-image:url('${main}'); background-size:contain; background-position:center;" data-main-photo></div>${thumbs}`;
+  return `<div class="product-photo main-photo" style="background-image:url('${main}'); background-size:cover; background-position:center;" data-main-photo></div>${thumbs}`;
 }
 
 function statusBadge(item) {
@@ -141,23 +138,23 @@ function smsMessageForItem(item) {
   return `Hi, I'm interested in ${item.name}${priceText}. Please send me more information.`;
 }
 
-// Opens the visitor's SMS app with a prefilled, product-specific message via
-// the existing business phone number in SITE_CONFIG. Lives in the collapsed
-// details panel (see productCard) rather than on the default card face.
-function smsHrefFor(item) {
-  const phoneHref = window.SITE_CONFIG ? window.SITE_CONFIG.phoneHref : "";
-  return `sms:${phoneHref}?&body=${encodeURIComponent(smsMessageForItem(item))}`;
-}
-
-// Primary CTA for an in-stock item: "Get a Quote" (for Flooring, opens the
-// on-site quote modal via data-quote-id; other categories keep the plain
-// button for now). Out-of-stock items keep the old status pill.
+// Two CTAs for an in-stock item: "Get a Quote" (primary — for Flooring,
+// opens the on-site quote modal via data-quote-id; other categories keep
+// the plain button for now) and "Text Us" (secondary, functional — opens
+// the visitor's SMS app with a prefilled, product-specific message via the
+// existing business phone number in SITE_CONFIG). Out-of-stock items keep
+// the old status pill.
 function actionButtons(item) {
   if (item.status !== "In Stock") {
     return `<span class="btn btn-outline btn-small" style="opacity:.5; cursor:default;">${item.status}</span>`;
   }
+  const phoneHref = window.SITE_CONFIG ? window.SITE_CONFIG.phoneHref : "";
+  const smsHref = `sms:${phoneHref}?&body=${encodeURIComponent(smsMessageForItem(item))}`;
   const quoteAttr = item.category === "Flooring" ? `data-quote-id="${item.id}"` : `data-quote-item="${item.name}"`;
-  return `<button type="button" class="btn btn-dark btn-small btn-quote" ${quoteAttr}>Get a Quote</button>`;
+  return `
+    <button type="button" class="btn btn-dark btn-small btn-quote" ${quoteAttr}>Get a Quote</button>
+    <a href="${smsHref}" class="btn btn-outline btn-small">Text Us</a>
+  `;
 }
 
 function highlightBullets(highlights) {
@@ -178,32 +175,18 @@ function priceBlock(item) {
     && typeof item.availableSqFt === "number";
 
   if (isFlooring) {
-    const boxesAvailable = Math.floor(item.availableSqFt / item.sqFtPerUnit);
     return `<div class="product-price product-price-flooring">
       <div class="price-line">${money2(item.price)} <span class="price-unit">/ sq ft</span></div>
-      <div class="price-sub"><span class="price-bold">${money2(item.boxPrice)} / box</span> &middot; ${sqFt2(item.sqFtPerUnit)} sq ft</div>
-      <div class="price-avail">${boxesAvailable.toLocaleString()} boxes &middot; ${sqFtAvailable(item.availableSqFt)} sq ft available</div>
+      <div class="price-sub"><span class="price-bold">${money2(item.boxPrice)} / box</span> &middot; ${sqFt2(item.sqFtPerUnit)} sq ft/box</div>
+      <div class="price-avail">${sqFtAvailable(item.availableSqFt)} sq ft available</div>
     </div>`;
   }
 
   return `<div class="product-price">${money(item.price)} ${item.wasPrice ? `<span class="was">${money(item.wasPrice)}</span>` : ""}</div>`;
 }
 
-// A card shows at most 3 short spec badges (thickness, wear layer, pad, etc.)
-// pulled from the same Highlights field the collapsed details panel lists in
-// full — keeps the default card scannable without hiding the rest of the data.
-function specBadges(highlights) {
-  return highlightBullets(highlights).slice(0, 3);
-}
-
 function productCard(item) {
   const bullets = highlightBullets(item.highlights);
-  const badges = specBadges(item.highlights);
-  const inStock = item.status === "In Stock";
-  // The panel is worth showing whenever there's either descriptive content
-  // to reveal or a Text Us action to offer (Text Us only applies in stock).
-  const hasDetailsPanel = !!item.details || bullets.length > 0 || inStock;
-
   return `
   <div class="product-card" data-category="${item.category}">
     <div class="photo-wrap">
@@ -211,19 +194,14 @@ function productCard(item) {
       ${statusBadge(item)}
     </div>
     <div class="product-info">
-      ${item.brand ? `<span class="product-brand">${item.brand}</span>` : ""}
+      <span class="product-cat">${item.category}</span>
       <h4>${item.name}</h4>
-      ${badges.length ? `<div class="product-badges">${badges.map(b => `<span class="spec-badge">${b}</span>`).join("")}</div>` : ""}
-      ${priceBlock(item)}
-    </div>
-    ${hasDetailsPanel ? `<div class="product-details-panel" hidden>
       ${item.details ? `<p class="product-desc">${item.details}</p>` : ""}
       ${bullets.length ? `<ul class="product-details">${bullets.map(b => `<li>${b}</li>`).join("")}</ul>` : ""}
-      ${inStock ? `<a href="${smsHrefFor(item)}" class="btn btn-outline btn-small btn-block">Text Us</a>` : ""}
-    </div>` : ""}
+      ${priceBlock(item)}
+    </div>
     <div class="product-actions">
       ${actionButtons(item)}
-      ${hasDetailsPanel ? `<button type="button" class="details-toggle" data-details-toggle>Details</button>` : ""}
     </div>
   </div>`;
 }
@@ -361,19 +339,15 @@ function initShopControls(items) {
   itemsById = {};
   items.forEach(i => { itemsById[i.id] = i; });
 
-  // Filter buttons exist in three places (desktop sidebar, mobile drawer, and
-  // any legacy horizontal row) that must all reflect the active category —
-  // toggle by data-filter value rather than just the clicked element so a
-  // choice made in one stays in sync if the viewport crosses a breakpoint.
   const filterBtns = document.querySelectorAll(".filter-btn");
   filterBtns.forEach(btn => {
     btn.addEventListener("click", () => {
+      filterBtns.forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
       currentCategory = btn.getAttribute("data-filter");
-      filterBtns.forEach(b => b.classList.toggle("active", b.getAttribute("data-filter") === currentCategory));
       updateSortOptionsVisibility();
       updateCalcButtonVisibility();
       renderShopCatalog();
-      closeFilterDrawer();
     });
   });
 
@@ -406,52 +380,16 @@ function initShopControls(items) {
   const catalogGrid = document.getElementById("catalog-grid");
   if (catalogGrid) {
     catalogGrid.addEventListener("click", (e) => {
-      const quoteBtn = e.target.closest("[data-quote-id]");
-      if (quoteBtn) { openQuoteModal(itemsById[quoteBtn.getAttribute("data-quote-id")]); return; }
-
-      const detailsBtn = e.target.closest("[data-details-toggle]");
-      if (detailsBtn) {
-        const panel = detailsBtn.closest(".product-card")?.querySelector(".product-details-panel");
-        if (panel) {
-          panel.hidden = !panel.hidden;
-          detailsBtn.textContent = panel.hidden ? "Details" : "Hide Details";
-          detailsBtn.classList.toggle("open", !panel.hidden);
-        }
-      }
+      const btn = e.target.closest("[data-quote-id]");
+      if (btn) openQuoteModal(itemsById[btn.getAttribute("data-quote-id")]);
     });
   }
   bindQuoteModal();
   bindCalculatorModal();
-  bindFilterDrawer();
 
   updateSortOptionsVisibility();
   updateCalcButtonVisibility();
   renderShopCatalog();
-}
-
-// The category filter list lives in the desktop sidebar at all times, and is
-// duplicated into a slide-out drawer for narrow viewports (opened via the
-// "Filters" button that only renders in the toolbar below that breakpoint).
-function openFilterDrawer() {
-  const overlay = document.getElementById("filter-drawer-overlay");
-  if (!overlay) return;
-  overlay.hidden = false;
-  document.body.classList.add("modal-open");
-}
-
-function closeFilterDrawer() {
-  const overlay = document.getElementById("filter-drawer-overlay");
-  if (overlay) overlay.hidden = true;
-  document.body.classList.remove("modal-open");
-}
-
-function bindFilterDrawer() {
-  const overlay = document.getElementById("filter-drawer-overlay");
-  if (!overlay) return;
-  document.getElementById("mobile-filter-open")?.addEventListener("click", openFilterDrawer);
-  document.getElementById("filter-drawer-close")?.addEventListener("click", closeFilterDrawer);
-  overlay.addEventListener("click", (e) => { if (e.target === overlay) closeFilterDrawer(); });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !overlay.hidden) closeFilterDrawer(); });
 }
 
 // ---------------------------------------------------------------------
