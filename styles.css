@@ -940,6 +940,24 @@ nav.primary-nav a.active {
   color: var(--cream);
   border-color: var(--charcoal);
 }
+/* A category with zero published items still gets its tab (all 7
+   canonical categories always render — see updateCategoryTabCounts())
+   but reads as "nothing here yet" rather than a normal, stocked
+   category: muted text/border, and the "(Coming Soon)" count keeps its
+   own tone even once .active/:hover flips the tab's background dark. */
+.filter-btn.filter-btn-empty {
+  color: var(--text-muted);
+  border-color: var(--line);
+}
+.filter-btn.filter-btn-empty .filter-count-empty {
+  opacity: 0.75;
+  font-style: italic;
+}
+.filter-btn.filter-btn-empty.active,
+.filter-btn.filter-btn-empty:hover {
+  background: var(--text-muted);
+  border-color: var(--text-muted);
+}
 
 .sort-control {
   display: flex;
@@ -1640,7 +1658,13 @@ body.modal-open { overflow: hidden; }
   align-items: center;
   justify-content: center;
   padding: 20px;
-  z-index: 1000;
+  /* Above .shop-sidebar's mobile drawer z-index (1001). The Flooring
+     Calculator's "Calculate multiple rooms" link lives inside that drawer
+     (see bindFlooringCalcCard() in inventory.js) and closes it before
+     opening this modal, but any modal should still be able to render on
+     top of the drawer regardless — belt-and-suspenders against the same
+     stacking-order bug recurring for a future trigger that forgets to. */
+  z-index: 1100;
 }
 .modal-overlay[hidden] { display: none; }
 

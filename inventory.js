@@ -276,7 +276,7 @@ function emptyCategoryMarkup(category) {
     <p>We do carry ${category} — this is a temporary stock gap, not a category we've dropped. New inventory is added weekly.</p>
     <div class="catalog-empty-actions">
       <a href="sms:${phoneHref}?&body=${smsBody}" class="btn btn-dark btn-small">Text about upcoming stock</a>
-      <a href="shop.html" class="btn btn-outline btn-small">View all inventory</a>
+      <a href="/shop" class="btn btn-outline btn-small">View all inventory</a>
     </div>
   </div>`;
 }
@@ -758,7 +758,12 @@ function bindFlooringCalcCard() {
 
   btn?.addEventListener("click", runEstimate);
   input?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); runEstimate(); } });
-  fullLink?.addEventListener("click", () => openCalculatorModal(false));
+  // On mobile this link lives inside the filter drawer itself — close it
+  // first so the calculator modal isn't left rendering behind the still-
+  // open drawer (a stacking-order bug the .modal-overlay z-index comment
+  // in styles.css also guards against, belt-and-suspenders). No-op on
+  // desktop, where the sidebar isn't a drawer to begin with.
+  fullLink?.addEventListener("click", () => { closeShopSidebarDrawer(); openCalculatorModal(false); });
 }
 
 // Wires everything around the sidebar that isn't a single facet <select>
@@ -770,6 +775,17 @@ function bindFlooringCalcCard() {
 // same #shop-sidebar markup serves as a static sidebar on desktop and a
 // slide-in drawer on mobile purely via CSS (see .shop-sidebar.open in
 // styles.css) — one DOM tree, no content duplicated between the two.
+// Shared with bindFlooringCalcCard()'s "Calculate multiple rooms" link,
+// which lives inside this same drawer on mobile and needs to close it
+// before opening the calculator modal on top of it. Safe to call even
+// when the drawer doesn't exist (desktop pages) or is already closed.
+function closeShopSidebarDrawer() {
+  document.getElementById("shop-sidebar")?.classList.remove("open");
+  const backdrop = document.getElementById("shop-sidebar-backdrop");
+  if (backdrop) backdrop.hidden = true;
+  document.body.classList.remove("modal-open");
+}
+
 function bindSidebarFilterExtras() {
   document.getElementById("active-filter-chips")?.addEventListener("click", (e) => {
     const chip = e.target.closest("[data-chip-key]");
@@ -788,15 +804,10 @@ function bindSidebarFilterExtras() {
     if (backdrop) backdrop.hidden = false;
     document.body.classList.add("modal-open");
   };
-  const closeDrawer = () => {
-    sidebar?.classList.remove("open");
-    if (backdrop) backdrop.hidden = true;
-    document.body.classList.remove("modal-open");
-  };
   document.getElementById("mobile-filters-btn")?.addEventListener("click", openDrawer);
-  document.getElementById("sidebar-close-btn")?.addEventListener("click", closeDrawer);
-  document.getElementById("sidebar-apply-btn-mobile")?.addEventListener("click", closeDrawer);
-  backdrop?.addEventListener("click", closeDrawer);
+  document.getElementById("sidebar-close-btn")?.addEventListener("click", closeShopSidebarDrawer);
+  document.getElementById("sidebar-apply-btn-mobile")?.addEventListener("click", closeShopSidebarDrawer);
+  backdrop?.addEventListener("click", closeShopSidebarDrawer);
 }
 
 // ---------------------------------------------------------------------
@@ -1197,7 +1208,7 @@ function renderShopCatalog() {
   updateViewToggle();
 }
 
-// Lets footer/homepage links like shop.html#tools preselect a category tab
+// Lets footer/homepage links like /shop#tools preselect a category tab
 // (legacy hash links) — ?cat=<Category Name> (URL-encoded exactly as the
 // category reads, e.g. ?cat=Plumbing+%26+Bath) is the primary format.
 const CATEGORY_SLUGS = {
@@ -1264,18 +1275,23 @@ function applyCategoryFromUrl() {
 // One item count per category tab (e.g. "Flooring (18)"), computed from
 // the full fetched set — independent of the current search/facet filters,
 // since a tab count answers "how much is in this category," not "how much
-// matches what I just typed." Tabs with zero published items hide
-// entirely rather than showing "(0)" ("All" always stays, even if the
-// whole catalog is temporarily empty).
+// matches what I just typed." All 7 canonical categories always render
+// (the site's category structure is fixed architecture, not something
+// that should shift around based on what's in stock this week) — a
+// category with zero published items shows "Coming Soon" in place of a
+// count instead of hiding the tab or showing a bare "(0)".
 function updateCategoryTabCounts() {
   document.querySelectorAll(".filter-btn").forEach(btn => {
     const category = btn.getAttribute("data-filter");
     if (category === "all") return;
     const count = shopItems.filter(i => i.webCategory === category).length;
-    btn.hidden = count === 0;
-    const label = btn.getAttribute("data-label") || btn.textContent.replace(/\s*\(\d+\)\s*$/, "").trim();
+    btn.hidden = false;
+    btn.classList.toggle("filter-btn-empty", count === 0);
+    const label = btn.getAttribute("data-label") || btn.textContent.replace(/\s*\(\d+\)\s*$|\s*\(Coming Soon\)\s*$/, "").trim();
     btn.setAttribute("data-label", label);
-    btn.innerHTML = `${label} <span class="filter-count">(${count})</span>`;
+    btn.innerHTML = count === 0
+      ? `${label} <span class="filter-count filter-count-empty">(Coming Soon)</span>`
+      : `${label} <span class="filter-count">(${count})</span>`;
   });
 }
 
@@ -1396,7 +1412,7 @@ function initShopControls(items) {
   // Flooring already applied. No longer linked from the header nav (that
   // duplicated the "Flooring Calculator" button in this page's own
   // filter bar, which is the calculator's one entry point now) — kept
-  // for any other shop.html?...&calc=1 deep link.
+  // for any other /shop?...&calc=1 deep link.
   if (new URLSearchParams(window.location.search).get("calc") === "1") {
     openCalculatorModal(false);
   }
@@ -1800,7 +1816,7 @@ function renderProductNotFound(container, message) {
   container.innerHTML = `<div class="product-detail-notfound">
     <h1>${message ? "Inventory unavailable" : "Item not found"}</h1>
     <p class="${message ? "catalog-error" : ""}">${message || "This item may no longer be available. Check the full inventory instead."}</p>
-    <a href="shop.html" class="btn btn-dark">Back to inventory</a>
+    <a href="/shop" class="btn btn-dark">Back to inventory</a>
   </div>`;
 }
 
@@ -1829,11 +1845,13 @@ function initProductDetail(items) {
   // (see syncShopUrl()), not just the bare category. window.location.
   // pathname always has a leading "/" (productDetailHref() built this
   // from that same property), so the same-site check has to match that,
-  // not a bare "shop.html" — this keeps it to an actual same-site
-  // shop.html path rather than trusting the query param as an arbitrary
-  // redirect target.
+  // not a bare "/shop" — this keeps it to an actual same-site /shop path
+  // rather than trusting the query param as an arbitrary redirect target.
+  // Matches the legacy /shop.html path too (still reachable pre-redirect,
+  // e.g. a stale cached link), even though every link this site generates
+  // now points at /shop.
   const fromParam = new URLSearchParams(window.location.search).get("from");
-  const backHref = fromParam && /(^|\/)shop\.html(\?|$)/.test(fromParam) ? fromParam : `shop.html?cat=${encodeURIComponent(item.webCategory)}`;
+  const backHref = fromParam && /(^|\/)shop(\.html)?(\?|$)/.test(fromParam) ? fromParam : `/shop?cat=${encodeURIComponent(item.webCategory)}`;
 
   container.innerHTML = `
     <a class="product-detail-back" href="${backHref}">&larr; Back to inventory</a>

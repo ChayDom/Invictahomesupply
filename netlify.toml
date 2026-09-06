@@ -1,2 +1,18 @@
 [build]
   functions = "netlify/functions"
+
+# Canonical inventory route is /shop (no .html) — the old /shop.html URL
+# still works via a 301 so existing bookmarks/backlinks/search results
+# aren't broken, but every internal link and the sitemap point at /shop.
+# The second rule rewrites /shop to the actual shop.html file on disk
+# (status 200, not a redirect — the URL bar stays /shop).
+[[redirects]]
+  from = "/shop.html"
+  to = "/shop"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/shop"
+  to = "/shop.html"
+  status = 200
