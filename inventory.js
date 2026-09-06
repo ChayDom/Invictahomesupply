@@ -417,13 +417,17 @@ function priceBlock(item) {
   }
 
   const perUnitLabels = { box: "/ box", roll: "/ roll" };
+  const singularWords = { box: " box", roll: " roll" };
   const pluralWords = { box: " boxes", roll: " rolls" };
   const unitLabel = perUnitLabels[item.sellUnit] || "each";
   const isPerUnit = item.sellUnit === "box" || item.sellUnit === "roll";
   const priceText = isPerUnit && typeof item.price === "number" ? money2(item.price) : money(item.price);
   const availParts = [];
   if (typeof item.wasPrice === "number") availParts.push(`Retail ${money(item.wasPrice)}`);
-  if (typeof item.qtyAvailable === "number") availParts.push(`${item.qtyAvailable}${pluralWords[item.sellUnit] || ""} available`);
+  if (typeof item.qtyAvailable === "number") {
+    const unitWord = item.qtyAvailable === 1 ? singularWords[item.sellUnit] : pluralWords[item.sellUnit];
+    availParts.push(`${item.qtyAvailable}${unitWord || ""} available`);
+  }
   return `<div class="product-price">
     <div class="price-line">${priceText} <span class="price-unit">${unitLabel}</span></div>
     ${availParts.length ? `<div class="price-avail">${availParts.join(" &middot; ")}</div>` : ""}
@@ -1512,7 +1516,7 @@ function updateHomepageDynamicContent(items) {
   }
   if (sqftEl) {
     const totalSqFt = flooring.reduce((sum, i) => sum + (typeof i.availableSqFt === "number" ? i.availableSqFt : 0), 0);
-    sqftEl.textContent = totalSqFt > 0 ? sqFtAvailable(totalSqFt) : "—";
+    sqftEl.textContent = totalSqFt > 0 ? Math.round(totalSqFt).toLocaleString("en-US") : "—";
   }
 }
 
