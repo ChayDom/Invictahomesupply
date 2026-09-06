@@ -50,8 +50,11 @@
    Inventory data is fetched from the /api/inventory serverless function,
    which holds the Airtable credentials server-side (Netlify environment
    variables) — nothing sensitive lives in this file or in git.
-   Until that function returns data, the site shows sample placeholder
-   items so it never looks broken.
+
+   There is no sample/demo/fake fallback inventory. If the fetch fails and
+   there's no usable cache from a prior successful fetch, the site shows a
+   real "couldn't load" message — never invented products a customer could
+   mistake for real availability. See fetchInventory()/CATALOG_MESSAGES.
    =================================================================== */
 window.AIRTABLE_CONFIG = {
   cacheMinutes: 15,
@@ -198,62 +201,38 @@ function mapAirtableRecord(id, f) {
     statusLabel: resolveStatusLabel(f),
     photos: photos.length ? photos : (f["Reference Image URL"] ? [f["Reference Image URL"]] : []),
     isNew: dateAdded ? (Date.now() - dateAdded.getTime()) / 86400000 <= 7 : false,
+    // Raw timestamp (or null), kept separate from the 7-day `isNew` badge
+    // flag — "New This Week" sorts by this so it can always find the 4
+    // most recent items even when fewer than 4 are within the badge window.
+    dateAddedTs: dateAdded ? dateAdded.getTime() : null,
   };
 }
 
-// Shown automatically until the Airtable function returns real records —
-// replace by adding real rows in the Product Catalog sheet, not by editing
-// this list. Deliberately spans multiple categories so the mixed layouts
-// (New This Week, category tiles, shop tabs) all have something to show,
-// and deliberately exercises the structured-flooring-fields logic: mixed
-// wear layer/no wear layer (LVP vs. Laminate), low stock (1 and 2 boxes,
-// for the "Last box"/"Only 2 boxes left" messaging), and every
-// Underlayment/Water Resistance value.
-// The first 9 represent the fully-migrated future state (already in the
-// mapAirtableRecord() output shape); the rest are raw, Website-Export-
-// shaped records run through mapAirtableRecord() so the fallback rules
-// (blank-Category inference, unrecognized-category exclusion, out-of-
-// stock handling) are visibly exercised, not just unit logic.
-// .filter(Boolean) drops "legacy-3" (Electronics), which mapAirtableRecord
-// deliberately returns null for — that's the point of including it here.
-const FALLBACK_ITEMS = [
-  { id: "sample-1", name: "Waterproof Oak Plank Flooring", webCategory: "Flooring", webSubcategory: "Luxury Vinyl Plank", brand: "Invicta Floors", sellUnit: "sq ft", price: 2.01, boxPrice: 42.11, sqFtPerUnit: 20.94, availableSqFt: 1026, wearLayerMil: 22, thicknessMm: 6.5, underlaymentAttached: "Yes", waterResistance: "Waterproof", highlights: "Click-lock installation\nRealistic wood grain texture", statusLabel: "In Stock", photos: [], isNew: true },
-  { id: "sample-2", name: "Rustic Pine Waterproof Plank", webCategory: "Flooring", webSubcategory: "Luxury Vinyl Plank", brand: "LifeProof", sellUnit: "sq ft", price: 1.79, boxPrice: 38.36, sqFtPerUnit: 21.43, availableSqFt: 42.86, wearLayerMil: 12, thicknessMm: 5, underlaymentAttached: "No", waterResistance: "Water Resistant", highlights: "Pickup only", statusLabel: "In Stock", photos: [], isNew: true },
-  { id: "sample-3", name: "Classic Oak Laminate", webCategory: "Flooring", webSubcategory: "Laminate", brand: "Pergo", sellUnit: "sq ft", price: 1.49, boxPrice: 31.2, sqFtPerUnit: 20.9, availableSqFt: 20.9, underlaymentAttached: "No", waterResistance: "Not Water Resistant", highlights: "AC4-rated commercial wear rating", statusLabel: "In Stock", photos: [] },
-  { id: "sample-4", name: "50-Gallon Gas Water Heater", webCategory: "Water Heaters", webSubcategory: "Gas", brand: "Rheem", sellUnit: "each", price: 649, wasPrice: 1049, qtyAvailable: 2, highlights: "50 gal\nNatural gas\n6-year tank warranty", statusLabel: "In Stock", photos: [], isNew: true },
-  { id: "sample-5", name: "Stainless French Door Refrigerator", webCategory: "Appliances", webSubcategory: "Refrigerator", brand: "Samsung", sellUnit: "each", price: 1350, wasPrice: 2199, qtyAvailable: 1, highlights: "27 cu ft\nFrench door\nIce maker included", statusLabel: "In Stock", photos: [] },
-  { id: "sample-6", name: "Undermount Kitchen Sink, Stainless", webCategory: "Plumbing & Bath", webSubcategory: "Sinks", brand: "Kraus", sellUnit: "each", price: 120, wasPrice: 240, qtyAvailable: 4, highlights: "Stainless\nUndermount, 32 in\nIncludes mounting hardware", statusLabel: "In Stock", photos: [] },
-  { id: "sample-7", name: "Self-Propelled Gas Mower, 21 in", webCategory: "Lawn & Outdoor", brand: "Honda", sellUnit: "each", price: 429, wasPrice: 599, qtyAvailable: 0, highlights: "21 in\nSelf-propelled\nMulch/bag/side-discharge 3-in-1", statusLabel: "Sold Out", photos: [] },
-  { id: "sample-8", name: "18V Cordless Drill Kit, 2 Batteries", webCategory: "Tools", webSubcategory: "Power Tools", brand: "DeWalt", sellUnit: "each", price: 89, wasPrice: 149, qtyAvailable: 6, highlights: "18V\n2 batteries + charger\nBrushless", statusLabel: "In Stock", photos: [] },
-  { id: "sample-9", name: "Matte Black Barn Door Hardware Kit", webCategory: "Home Improvement", brand: "", sellUnit: "each", price: 65, wasPrice: 120, qtyAvailable: 5, highlights: "6.6 ft track\nMatte black\nSoft-close, fits doors up to 36 in", statusLabel: "In Stock", photos: [] },
-  // Pre-migration-shaped rows: only the legacy Category/Status/Quantity
-  // Available fields, none of the newer ones.
-  // legacy-1: exact-match legacy Category -> still shows (Flooring, sq ft
-  // inferred), Quantity Available = 1 box worth -> "Last box" messaging.
-  mapAirtableRecord("legacy-1", { "Name": "Legacy Oak Laminate (unmigrated row)", "Category": "Flooring", "Price": 1.65, "Sq Ft Per Unit": 20, "Available Sq Ft": 20, "Quantity Available": 1 }),
-  // legacy-2: keyword-matched legacy Category ("Plumbing" substring) -> Plumbing & Bath,
-  // Quantity Available = 0 -> shown with a disabled "Out of Stock" pill, not hidden.
-  mapAirtableRecord("legacy-2", { "Name": "Legacy Plumbing Fixture Kit (unmigrated row)", "Category": "Plumbing Fixtures", "Price": 45, "Quantity Available": 0 }),
-  // legacy-3: out-of-scope legacy Category with no keyword match -> resolveWebCategory
-  // returns null -> mapAirtableRecord returns null -> dropped by .filter(Boolean)
-  // below. This is the "must not be auto-categorized or newly published" case.
-  mapAirtableRecord("legacy-3", { "Name": "Legacy Game Console (should not publish)", "Category": "Electronics", "Price": 199, "Quantity Available": 3 }),
-  // legacy-4: blank Category but Unit Type = "Sq Ft" -> inferred as Flooring
-  // rather than silently unpublished, since this site was flooring-only
-  // pre-migration. 2 boxes -> "Only 2 boxes left" messaging.
-  mapAirtableRecord("legacy-4", { "Name": "Legacy Vinyl Plank, No Category Set (unmigrated row)", "Price": 1.95, "Unit Type": "Sq Ft", "Box Price": 41.5, "Sq Ft Per Unit": 21.28, "Available Sq Ft": 42.56 }),
-  // legacy-5: blank Category AND no flooring attributes -> stays excluded,
-  // same as any other unrecognized Category. Proves the inference above
-  // is flooring-only, not a general blank-Category catch-all.
-  mapAirtableRecord("legacy-5", { "Name": "Legacy Unknown Item, No Category (should not publish)", "Price": 25 }),
-].filter(Boolean);
+// User-facing copy for the three non-normal catalog states. Centralized
+// so every render path (grid, contractor table/cards, New This Week)
+// shows identical wording.
+const CATALOG_MESSAGES = {
+  loading: "Loading inventory…",
+  emptyCategory: "Nothing in this category right now — text us for what's coming.",
+  emptyFiltered: "No matching items right now — text us what you're looking for.",
+  error: "We couldn't load inventory right now — text us and we'll check availability for you.",
+};
 
+// Fetches real inventory only — there is no sample/demo fallback. A fresh
+// cache (< cacheMinutes old) short-circuits the network call. On a fetch
+// failure, falls back to the last successfully-fetched cache if one
+// exists (still real data, just possibly stale) rather than showing
+// nothing; only when there's truly no real data available does this
+// return an error for the UI to show honestly.
 async function fetchInventory() {
   const cached = localStorage.getItem(CACHE_KEY);
+  let parsedCache = null;
   if (cached) {
     try {
-      const { data, ts } = JSON.parse(cached);
-      if (Date.now() - ts < window.AIRTABLE_CONFIG.cacheMinutes * 60 * 1000) return data;
+      parsedCache = JSON.parse(cached);
+      if (Date.now() - parsedCache.ts < window.AIRTABLE_CONFIG.cacheMinutes * 60 * 1000) {
+        return { items: parsedCache.data, error: null };
+      }
     } catch (e) { /* ignore bad cache */ }
   }
 
@@ -268,10 +247,13 @@ async function fetchInventory() {
     const items = records.map(r => mapAirtableRecord(r.id, r.fields || {})).filter(Boolean);
 
     localStorage.setItem(CACHE_KEY, JSON.stringify({ data: items, ts: Date.now() }));
-    return items;
+    return { items, error: null };
   } catch (err) {
-    console.warn("Invicta: falling back to sample inventory —", err);
-    return FALLBACK_ITEMS;
+    console.warn("Invicta: inventory fetch failed —", err);
+    if (parsedCache && Array.isArray(parsedCache.data)) {
+      return { items: parsedCache.data, error: null, stale: true };
+    }
+    return { items: [], error: err.message || "Unable to load inventory" };
   }
 }
 
@@ -346,18 +328,27 @@ function flooringAvailabilityLabel(item) {
   return sqftPart ? `${sqftPart} (${boxes} boxes)` : `${boxes} boxes`;
 }
 
+// Shareable detail-page link for a card's photo/name — /product.html?id=
+// the Product Key (URL-encoded), falling back to the Airtable record id
+// only for the rare item with no Product Key, same fallback chain used
+// everywhere else an identifier is needed.
+function productDetailHref(item) {
+  return `product.html?id=${encodeURIComponent(item.productKey || item.id)}`;
+}
+
 function photoBlock(item) {
+  const href = productDetailHref(item);
   if (!item.photos || item.photos.length === 0) {
-    return `<div class="product-photo main-photo">
+    return `<a class="product-photo main-photo" href="${href}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M9 3v18"/></svg>
-    </div>`;
+    </a>`;
   }
   const main = item.photos[0];
   const thumbs = item.photos.length > 1
     ? `<div class="thumb-row">${item.photos.map((p, i) =>
         `<img class="thumb${i === 0 ? " active" : ""}" src="${p}" data-full="${p}" alt="">`).join("")}</div>`
     : "";
-  return `<div class="product-photo main-photo" style="background-image:url('${main}'); background-size:cover; background-position:center;" data-main-photo></div>${thumbs}`;
+  return `<a class="product-photo main-photo" href="${href}" style="background-image:url('${main}'); background-size:cover; background-position:center;" data-main-photo></a>${thumbs}`;
 }
 
 // Out-of-stock items are never hidden here — they're shown with a
@@ -376,11 +367,12 @@ function statusBadge(item) {
 }
 
 // Builds the prefilled "Text about this item" SMS body — always includes
-// the product name and its SKU (Product Key, falling back to the Airtable
-// record id) so a reply doesn't require looking anything up.
+// the product name and its Product Key (falling back to the Airtable
+// record id only for the rare item with no Product Key) so a reply
+// doesn't require looking anything up.
 function smsMessageForItem(item) {
-  const sku = item.productKey || item.id;
-  return `Hi, I'm interested in ${item.name} (SKU: ${sku}). Is it still available?`;
+  const key = item.productKey || item.id;
+  return `Hi, I'm interested in ${item.name} (${key}).`;
 }
 
 function smsHrefForItem(item) {
@@ -456,7 +448,7 @@ function productCard(item) {
     </div>
     <div class="product-info">
       <span class="product-cat">${categoryLabel}</span>
-      <h4>${item.name}</h4>
+      <h4><a href="${productDetailHref(item)}">${item.name}</a></h4>
       ${chips.length ? `<div class="spec-chips">${chips.map(c => `<span class="spec-chip">${c}</span>`).join("")}</div>` : ""}
       ${priceBlock(item)}
       ${hasMore ? `<details class="product-more">
@@ -485,12 +477,22 @@ function bindThumbClicks(container) {
   });
 }
 
-function renderGrid(items, containerId) {
+// Set once by initInventory() from fetchInventory()'s result — a real
+// fetch/parse failure with no usable cache, not "this category is just
+// empty." Every empty-state render checks it so a genuine outage shows
+// CATALOG_MESSAGES.error instead of the ordinary "nothing here" copy.
+let lastFetchError = null;
+
+function emptyStateMessage(emptyMessage) {
+  return lastFetchError ? CATALOG_MESSAGES.error : emptyMessage;
+}
+
+function renderGrid(items, containerId, emptyMessage = CATALOG_MESSAGES.emptyFiltered) {
   const el = document.getElementById(containerId);
   if (!el) return;
   el.innerHTML = items.length
     ? items.map(productCard).join("")
-    : `<p class="catalog-empty">No matching items right now — check back soon or text us what you're looking for.</p>`;
+    : `<p class="${lastFetchError ? "catalog-error" : "catalog-empty"}">${emptyStateMessage(emptyMessage)}</p>`;
   bindThumbClicks(el);
 }
 
@@ -529,11 +531,11 @@ function contractorRowCta(item) {
   return `<a href="${smsHrefForItem(item)}" class="btn btn-dark btn-small">Text to Hold</a>`;
 }
 
-function renderContractorTable(items) {
+function renderContractorTable(items, emptyMessage = CATALOG_MESSAGES.emptyFiltered) {
   const tbody = document.getElementById("contractor-table-body");
   if (!tbody) return;
   if (items.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" class="table-empty">No flooring matches your filters right now — text us what you're looking for.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="${lastFetchError ? "catalog-error" : "table-empty"}">${emptyStateMessage(emptyMessage)}</td></tr>`;
     return;
   }
   tbody.innerHTML = items.map(item => {
@@ -544,32 +546,70 @@ function renderContractorTable(items) {
     const lowStock = typeof boxes === "number" && boxes <= 2;
     return `<tr>
       <td class="contractor-product-cell">
-        <div class="contractor-product-photo"${photo ? ` style="background-image:url('${photo}');"` : ""}></div>
+        <a class="contractor-product-photo" href="${productDetailHref(item)}"${photo ? ` style="background-image:url('${photo}');"` : ""}></a>
         <div>
-          <div class="contractor-product-name">${item.name}</div>
+          <a class="contractor-product-name" href="${productDetailHref(item)}">${item.name}</a>
           ${item.brand || item.webSubcategory ? `<div class="contractor-product-sub">${[item.brand, item.webSubcategory].filter(Boolean).join(" &middot; ")}</div>` : ""}
         </div>
       </td>
       <td>${chips.length ? `<div class="spec-chips">${chips.map(c => `<span class="spec-chip">${c}</span>`).join("")}</div>` : "&mdash;"}</td>
       <td>${typeof item.price === "number" ? money2(item.price) : "&mdash;"}</td>
       <td>${typeof item.boxPrice === "number" ? money2(item.boxPrice) : "&mdash;"}</td>
-      <td class="${lowStock ? "contractor-low-stock" : ""}">${availLabel}</td>
+      <td class="${lowStock ? "low-stock-emph" : ""}">${availLabel}</td>
       <td class="contractor-actions-cell">${contractorRowCta(item)}</td>
     </tr>`;
   }).join("");
 }
 
-// Quick, product-independent sq-ft estimate for the inline "How many
-// boxes do I need?" widget — mirrors the Flooring Calculator modal's own
-// default 10% waste rate but is otherwise independent of it (no shared
-// state, doesn't touch calcWasteRate). "Multiple rooms?" opens the real
-// modal for anything more than this single quick number.
-const CONTRACTOR_CALC_WASTE_RATE = 0.10;
-function bindContractorCalcWidget() {
-  const input = document.getElementById("contractor-calc-sqft");
-  const btn = document.getElementById("contractor-calc-btn");
-  const result = document.getElementById("contractor-calc-result");
-  const fullLink = document.getElementById("contractor-calc-full-link");
+// Mobile equivalent of the desktop table — same row data, stacked cards
+// instead of a horizontally-scrolling table (styles.css hides one and
+// shows the other per breakpoint; both are always rendered so there's no
+// flash of missing content when the viewport crosses it).
+function renderContractorMobileCards(items, emptyMessage = CATALOG_MESSAGES.emptyFiltered) {
+  const container = document.getElementById("contractor-cards");
+  if (!container) return;
+  if (items.length === 0) {
+    container.innerHTML = `<p class="${lastFetchError ? "catalog-error" : "catalog-empty"}">${emptyStateMessage(emptyMessage)}</p>`;
+    return;
+  }
+  container.innerHTML = items.map(item => {
+    const chips = flooringStructuredChips(item);
+    const photo = item.photos && item.photos[0] ? item.photos[0] : "";
+    const boxes = boxesAvailable(item);
+    const availLabel = flooringAvailabilityLabel(item) || "&mdash;";
+    const lowStock = typeof boxes === "number" && boxes <= 2;
+    const href = productDetailHref(item);
+    return `<div class="contractor-card">
+      <a class="contractor-card-photo" href="${href}"${photo ? ` style="background-image:url('${photo}');"` : ""}></a>
+      <div class="contractor-card-body">
+        <a class="contractor-card-name" href="${href}">${item.name}</a>
+        ${item.brand || item.webSubcategory ? `<div class="contractor-card-sub">${[item.brand, item.webSubcategory].filter(Boolean).join(" &middot; ")}</div>` : ""}
+        ${chips.length ? `<div class="contractor-card-specs spec-chips">${chips.map(c => `<span class="spec-chip">${c}</span>`).join("")}</div>` : ""}
+        <div class="contractor-card-prices">
+          ${typeof item.price === "number" ? `<span><strong>${money2(item.price)}</strong> / sq ft</span>` : ""}
+          ${typeof item.boxPrice === "number" ? `<span><strong>${money2(item.boxPrice)}</strong> / box</span>` : ""}
+        </div>
+        <div class="contractor-card-avail${lowStock ? " low-stock-emph" : ""}">${availLabel}</div>
+        <div class="contractor-card-cta">${contractorRowCta(item)}</div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+// Quick, product-independent sq-ft estimate for the "How much flooring
+// do I need?" callout — shared by Card View and Contractor View alike,
+// shown near the top of the results area whenever Flooring is the active
+// category (see updateFlooringCalcCalloutVisibility()). Mirrors the real
+// Flooring Calculator modal's own default 10% waste rate but is
+// otherwise independent of it (no shared state, doesn't touch
+// calcWasteRate). "Multiple rooms?" opens the real modal for anything
+// more than this single quick number.
+const FLOORING_CALC_WASTE_RATE = 0.10;
+function bindFlooringCalcCallout() {
+  const input = document.getElementById("flooring-calc-sqft");
+  const btn = document.getElementById("flooring-calc-btn");
+  const result = document.getElementById("flooring-calc-result");
+  const fullLink = document.getElementById("flooring-calc-full-link");
 
   const runEstimate = () => {
     if (!input || !result) return;
@@ -578,47 +618,57 @@ function bindContractorCalcWidget() {
       result.hidden = true;
       return;
     }
-    result.textContent = `Recommended: ${calcRound2(sqft * (1 + CONTRACTOR_CALC_WASTE_RATE))} sq ft`;
+    result.textContent = `Recommended: ${calcRound2(sqft * (1 + FLOORING_CALC_WASTE_RATE))} sq ft`;
     result.hidden = false;
   };
 
   btn?.addEventListener("click", runEstimate);
   input?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); runEstimate(); } });
   fullLink?.addEventListener("click", () => openCalculatorModal(false));
+
+  // Once a visitor has opened/closed the callout themselves, stop
+  // resetting .open on every filter-triggered re-render.
+  document.getElementById("flooring-calc-callout")?.addEventListener("toggle", (e) => {
+    e.target.dataset.userToggled = "1";
+  });
+}
+
+// Shows the callout only while Flooring is active; a native <details> so
+// the mobile "collapsed behind a button" behavior needs no ongoing JS —
+// just set .open once per render based on viewport width (open on
+// desktop/tablet, closed on mobile) rather than fighting the user's own
+// toggle on every re-render.
+const FLOORING_CALC_MOBILE_BREAKPOINT = 700;
+function updateFlooringCalcCalloutVisibility() {
+  const callout = document.getElementById("flooring-calc-callout");
+  if (!callout) return;
+  const flooring = isFlooringView();
+  callout.hidden = !flooring;
+  if (flooring && !callout.dataset.userToggled) {
+    callout.open = window.innerWidth > FLOORING_CALC_MOBILE_BREAKPOINT;
+  }
 }
 
 // ---------------------------------------------------------------------
-// Homepage "New This Week": deliberately mixes categories rather than
-// just showing whatever's newest — 2 Flooring, 1 Appliances, 1 Water
-// Heaters when available, topped up with other new/in-stock items so the
-// section never looks sparse just because one category is thin that week.
+// Homepage "New This Week": the 4 most recently added published +
+// in-stock items across every category, by the real Date Added field
+// (dateAddedTs — never the internal Buy Date, which isn't read anywhere
+// in this file). Categories mix naturally as a side effect of true
+// recency order — no engineered per-category quota.
 // ---------------------------------------------------------------------
-function newFirst(items) {
-  return items.slice().sort((a, b) => (b.isNew === a.isNew ? 0 : b.isNew ? 1 : -1));
-}
-
 function pickNewArrivals(items, targetCount) {
   // The homepage promo strip only ever shows available items — Reserved/
   // Sold/Coming Soon items still render in the Shop grid (with a status
   // pill), just not here.
-  const available = items.filter(isAvailable);
-  const byCategory = cat => newFirst(available.filter(i => i.webCategory === cat));
-  const picks = [
-    ...byCategory("Flooring").slice(0, 2),
-    ...byCategory("Appliances").slice(0, 1),
-    ...byCategory("Water Heaters").slice(0, 1),
-  ];
-  const usedIds = new Set(picks.map(i => i.id));
-
-  if (picks.length < targetCount) {
-    for (const item of newFirst(available)) {
-      if (picks.length >= targetCount) break;
-      if (usedIds.has(item.id)) continue;
-      picks.push(item);
-      usedIds.add(item.id);
-    }
-  }
-  return picks;
+  return items
+    .filter(isAvailable)
+    .slice()
+    .sort((a, b) => {
+      const at = typeof a.dateAddedTs === "number" ? a.dateAddedTs : -Infinity;
+      const bt = typeof b.dateAddedTs === "number" ? b.dateAddedTs : -Infinity;
+      return bt - at;
+    })
+    .slice(0, targetCount);
 }
 
 // ---------------------------------------------------------------------
@@ -647,8 +697,22 @@ let currentWaterResistance = "";
 let currentAvailability = "";
 // Flooring-only view toggle: "card" (default, same grid as every other
 // category) or "contractor" (the table below). Irrelevant for every other
-// category, which only ever renders the card grid.
-let flooringViewMode = "card";
+// category, which only ever renders the card grid. Remembered for the
+// session (sessionStorage — resets in a fresh tab, unlike localStorage)
+// so switching categories and back doesn't lose the visitor's choice.
+const FLOORING_VIEW_STORAGE_KEY = "invicta_flooring_view";
+function loadFlooringViewMode() {
+  try {
+    const saved = sessionStorage.getItem(FLOORING_VIEW_STORAGE_KEY);
+    return saved === "contractor" ? "contractor" : "card";
+  } catch (e) {
+    return "card";
+  }
+}
+function saveFlooringViewMode(mode) {
+  try { sessionStorage.setItem(FLOORING_VIEW_STORAGE_KEY, mode); } catch (e) { /* ignore */ }
+}
+let flooringViewMode = loadFlooringViewMode();
 
 const SQFT_SORT_OPTIONS = [
   { value: "sqft-desc", label: "Sq Ft Available: High to Low" },
@@ -885,6 +949,8 @@ function updateViewToggle() {
 
   const contractorView = document.getElementById("contractor-view");
   if (contractorView) contractorView.hidden = !contractor;
+
+  updateFlooringCalcCalloutVisibility();
 }
 
 // Search matches Name, Brand, Model, Category, Subcategory, Retailer and
@@ -901,9 +967,12 @@ function searchMatches(item, query) {
 
 function renderShopCatalog() {
   const query = currentSearch.trim().toLowerCase();
-  const inCategory = shopItems
-    .filter(i => currentCategory === "all" || i.webCategory === currentCategory)
-    .filter(i => searchMatches(i, query));
+  // Category membership alone (no search/facet filters yet) — a real
+  // zero here means "this category has nothing published," the specific
+  // case CATALOG_MESSAGES.emptyCategory is for; a filter/search narrowing
+  // an otherwise non-empty category to zero gets emptyFiltered instead.
+  const wholeCategory = shopItems.filter(i => currentCategory === "all" || i.webCategory === currentCategory);
+  const inCategory = wholeCategory.filter(i => searchMatches(i, query));
 
   let filtered = inCategory;
   if (currentBrand) filtered = filtered.filter(i => i.brand === currentBrand);
@@ -920,15 +989,19 @@ function renderShopCatalog() {
     if (currentAvailability) filtered = filtered.filter(i => matchesAvailability(i, currentAvailability));
   }
   const sorted = sortItems(filtered, currentSort);
-  renderGrid(sorted, "catalog-grid");
+  const emptyMessage = wholeCategory.length === 0 ? CATALOG_MESSAGES.emptyCategory : CATALOG_MESSAGES.emptyFiltered;
+  renderGrid(sorted, "catalog-grid", emptyMessage);
   if (isFlooringView()) {
     updateContractorHero(sorted);
-    renderContractorTable(sorted);
+    renderContractorTable(sorted, emptyMessage);
+    renderContractorMobileCards(sorted, emptyMessage);
   }
   updateViewToggle();
 }
 
-// Lets footer/homepage links like shop.html#tools preselect a category tab.
+// Lets footer/homepage links like shop.html#tools preselect a category tab
+// (legacy hash links) — ?cat=<Category Name> (URL-encoded exactly as the
+// category reads, e.g. ?cat=Plumbing+%26+Bath) is the primary format.
 const CATEGORY_SLUGS = {
   "flooring": "Flooring",
   "water-heaters": "Water Heaters",
@@ -939,13 +1012,55 @@ const CATEGORY_SLUGS = {
   "home-improvement": "Home Improvement",
 };
 
-function applyCategoryFromHash() {
+function categoryFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const catParam = params.get("cat");
+  if (catParam && (catParam === "all" || WEB_CATEGORIES.includes(catParam))) return catParam;
   const slug = window.location.hash.replace("#", "");
-  const category = CATEGORY_SLUGS[slug];
-  if (!category) return;
-  currentCategory = category;
+  return CATEGORY_SLUGS[slug] || null;
+}
+
+function setActiveCategoryTab(category) {
   document.querySelectorAll(".filter-btn").forEach(b => {
     b.classList.toggle("active", b.getAttribute("data-filter") === category);
+  });
+}
+
+// Pushes ?cat= onto the URL without a full page reload — pushState so
+// Back/Forward move between categories, replaceState for the very first
+// render so opening a plain shop.html doesn't create a spurious history
+// entry.
+function syncCategoryUrl(category, replace) {
+  const url = new URL(window.location.href);
+  if (category === "all") url.searchParams.delete("cat");
+  else url.searchParams.set("cat", category);
+  url.hash = "";
+  const method = replace ? "replaceState" : "pushState";
+  window.history[method]({}, "", url.pathname + url.search);
+}
+
+function applyCategoryFromUrl() {
+  const category = categoryFromUrl();
+  if (!category) return;
+  currentCategory = category;
+  setActiveCategoryTab(category);
+}
+
+// One item count per category tab (e.g. "Flooring (18)"), computed from
+// the full fetched set — independent of the current search/facet filters,
+// since a tab count answers "how much is in this category," not "how much
+// matches what I just typed." Tabs with zero published items hide
+// entirely rather than showing "(0)" ("All" always stays, even if the
+// whole catalog is temporarily empty).
+function updateCategoryTabCounts() {
+  document.querySelectorAll(".filter-btn").forEach(btn => {
+    const category = btn.getAttribute("data-filter");
+    if (category === "all") return;
+    const count = shopItems.filter(i => i.webCategory === category).length;
+    btn.hidden = count === 0;
+    const label = btn.getAttribute("data-label") || btn.textContent.replace(/\s*\(\d+\)\s*$/, "").trim();
+    btn.setAttribute("data-label", label);
+    btn.innerHTML = `${label} <span class="filter-count">(${count})</span>`;
   });
 }
 
@@ -954,7 +1069,9 @@ function initShopControls(items) {
   itemsById = {};
   items.forEach(i => { itemsById[i.id] = i; });
 
-  applyCategoryFromHash();
+  updateCategoryTabCounts();
+  applyCategoryFromUrl();
+  syncCategoryUrl(currentCategory, true);
 
   const filterBtns = document.querySelectorAll(".filter-btn");
   filterBtns.forEach(btn => {
@@ -969,6 +1086,7 @@ function initShopControls(items) {
       currentUnderlayment = "";
       currentWaterResistance = "";
       currentAvailability = "";
+      syncCategoryUrl(currentCategory, false);
       updateSortOptionsVisibility();
       updateCalcButtonVisibility();
       renderShopCatalog();
@@ -997,8 +1115,10 @@ function initShopControls(items) {
 
   const viewToggleBtns = document.querySelectorAll(".view-toggle-btn");
   viewToggleBtns.forEach(btn => {
+    btn.classList.toggle("active", btn.getAttribute("data-view") === flooringViewMode);
     btn.addEventListener("click", () => {
       flooringViewMode = btn.getAttribute("data-view");
+      saveFlooringViewMode(flooringViewMode);
       viewToggleBtns.forEach(b => b.classList.toggle("active", b === btn));
       updateViewToggle();
     });
@@ -1014,7 +1134,7 @@ function initShopControls(items) {
     if (setter) { setter(btn.getAttribute("data-pill-value")); renderShopCatalog(); }
   });
 
-  bindContractorCalcWidget();
+  bindFlooringCalcCallout();
 
   const searchInput = document.getElementById("search-input");
   const searchClear = document.getElementById("search-clear");
@@ -1044,6 +1164,14 @@ function initShopControls(items) {
   updateSortOptionsVisibility();
   updateCalcButtonVisibility();
   renderShopCatalog();
+
+  // The "Flooring Calculator" nav link (shop.html?cat=Flooring&calc=1)
+  // lands here with the category already applied — calc=1 additionally
+  // opens the real calculator modal so the nav item is a genuine
+  // shortcut, not just a filtered page.
+  if (new URLSearchParams(window.location.search).get("calc") === "1") {
+    openCalculatorModal(false);
+  }
 }
 
 // ---------------------------------------------------------------------
@@ -1368,19 +1496,164 @@ function bindCalculatorModal() {
   });
 }
 
+// ---------------------------------------------------------------------
+// Homepage hero price + stat strip — both computed from the live fetched
+// inventory, never hardcoded. "Lowest price" only ever considers
+// published + in-stock Flooring rows with a real positive Price.
+// ---------------------------------------------------------------------
+function updateHomepageDynamicContent(items) {
+  const priceEl = document.getElementById("hero-price");
+  const sqftEl = document.getElementById("stat-sqft");
+  const flooring = items.filter(i => i.webCategory === "Flooring" && isAvailable(i));
+
+  if (priceEl) {
+    const prices = flooring.map(i => i.price).filter(p => typeof p === "number" && p > 0);
+    if (prices.length) priceEl.textContent = money2(Math.min(...prices));
+  }
+  if (sqftEl) {
+    const totalSqFt = flooring.reduce((sum, i) => sum + (typeof i.availableSqFt === "number" ? i.availableSqFt : 0), 0);
+    sqftEl.textContent = totalSqFt > 0 ? sqFtAvailable(totalSqFt) : "—";
+  }
+}
+
+// ---------------------------------------------------------------------
+// Product detail page (product.html?id=<Product Key>) — a shareable,
+// full-detail view. Reuses priceBlock()/statusBadge()/smsHrefForItem()
+// from the card so pricing/availability/CTA logic isn't duplicated.
+// Reads from the same fetched inventory as every other page; no separate
+// API call, no Airtable credentials involved.
+// ---------------------------------------------------------------------
+function productDetailPhotoBlock(item) {
+  if (!item.photos || item.photos.length === 0) {
+    return `<div class="product-photo main-photo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M9 3v18"/></svg>
+    </div>`;
+  }
+  const main = item.photos[0];
+  const thumbs = item.photos.length > 1
+    ? `<div class="thumb-row">${item.photos.map((p, i) =>
+        `<img class="thumb${i === 0 ? " active" : ""}" src="${p}" data-full="${p}" alt="">`).join("")}</div>`
+    : "";
+  return `<div class="product-photo main-photo" style="background-image:url('${main}'); background-size:cover; background-position:center;" data-main-photo></div>${thumbs}`;
+}
+
+// Every real field worth showing in full, beyond the card's 3-chip
+// summary — labels/values only ever come from real item fields, nothing
+// parsed or invented. Flooring gets its 4 structured fields plus
+// coverage-per-box; every other category gets Quantity Available instead
+// (Flooring's "available" story is sq ft/boxes, not a unit count).
+function productDetailSpecRows(item) {
+  const rows = [];
+  const add = (label, value) => { if (value !== undefined && value !== null && value !== "") rows.push([label, value]); };
+  add("Brand", item.brand);
+  add("Model", item.model);
+  add("Retailer", item.retailer);
+  if (item.webCategory === "Flooring") {
+    add("Subcategory", item.webSubcategory);
+    add("Thickness", typeof item.thicknessMm === "number" && item.thicknessMm > 0 ? `${item.thicknessMm} mm` : "");
+    add("Wear Layer", typeof item.wearLayerMil === "number" && item.wearLayerMil > 0 ? `${item.wearLayerMil} MIL` : "");
+    add("Underlayment Attached", item.underlaymentAttached);
+    add("Water Resistance", item.waterResistance && item.waterResistance !== "Unknown" ? item.waterResistance : "");
+    add("Coverage Per Box", typeof item.sqFtPerUnit === "number" ? `${sqFtAvailable(item.sqFtPerUnit)} sq ft` : "");
+    add("Available", typeof item.availableSqFt === "number" ? `${sqFtAvailable(item.availableSqFt)} sq ft` : "");
+  } else {
+    add("Subcategory", item.webSubcategory);
+    add("Quantity Available", typeof item.qtyAvailable === "number" ? item.qtyAvailable : "");
+  }
+  add("Product Key", item.productKey);
+  return rows;
+}
+
+function renderProductNotFound(container, message) {
+  container.innerHTML = `<div class="product-detail-notfound">
+    <h1>${message ? "Inventory unavailable" : "Item not found"}</h1>
+    <p class="${message ? "catalog-error" : ""}">${message || "This item may no longer be available. Check the full inventory instead."}</p>
+    <a href="shop.html" class="btn btn-dark">Back to inventory</a>
+  </div>`;
+}
+
+function initProductDetail(items) {
+  const container = document.getElementById("product-detail-root");
+  if (!container) return;
+
+  const id = new URLSearchParams(window.location.search).get("id");
+  const item = id ? items.find(i => (i.productKey || i.id) === id) : null;
+
+  if (!item) {
+    renderProductNotFound(container, lastFetchError ? CATALOG_MESSAGES.error : null);
+    return;
+  }
+
+  document.title = `${item.name} | Invicta Home Supply`;
+  const metaDesc = document.querySelector('meta[name="description"]');
+  const summary = item.details || item.highlights || `${item.name} — ${item.webCategory} at Invicta Home Supply.`;
+  if (metaDesc) metaDesc.setAttribute("content", summary.replace(/\s+/g, " ").slice(0, 300));
+
+  const categoryLabel = item.webSubcategory ? `${item.webCategory} &middot; ${item.webSubcategory}` : item.webCategory;
+  const specRows = productDetailSpecRows(item);
+  const highlightLines = highlightBullets(item.highlights);
+  const backHref = `shop.html?cat=${encodeURIComponent(item.webCategory)}`;
+
+  container.innerHTML = `
+    <a class="product-detail-back" href="${backHref}">&larr; Back to inventory</a>
+    <div class="product-detail">
+      <div class="product-detail-media">
+        ${productDetailPhotoBlock(item)}
+      </div>
+      <div class="product-detail-info">
+        <span class="product-cat">${categoryLabel}</span>
+        <h1>${item.name}</h1>
+        ${statusBadge(item)}
+        ${priceBlock(item)}
+        ${specRows.length ? `<div class="product-detail-specs"><table>${specRows.map(([l, v]) => `<tr><td>${l}</td><td>${v}</td></tr>`).join("")}</table></div>` : ""}
+        ${item.details ? `<p class="product-detail-desc">${item.details}</p>` : ""}
+        ${highlightLines.length ? `<ul class="product-details">${highlightLines.map(h => `<li>${h}</li>`).join("")}</ul>` : ""}
+        <div class="product-detail-actions">
+          ${isAvailable(item)
+            ? `<a href="${smsHrefForItem(item)}" class="btn btn-dark">Text about this item</a>`
+            : `<span class="btn btn-outline" style="opacity:.5; cursor:default;">${item.statusLabel}</span>`}
+          <a href="tel:" data-tel-link class="btn btn-outline">Call</a>
+          <a href="${backHref}" class="btn btn-outline">Back to inventory</a>
+        </div>
+      </div>
+    </div>`;
+
+  // app.js's own DOMContentLoaded pass already ran before this HTML
+  // existed, so the freshly-inserted data-tel-link needs its href set
+  // directly rather than waiting for a binding pass that already happened.
+  const telLink = container.querySelector("[data-tel-link]");
+  if (telLink && window.SITE_CONFIG) telLink.href = `tel:${window.SITE_CONFIG.phoneHref}`;
+
+  container.querySelectorAll(".thumb").forEach(thumb => {
+    thumb.addEventListener("click", () => {
+      container.querySelectorAll(".thumb").forEach(t => t.classList.remove("active"));
+      thumb.classList.add("active");
+      const main = container.querySelector("[data-main-photo]");
+      if (main) main.style.backgroundImage = `url('${thumb.getAttribute("data-full")}')`;
+    });
+  });
+}
+
 async function initInventory() {
-  const items = await fetchInventory();
+  const { items, error } = await fetchInventory();
+  lastFetchError = error;
 
   // Shop page: full catalog (filtering + sorting handled together)
   if (document.getElementById("catalog-grid")) {
     initShopControls(items);
   }
 
-  // Home page: New This Week (mixed categories, see pickNewArrivals)
+  // Home page: New This Week + hero/stat-strip dynamic content
   if (document.getElementById("new-arrivals-grid")) {
-    const picks = pickNewArrivals(items, 4);
-    const fallback = picks.length ? picks : items.slice(0, 4);
-    renderGrid(fallback, "new-arrivals-grid");
+    renderGrid(pickNewArrivals(items, 4), "new-arrivals-grid", CATALOG_MESSAGES.emptyCategory);
+  }
+  if (document.getElementById("hero-price")) {
+    updateHomepageDynamicContent(items);
+  }
+
+  // Product detail page
+  if (document.getElementById("product-detail-root")) {
+    initProductDetail(items);
   }
 }
 

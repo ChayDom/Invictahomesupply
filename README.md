@@ -1,8 +1,14 @@
 # Invicta Home Supply — website
 
-A 4-page static site (Home, Shop, About, Contact) with a live inventory
-catalog powered by Airtable. No monthly hosting fee, no online payment, no
-code editing required to add/remove/update items once it's set up.
+A 5-page static site (Home, Inventory, Flooring Calculator shortcut,
+About, Visit Us, plus a shareable Product detail view) with a live
+inventory catalog powered by Airtable, hosted on **Netlify** (not
+Cloudflare). No monthly hosting fee, no online payment, no code editing
+required to add/remove/update items once it's set up.
+
+`shop.html` and `contact.html` keep their original filenames/URLs (for
+existing links and SEO) even though their nav labels/on-page branding now
+read "Inventory" and "Visit Us" — only the UI text changed, not the routes.
 
 We are a **local supplier of brand-new overstock and value-priced home
 improvement products** — never use "liquidation," "clearance," or "discount
@@ -108,20 +114,35 @@ so Highlights remains their primary chip source until they get some.
 Flooring is the only category with a second, user-toggled layout. A
 "Card View" / "Contractor View" pill toggle appears next to Sort/the
 Flooring Calculator button, Flooring-only, defaulting to Card View (the
-same grid every other category uses):
+same grid every other category uses) — remembered for the browser tab via
+`sessionStorage` (`loadFlooringViewMode()`/`saveFlooringViewMode()`), so
+switching categories and back, or reloading, doesn't lose the choice; a
+fresh tab always starts on Card View.
 
 - **Card View** — unchanged: the responsive card grid, dropdown Type/
   Brand + structured filters, and the "Get a Quote" button on each card.
-- **Contractor View** — a denser table (`renderContractorTable()` in
-  `inventory.js`) aimed at comparing many SKUs at once: a live "N SKUs ·
-  N sq ft in stock" eyebrow and a heading that names the active Type
-  filter, an inline "How many boxes do I need?" quick sq-ft-with-waste
-  estimate (independent of, and does not modify, the real Flooring
-  Calculator modal — it links out to that modal for anything more than a
-  single quick number), the same Type/Brand/Thickness/Wear Layer/
+- **Contractor View** — a denser comparison layout aimed at many SKUs at
+  once: a live "N SKUs · N sq ft in stock" eyebrow and a heading that
+  names the active Type filter, the same Type/Brand/Thickness/Wear Layer/
   Underlayment/Water Resistance/Availability filters rendered as pill
   buttons instead of dropdowns, and one "Text to Hold" CTA per row (no
-  quote button here — Get a Quote stays a Card View action).
+  quote button here — Get a Quote stays a Card View action). Desktop
+  shows a table (`renderContractorTable()`); at ≤700px it's stacked cards
+  instead (`renderContractorMobileCards()` → `.contractor-cards`) — never
+  a horizontally-scrolling table — both rendered from the identical
+  filtered/sorted array, CSS just picks which one is visible per
+  breakpoint.
+
+A shared "How much flooring do I need?" calculator callout
+(`#flooring-calc-callout`, `bindFlooringCalcCallout()`) sits near the top
+of the results area in **both** views whenever Flooring is active — a
+quick sq-ft-with-10%-waste estimate, independent of and never modifying
+the real room-by-room Flooring Calculator modal (it links out to that
+modal for anything more than a single quick number). It's a native
+`<details>`: open by default on desktop/tablet, collapsed behind its own
+summary line on mobile (≤700px) — set once per render from the viewport
+width, not fought on every re-render once a visitor has toggled it
+themselves.
 
 Both views/filter controls read and write the **same** filter state
 (`currentBrand`, `currentThickness`, etc.) — the pill buttons aren't a
@@ -295,14 +316,61 @@ purchased separately (e.g. GoDaddy, Namecheap, Google Domains):
 If you'd rather do this together instead of following the steps solo, ask
 and we can walk through it live using a browser tool.
 
+## UI revamp (header, homepage, inventory page, product detail)
+
+- **Header** — the top announcement bar and the separate "Contact Us" CTA
+  are gone. One CTA remains ("See what's in stock"), plus a phone link
+  with an icon that always reads `tel:+12145522145`. The header
+  compacts on scroll (`.site-header.scrolled`, toggled by a scroll
+  listener in `app.js`) to roughly 64-70px tall. At ≤480px it collapses
+  to logo + phone icon + hamburger — the "Call or text" label and the CTA
+  button both drop, but the phone icon stays a real tap target.
+- **Homepage hero** — a designed dark-green gradient stands in for a real
+  photo (see the comment in `index.html` — swap `--hero-photo` for a real
+  warehouse/flooring shot once one exists; no real Invicta photography is
+  in this repo to reuse, and generic stock photography was avoided on
+  purpose). The `$X.XX` in the headline and the sq-ft figure in the stat
+  strip are both computed live from the fetched inventory
+  (`updateHomepageDynamicContent()` in `inventory.js`) — never hardcoded.
+- **Category tiles** — also placeholder gradients (a large faint icon per
+  tile) for the same reason; swap in real category photos when available.
+- **Inventory page** — category tabs show a live item count (e.g.
+  "Flooring (3)") and hide entirely at zero, computed once from the
+  fetched set (`updateCategoryTabCounts()`). The active category reads
+  from and writes to `?cat=<Category Name>` in the URL via
+  `history.pushState`/`replaceState` (`syncCategoryUrl()`) — no full
+  reload, Back/Forward work. Legacy `#slug` hash links (footer/older
+  bookmarks) still resolve via `CATEGORY_SLUGS`.
+- **No fake inventory, ever** — `FALLBACK_ITEMS`/sample data have been
+  removed entirely. `fetchInventory()` now returns real items or an
+  explicit error; a fetch failure with no usable prior cache renders
+  `CATALOG_MESSAGES.error` ("We couldn't load inventory right now — text
+  us and we'll check availability for you.") instead of anything a
+  customer could mistake for real stock. A genuinely empty category
+  shows "Nothing in this category right now — text us for what's
+  coming."; an over-filtered/searched category shows the narrower "No
+  matching items right now" message instead. Every grid/table shows
+  "Loading inventory…" as static markup until the first render replaces it.
+- **Product detail page** (`product.html?id=<Product Key>`) — a
+  shareable, full-detail view reusing `priceBlock()`/`statusBadge()`/
+  `smsHrefForItem()` from the card so pricing/availability/CTA logic
+  isn't duplicated. Reads from the same fetched inventory as every other
+  page (no separate API call). Sets `document.title` and the meta
+  description dynamically once the item loads. Card/table product
+  names and photos now link here (`productDetailHref()`).
+- **SMS body format** changed to exactly `Hi, I'm interested in <name>
+  (<Product Key>).` (`smsMessageForItem()`) — no more "SKU:" prefix or
+  trailing question.
+
 ## File map
 
-- `index.html` — homepage (hero, category tiles, mixed "New This Week", SMS opt-in)
-- `shop.html` — full catalog: 7 category tabs, one responsive card grid shared by every category, plus Flooring's extra structured filter row and its Card View/Contractor View toggle (see below)
-- `about.html` — story + how reserving works + why-buy-local
-- `contact.html` — contact info + FAQ
+- `index.html` — homepage (dynamic-price hero, stat strip, category tiles, "New This Week" by Date Added, SMS opt-in)
+- `shop.html` — Inventory page: category tabs w/ live counts, one responsive card grid shared by every category, plus Flooring's extra structured filter row and its Card View/Contractor View toggle (see below)
+- `product.html` — shareable product detail view (`?id=<Product Key>`)
+- `about.html` — story + 3 consolidated reasons + image slots + who-we-serve
+- `contact.html` — Visit Us: contact info + FAQ
 - `styles.css` — shared styles
-- `app.js` — contact-info config + mobile menu + filter logic + SMS links
-- `inventory.js` — Airtable config + fetch/cache + product card & Flooring Contractor View table rendering (chips/pricing structured-first for Flooring)
+- `app.js` — contact-info config + mobile menu + scroll-compact header + copyright year + SMS links
+- `inventory.js` — Airtable config + fetch/cache (no fake fallback) + product card, Contractor View (table + mobile cards), and product detail rendering (chips/pricing structured-first for Flooring)
 - `netlify/functions/inventory.mts` — serverless proxy to Airtable (holds the API token server-side; filters on `Post to Website = TRUE`)
 - `marketplace-post-templates.md` — copy-paste posts for Marketplace/FB groups
