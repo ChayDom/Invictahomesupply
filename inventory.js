@@ -60,7 +60,10 @@ window.AIRTABLE_CONFIG = {
   cacheMinutes: 15,
 };
 
-const CACHE_KEY = "invicta_inventory_cache_v5";
+// Bumped to v6: cached items now also carry photoCards/photoThumbs —
+// a stale v5 cache wouldn't have those fields and would render broken
+// <img> tags until it expired on its own.
+const CACHE_KEY = "invicta_inventory_cache_v6";
 const INVENTORY_ENDPOINT = "/api/inventory";
 
 // The 7 public-facing website categories. An item is only resolved to one
@@ -204,15 +207,43 @@ function normalizeBrand(raw) {
   return BRAND_CASE_CANONICAL[text.toLowerCase()] || text;
 }
 
+// Airtable image attachments come back with a `thumbnails` object
+// (`small`/`large`/`full`, each `{url,width,height}`) alongside the
+// attachment's own full-resolution `url` — this is standard Airtable API
+// shape, not something this site's Netlify function adds; the function
+// passes each Photos record through untouched (see netlify/functions/
+// inventory.mts), so `thumbnails` is already present on `p` whenever
+// Airtable provides it. `large` (~512px) is a good fit for a product
+// card's photo; `small` (~36px) is the right size for the little
+// clickable thumbnail-row icons. Both fall back to the attachment's own
+// full `url` if `thumbnails` is ever missing (e.g. a non-image
+// attachment, or an older/odd API response) — never a broken image.
+function airtablePhotoVariants(photoField) {
+  return (photoField || [])
+    .filter(p => p && p.url)
+    .map(p => ({
+      full: p.url,
+      card: (p.thumbnails && p.thumbnails.large && p.thumbnails.large.url) || p.url,
+      thumb: (p.thumbnails && p.thumbnails.small && p.thumbnails.small.url) || p.url,
+    }));
+}
+
 function mapAirtableRecord(id, f) {
   const webCategory = resolveWebCategory(f);
   if (!webCategory) return null;
   const dateAdded = f["Date Added"] ? new Date(f["Date Added"]) : null;
   // Photos (attachment, possibly multiple) wins when present; Reference
-  // Image URL is the single-image fallback. photoBlock() already renders
-  // a 1-length array with no gallery/thumbnail row, so either source
-  // works without further branching.
-  const photos = (f["Photos"] || []).map(p => p.url).filter(Boolean);
+  // Image URL is the single-image fallback — used as-is for all three
+  // variants below since a plain reference URL has no thumbnail sizes of
+  // its own. `photos` stays the full-size-URL array exactly as before
+  // (every existing consumer of item.photos is unaffected); photoCards/
+  // photoThumbs are new, same-length/order parallel arrays a bit of the
+  // rendering code below opts into for a better-sized image.
+  const variants = airtablePhotoVariants(f["Photos"]);
+  const referenceUrl = f["Reference Image URL"] || "";
+  const photos = variants.length ? variants.map(v => v.full) : (referenceUrl ? [referenceUrl] : []);
+  const photoCards = variants.length ? variants.map(v => v.card) : photos;
+  const photoThumbs = variants.length ? variants.map(v => v.thumb) : photos;
   return {
     id,
     productKey: f["Product Key"] || "",
@@ -238,7 +269,9 @@ function mapAirtableRecord(id, f) {
     highlights: f["Highlights"] || "",
     productUrl: f["Product URL"] || "",
     statusLabel: resolveStatusLabel(f),
-    photos: photos.length ? photos : (f["Reference Image URL"] ? [f["Reference Image URL"]] : []),
+    photos,
+    photoCards,
+    photoThumbs,
     isNew: dateAdded ? (Date.now() - dateAdded.getTime()) / 86400000 <= 7 : false,
     // Raw timestamp (or null), kept separate from the 7-day `isNew` badge
     // flag — "New This Week" sorts by this so it can always find the 4
@@ -441,6 +474,13 @@ function productDetailHref(item) {
   return base;
 }
 
+// Card image: photoCards (the "large" Airtable thumbnail when available,
+// falling back to the full photo) is the right size for a ~250-380px
+// card — never the tiny "small" thumbnail (too soft once stretched) or
+// the full original (needlessly heavy for a card). The little thumb-row
+// icons use the actual "small" thumbnail (photoThumbs); clicking one
+// swaps the main <img>'s src to that same index's FULL-size photo
+// (data-full), never the small variant, via bindThumbClicks().
 function photoBlock(item) {
   const href = productDetailHref(item);
   if (!item.photos || item.photos.length === 0) {
@@ -451,10 +491,10 @@ function photoBlock(item) {
   const alt = escapeAttr(item.name);
   const thumbs = item.photos.length > 1
     ? `<div class="thumb-row">${item.photos.map((p, i) =>
-        `<img class="thumb${i === 0 ? " active" : ""}" src="${p}" data-full="${p}" alt="" loading="lazy" width="40" height="40">`).join("")}</div>`
+        `<img class="thumb${i === 0 ? " active" : ""}" src="${item.photoThumbs[i]}" data-full="${item.photos[i]}" alt="" loading="lazy" width="40" height="40">`).join("")}</div>`
     : "";
   return `<a class="product-photo main-photo" href="${href}">
-    <img src="${item.photos[0]}" alt="${alt}" loading="lazy" width="600" height="600" data-main-photo>
+    <img src="${item.photoCards[0]}" alt="${alt}" loading="lazy" width="600" height="600" data-main-photo>
   </a>${thumbs}`;
 }
 
@@ -689,7 +729,10 @@ function renderContractorTable(items, emptyMessage = CATALOG_MESSAGES.emptyFilte
   }
   tbody.innerHTML = items.map(item => {
     const chips = flooringStructuredChips(item);
-    const photo = item.photos && item.photos[0] ? item.photos[0] : "";
+    // Small thumbnail — this is a 48px row icon, not the product's main
+    // photo, so the "small" Airtable variant (falls back to full) is the
+    // right size rather than loading a full-resolution image per row.
+    const photo = item.photoThumbs && item.photoThumbs[0] ? item.photoThumbs[0] : "";
     const boxes = boxesAvailable(item);
     const availLabel = flooringAvailabilityLabel(item) || "&mdash;";
     const lowStock = typeof boxes === "number" && boxes <= 2;
@@ -724,7 +767,7 @@ function renderContractorMobileCards(items, emptyMessage = CATALOG_MESSAGES.empt
   }
   container.innerHTML = items.map(item => {
     const chips = flooringStructuredChips(item);
-    const photo = item.photos && item.photos[0] ? item.photos[0] : "";
+    const photo = item.photoThumbs && item.photoThumbs[0] ? item.photoThumbs[0] : "";
     const boxes = boxesAvailable(item);
     const availLabel = flooringAvailabilityLabel(item) || "&mdash;";
     const lowStock = typeof boxes === "number" && boxes <= 2;
@@ -1804,7 +1847,7 @@ function productDetailPhotoBlock(item) {
   const alt = escapeAttr(item.name);
   const thumbs = item.photos.length > 1
     ? `<div class="thumb-row">${item.photos.map((p, i) =>
-        `<img class="thumb${i === 0 ? " active" : ""}" src="${p}" data-full="${p}" alt="" loading="lazy" width="40" height="40">`).join("")}</div>`
+        `<img class="thumb${i === 0 ? " active" : ""}" src="${item.photoThumbs[i]}" data-full="${item.photos[i]}" alt="" loading="lazy" width="40" height="40">`).join("")}</div>`
     : "";
   return `<div class="product-photo main-photo">
     <img src="${item.photos[0]}" alt="${alt}" width="800" height="800" data-main-photo>
