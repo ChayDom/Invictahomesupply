@@ -1295,6 +1295,22 @@ nav.primary-nav a.active {
 @media (max-width: 700px) {
   .contractor-table-wrap { display: none; }
   .contractor-cards { display: block; }
+
+  /* Flooring is the only category with a Card/Contractor choice (see
+     is-flooring-view on body, set in updateViewToggle()) — below this
+     breakpoint force Contractor View's compact stacked cards
+     unconditionally and hide the tile grid + the toggle itself, since
+     showing a control for a layout that can't actually render here is
+     confusing. !important beats both the grid/[hidden] specificity
+     these share their visibility with, and the JS-computed
+     .hidden/flooringViewMode state (still used as-is at 701px+) — the
+     tile grid is not reachable at this width no matter what state a
+     stray class toggle in devtools puts it in. Every other category
+     still just shows its normal card grid, unaffected, since they never
+     get body.is-flooring-view. */
+  body.is-flooring-view #catalog-grid { display: none !important; }
+  body.is-flooring-view #contractor-view { display: block !important; }
+  .view-toggle { display: none !important; }
 }
 
 /* ---------- Shop sidebar -> mobile/tablet filter drawer ----------

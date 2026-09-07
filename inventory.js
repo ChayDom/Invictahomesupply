@@ -1204,9 +1204,18 @@ const FLOORING_ONLY_SIDEBAR_GROUP_IDS = [
   "water-resistance-filter-group",
   "availability-filter-group",
 ];
+// Sets a body-level marker for whichever CSS needs to know "is Flooring
+// (the only category with a Card/Contractor choice) the active
+// category" without duplicating that logic — see the mobile
+// list-view-only override in styles.css, which forces Contractor View
+// and hides #catalog-grid/.view-toggle below the site's mobile
+// breakpoint, but only while this class is present (every other
+// category only ever has the card grid, so that override must not
+// apply to them).
 function updateViewToggle() {
   const flooring = isFlooringView();
   const contractor = isContractorView();
+  document.body.classList.toggle("is-flooring-view", flooring);
 
   const viewToggle = document.getElementById("flooring-view-toggle");
   if (viewToggle) viewToggle.hidden = !flooring;
