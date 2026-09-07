@@ -9,9 +9,9 @@ window.SITE_CONFIG = {
   phoneDisplay: "(214) 552-2145",     // <-- replace with your real number
   phoneHref: "+12145522145",           // <-- same number, digits only, with country code
   email: "hello@invictahomesupply.com", // <-- replace with your real email
-  city: "McKinney, TX",                // <-- replace with your pickup location/city
-  pickupAddress: "Pickup by appointment — we'll send you the exact location after confirming your order.",
-  hours: "Mon–Sat, 8am–8pm",
+  city: "McKinney, TX · Near Custer Rd & US-380", // <-- replace with your pickup location/city
+  pickupAddress: "Pickup by appointment — we'll send you the exact location after confirming your pickup.",
+  hours: "Daily · 8:00 AM – 8:30 PM · By appointment only",
   facebookUrl: "https://www.facebook.com/invictahomesupply/", // <-- replace with your FB page/marketplace link
   instagramUrl: "https://www.instagram.com/invictahomesupplydfw/", // <-- replace with your Instagram profile link
 };
