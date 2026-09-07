@@ -1359,6 +1359,15 @@ function categoryProductCountLabel(count) {
   return `${count} product${count === 1 ? "" : "s"}`;
 }
 
+// Renders two count spans per tab — a full desktop label ("(Coming
+// Soon)"/"(N)") and a compact mobile one (just "0"/"N", no parentheses
+// or wordy "Coming Soon") — and lets CSS pick which is visible per
+// breakpoint. "Water Heaters (Coming Soon)" doesn't fit a horizontally
+// scrollable mobile chip without forcing an oversized tap target; the
+// bare number preserves the same information (zero = nothing in stock)
+// far more compactly. Selecting a zero-count category still shows the
+// full "No ... in stock right now" message (emptyCategoryMarkup) either
+// way, so nothing here changes what happens after a tap.
 function updateCategoryTabCounts() {
   document.querySelectorAll(".filter-btn").forEach(btn => {
     const category = btn.getAttribute("data-filter");
@@ -1368,9 +1377,8 @@ function updateCategoryTabCounts() {
     btn.classList.toggle("filter-btn-empty", count === 0);
     const label = btn.getAttribute("data-label") || btn.textContent.replace(/\s*\(\d+\)\s*$|\s*\(Coming Soon\)\s*$/, "").trim();
     btn.setAttribute("data-label", label);
-    btn.innerHTML = count === 0
-      ? `${label} <span class="filter-count filter-count-empty">(Coming Soon)</span>`
-      : `${label} <span class="filter-count">(${count})</span>`;
+    const emptyClass = count === 0 ? " filter-count-empty" : "";
+    btn.innerHTML = `${label} <span class="filter-count filter-count-desktop${emptyClass}">${count === 0 ? "(Coming Soon)" : `(${count})`}</span><span class="filter-count filter-count-mobile${emptyClass}">${count}</span>`;
   });
 }
 

@@ -105,7 +105,18 @@ header.site-header {
   display: block;
 }
 
-.brand span { color: var(--amber); font-style: italic; }
+/* Desktop: "Invicta" and "Home Supply" sit inline, exactly as the old
+   plain-text + <span> markup rendered — flex + gap standing in for the
+   literal space character that used to separate them. On narrow
+   viewports (see the <=480px override below) this same wrapper switches
+   to a stacked two-line lockup instead of hiding "Home Supply"
+   outright. */
+.brand-text {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3em;
+}
+.brand-sub { color: var(--amber); font-style: italic; }
 
 nav.primary-nav {
   display: flex;
@@ -147,6 +158,22 @@ nav.primary-nav a.active {
 }
 
 .phone-icon { width: 17px; height: 17px; flex-shrink: 0; }
+
+/* Groups the Call/Text buttons and the hamburger as one right-aligned
+   unit. Without this, .nav-row's justify-content:space-between (see
+   .nav-cta's comment above) spread its 3-4 children evenly across the
+   row's leftover space — with the nav links hidden on mobile, that put
+   equal gaps on both sides of .contact-cta, leaving it stranded nearer
+   the middle of the row instead of flush against the hamburger. On
+   desktop this wrapper is invisible: it holds .contact-cta (visible)
+   and .menu-toggle (display:none until <=1150px), so nothing changes
+   there. */
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
 
 /* Header CTA: a Call button (filled) and a Text button (outlined) side by
    side, each a real tel:/sms: anchor. Standalone component (not .btn) so
@@ -999,6 +1026,11 @@ nav.primary-nav a.active {
   font-weight: 500;
   margin-left: 3px;
 }
+/* Two count spans per tab (see updateCategoryTabCounts()) — the full
+   "(Coming Soon)"/"(N)" desktop label is swapped for a bare "0"/"N" on
+   mobile, where the category row becomes a horizontal scroll strip and
+   "Water Heaters (Coming Soon)" would force an oversized chip. */
+.filter-count-mobile { display: none; }
 .filter-btn.active,
 .filter-btn:hover {
   background: var(--charcoal);
@@ -1022,6 +1054,11 @@ nav.primary-nav a.active {
 .filter-btn.filter-btn-empty:hover {
   background: var(--text-muted);
   border-color: var(--text-muted);
+  /* Without this, an empty category's active/hover state set the same
+     muted tone as both background AND text (inherited from
+     .filter-btn-empty above) — the label went fully invisible the
+     moment you tapped a zero-count tab like Water Heaters. */
+  color: var(--cream);
 }
 
 .sort-control {
@@ -1097,6 +1134,9 @@ nav.primary-nav a.active {
 }
 .view-toggle[hidden] { display: none; }
 .view-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 6px 14px;
   border: none;
   background: none;
@@ -1107,6 +1147,7 @@ nav.primary-nav a.active {
   color: var(--text-muted);
   cursor: pointer;
 }
+.view-toggle-icon { width: 14px; height: 14px; flex-shrink: 0; }
 .view-toggle-btn.active {
   background: var(--charcoal);
   color: var(--cream);
@@ -1514,8 +1555,15 @@ footer.site-footer {
      hamburger takes over — they stay side by side (not stacked) since an
      icon-only pair always fits: logo + 2 icon buttons + menu button. */
   .contact-cta-btn span { display: none; }
-  .contact-cta-btn { padding: 9px; }
+  /* 12px padding + 17px icon + ~3px border ~= 44px square — keeps the
+     icon-only Call/Text buttons at a real tap-target size instead of
+     shrinking them purely to save width. */
+  .contact-cta-btn { padding: 12px; }
   .contact-cta { gap: 8px; }
+  /* Match .contact-cta's own icon-to-icon gap so Call/Text/Menu read as
+     one evenly-spaced group ("Call | Text | Menu"), not two different
+     rhythms. */
+  .nav-actions { gap: 8px; }
 }
 
 @media (max-width: 700px) {
@@ -1524,6 +1572,56 @@ footer.site-footer {
   .section { padding: 56px 20px; }
   .category-grid, .product-grid { grid-template-columns: 1fr 1fr; gap: 14px; }
   .wrap { padding: 0 20px; }
+
+  /* ---------- Shop mobile: compact category strip + toolbar so the
+     first product shows up far sooner than after a near-full screen of
+     controls. Nothing here removes a control — Filters/Sort/View/search/
+     category counts/active-filter chips all stay, just much smaller. */
+
+  /* Category tabs: one horizontally scrollable row instead of wrapping
+     into ~5 stacked rows of large pills (the single biggest chunk of
+     "empty" space above the first product on mobile). */
+  .filter-row {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    margin: 0 -20px 12px;
+    padding: 0 20px 4px;
+  }
+  .filter-row::-webkit-scrollbar { display: none; }
+  .filter-btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding: 8px 14px;
+    font-size: 0.72rem;
+  }
+  .filter-count-desktop { display: none; }
+  .filter-count-mobile { display: inline; }
+
+  /* Toolbar: search gets its own full-width row; Filters/count/Sort/View
+     compact onto one row underneath instead of each wrapping to its own
+     full-width line. */
+  .results-toolbar { gap: 8px; margin-bottom: 10px; }
+  .search-control { flex: 1 1 100%; max-width: none; order: 1; }
+  .mobile-filters-btn { order: 2; padding: 7px 12px; font-size: 0.7rem; }
+  .results-count { order: 3; font-size: 0.7rem; }
+  .results-toolbar .sort-control { order: 4; margin-left: 0; }
+  .sort-control label { display: none; }
+  /* Native <select> auto-sizes to its longest option ("Price: High to
+     Low") even while showing the shorter selected one ("Featured") —
+     left unconstrained this alone was ~155-190px wide, more than
+     Filters+count+View combined and enough to push View onto its own
+     row. Capping the box and ellipsing keeps the whole compact-controls
+     row on one line at 360px+. */
+  .sort-control select { padding: 7px 8px; font-size: 0.7rem; max-width: 92px; overflow: hidden; text-overflow: ellipsis; }
+  .view-toggle { order: 5; padding: 2px; }
+  .view-toggle-btn { padding: 6px 9px; }
+  .view-toggle-label { display: none; }
+
+  .active-filter-chips { margin-bottom: 12px; gap: 6px; }
+  .filter-chip { padding: 5px 10px; font-size: 0.72rem; }
 }
 
 @media (max-width: 480px) {
@@ -1532,27 +1630,26 @@ footer.site-footer {
      crushes the logo below its own content width — see .brand's own
      comment) — on narrow viewports that same protection means the
      wordmark's real content width has to actually fit the viewport on
-     its own, since nothing will shrink it. Scaling font-size/gap/image
-     down here shrinks that real content width instead of just visually
-     compressing an already-sized box, which is what a scrollable
-     header needs.
-     The Call/Text split (two icon buttons instead of one) widened the
-     collapsed CTA from ~37px to ~82px, so shrinking the wordmark alone
-     no longer leaves enough room — "Home Supply" was rendering right
-     under the Call button with no gap. Drop the "Home Supply" half of
-     the lockup here too; "Invicta" plus the mark is still identifiable
-     at this width, and it's the only way to free up the ~60-90px the
-     wider CTA now needs. */
-  .brand { font-size: 1.15rem; gap: 7px; }
-  .brand img { height: 24px; }
-  .brand span { display: none; }
+     its own, since nothing will shrink it.
+     Rather than dropping "Home Supply" outright (tried once, read as a
+     truncated wordmark), stack it under "Invicta" as a smaller second
+     line — .brand-text switches from an inline baseline row to a
+     column. The stacked block's height (~27px of text) still fits
+     within the row's existing height envelope (set by the ~37px tall
+     Call/Text icon buttons), so this doesn't grow the header. */
+  .brand { font-size: 1.05rem; gap: 8px; }
+  .brand img { height: 30px; }
+  .brand-text { flex-direction: column; align-items: flex-start; gap: 0; line-height: 1.05; }
+  .brand-name { font-size: 1em; }
+  .brand-sub { font-size: 0.55em; }
 }
 
 @media (max-width: 360px) {
   /* Reserves enough room for the phone-icon tap target and hamburger
-     next to the logo at the very narrowest supported width (320px). */
-  .brand { font-size: 0.98rem; gap: 6px; }
-  .brand img { height: 21px; }
+     next to the logo at the very narrowest supported width (320px) —
+     shrink further rather than hide "Home Supply". */
+  .brand { font-size: 0.92rem; gap: 6px; }
+  .brand img { height: 26px; }
 }
 
 /* ---------- Photo gallery / product card additions ---------- */
