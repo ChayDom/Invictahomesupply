@@ -148,28 +148,42 @@ nav.primary-nav a.active {
 
 .phone-icon { width: 17px; height: 17px; flex-shrink: 0; }
 
-/* Single header CTA: replaces the old separate "nav-phone" text link +
-   dark "See what's in stock" button with one clickable tel: link styled
-   as that same dark button (.btn.btn-dark.btn-small — colors/hover/
-   typography untouched). The icon's stroke="currentColor" picks up
-   .btn-dark's cream text color automatically, no extra rule needed. */
-.nav-phone-cta {
+/* Header CTA: a Call button (filled) and a Text button (outlined) side by
+   side, each a real tel:/sms: anchor. Standalone component (not .btn) so
+   it can use sentence-case labels at its own size/weight instead of
+   .btn's uppercase/letter-spaced treatment. Colors reuse the site's
+   --charcoal/--cream tokens rather than one-off hex values. */
+.contact-cta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.contact-cta-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 13px 20px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1;
+  text-decoration: none;
   white-space: nowrap;
+  border: 1.5px solid var(--charcoal);
+  transition: all 0.2s ease;
 }
-.nav-phone-cta-text {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  line-height: 1.2;
+.contact-cta-btn svg { width: 17px; height: 17px; flex-shrink: 0; }
+.contact-cta-call {
+  background: var(--charcoal);
+  color: var(--cream);
 }
-.nav-phone-cta-label {
-  font-size: 0.62rem;
-  letter-spacing: 0.06em;
-  opacity: 0.85;
+.contact-cta-call:hover { background: var(--amber-dark); border-color: var(--amber-dark); }
+.contact-cta-text {
+  background: transparent;
+  color: var(--charcoal);
 }
+.contact-cta-text:hover { background: var(--charcoal); color: var(--cream); }
 
 .btn {
   display: inline-block;
@@ -1478,14 +1492,15 @@ footer.site-footer {
 @media (max-width: 1150px) {
   nav.primary-nav { display: none; }
   .menu-toggle { display: flex; }
-  /* Hiding the nav links alone isn't enough here — the phone CTA's full
-     label+number text doesn't shrink (see .nav-cta's own comment), so
-     between roughly 480-1150px the row still overflowed (measured 810px
-     content in a 768px viewport) even with the links gone. Compact the
-     CTA to an icon-only square at the same breakpoint the hamburger
-     takes over: logo + phone icon + menu button, nothing that wraps. */
-  .nav-phone-cta-text { display: none; }
-  .nav-phone-cta { padding: 9px; }
+  /* Hiding the nav links alone isn't enough here — the Call/Text buttons'
+     full labels don't shrink (see .nav-cta's own comment), so between
+     roughly 480-1150px the row still overflowed even with the links gone.
+     Compact both buttons to icon-only squares at the same breakpoint the
+     hamburger takes over — they stay side by side (not stacked) since an
+     icon-only pair always fits: logo + 2 icon buttons + menu button. */
+  .contact-cta-btn span { display: none; }
+  .contact-cta-btn { padding: 9px; }
+  .contact-cta { gap: 8px; }
 }
 
 @media (max-width: 700px) {
