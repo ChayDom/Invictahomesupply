@@ -1638,6 +1638,48 @@ footer.site-footer {
 
   .active-filter-chips { margin-bottom: 12px; gap: 6px; }
   .filter-chip { padding: 5px 10px; font-size: 0.72rem; }
+
+  /* ---------- Compact product cards on mobile (every category except
+     Flooring, which is forced to Contractor View's already-compact
+     cards below this same breakpoint — see body.is-flooring-view
+     above). A full-width square photo above a stacked info column made
+     each card take most of a phone screen; a small thumbnail + info
+     grid mirrors Contractor View's density without touching the
+     desktop tile grid, .product-card's own markup, or any of the price/
+     chip/stock logic that builds its contents. Same fix applies to the
+     homepage's "New This Week" grid, which renders through this same
+     .product-card template. */
+  .product-card {
+    display: grid;
+    grid-template-columns: 72px 1fr;
+    grid-template-rows: auto auto;
+    column-gap: 12px;
+    padding: 12px;
+  }
+  .product-card .photo-wrap { grid-column: 1; grid-row: 1 / 3; }
+  .product-card .product-photo {
+    aspect-ratio: 1 / 1;
+    border-bottom: none;
+    border-radius: var(--radius);
+  }
+  /* Gallery thumbnails and the "More details" expander belong on the
+     product detail page at this size, not competing for space in a
+     72px-wide card. */
+  .product-card .thumb-row { display: none; }
+  .product-card .product-more { display: none; }
+  .product-card .product-info { grid-column: 2; grid-row: 1; padding: 0; }
+  .product-card .product-actions { grid-column: 2; grid-row: 2; padding: 0; margin-top: 8px; }
+  /* One primary CTA on mobile ("Text About This Item") — Flooring's
+     second "Get a Quote" button belongs on the product detail page
+     here too, same as the gallery/details above. Only reachable via a
+     mixed-category grid (e.g. the "All" tab or New This Week); Flooring
+     alone never shows this card at all below this breakpoint. */
+  .product-card .product-actions [data-quote-id] { display: none; }
+  .product-card .product-actions .btn { flex: 1 1 100%; }
+  /* .badge's normal 10px/5px-12px positioning is sized for a full-width
+     square photo — inside this card's 72px thumbnail it overflowed the
+     thumbnail's edge. Shrink and tuck it into the corner instead. */
+  .product-card .badge { top: 2px; left: 2px; padding: 2px 5px; font-size: 0.52rem; border-radius: 2px; }
 }
 
 @media (max-width: 480px) {
