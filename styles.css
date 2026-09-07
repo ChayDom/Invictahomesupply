@@ -1627,6 +1627,14 @@ footer.site-footer {
 .about-page .audience-grid { gap: 16px; }
 .about-page .audience-card { padding: 20px 18px; }
 
+/* ---------- Pickup & Hours (contact) page: tighter intro-to-cards gap.
+   .section's shared 88px top padding (stacked on .page-heading's own
+   bottom padding) left ~100px of empty space above the cards; scoped to
+   body.contact-page so index.html/shop.html/about.html keep their own
+   .section spacing. ---------- */
+.contact-page .page-heading { padding: 28px 32px 10px; }
+.contact-page .section { padding: 48px 32px 88px; }
+
 /* ---------- Recently reserved ticker ---------- */
 .ticker-wrap {
   background: var(--cream-dim);
