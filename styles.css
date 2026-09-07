@@ -1535,10 +1535,17 @@ footer.site-footer {
      its own, since nothing will shrink it. Scaling font-size/gap/image
      down here shrinks that real content width instead of just visually
      compressing an already-sized box, which is what a scrollable
-     header (measured 417px content in a 320-390px viewport before this)
-     needs. */
+     header needs.
+     The Call/Text split (two icon buttons instead of one) widened the
+     collapsed CTA from ~37px to ~82px, so shrinking the wordmark alone
+     no longer leaves enough room — "Home Supply" was rendering right
+     under the Call button with no gap. Drop the "Home Supply" half of
+     the lockup here too; "Invicta" plus the mark is still identifiable
+     at this width, and it's the only way to free up the ~60-90px the
+     wider CTA now needs. */
   .brand { font-size: 1.15rem; gap: 7px; }
   .brand img { height: 24px; }
+  .brand span { display: none; }
 }
 
 @media (max-width: 360px) {
