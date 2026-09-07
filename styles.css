@@ -146,16 +146,30 @@ nav.primary-nav a.active {
   flex-shrink: 0;
 }
 
-.nav-phone {
+.phone-icon { width: 17px; height: 17px; flex-shrink: 0; }
+
+/* Single header CTA: replaces the old separate "nav-phone" text link +
+   dark "See what's in stock" button with one clickable tel: link styled
+   as that same dark button (.btn.btn-dark.btn-small — colors/hover/
+   typography untouched). The icon's stroke="currentColor" picks up
+   .btn-dark's cream text color automatically, no extra rule needed. */
+.nav-phone-cta {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 0.85rem;
-  font-weight: 600;
   white-space: nowrap;
 }
-.nav-phone:hover { color: var(--amber-dark); }
-.phone-icon { width: 17px; height: 17px; flex-shrink: 0; }
+.nav-phone-cta-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.2;
+}
+.nav-phone-cta-label {
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  opacity: 0.85;
+}
 
 .btn {
   display: inline-block;
@@ -1464,17 +1478,14 @@ footer.site-footer {
 @media (max-width: 1150px) {
   nav.primary-nav { display: none; }
   .menu-toggle { display: flex; }
-  /* Hiding the nav links alone isn't enough here — .nav-cta's phone
-     label + "See what's in stock" button together are ~400px and don't
-     shrink (see .nav-cta's own comment), so between roughly 480-1150px
-     the row still overflowed (measured 810px content in a 768px
-     viewport) even with the links gone. Compact to icon-only phone +
-     no CTA button at the same breakpoint the hamburger takes over,
-     instead of leaving a gap where tablet widths are neither the full
-     desktop row nor the already-compacted <=480px one below. */
-  .nav-cta .btn-small { display: none; }
-  .nav-phone span { display: none; }
-  .nav-phone { padding: 6px; }
+  /* Hiding the nav links alone isn't enough here — the phone CTA's full
+     label+number text doesn't shrink (see .nav-cta's own comment), so
+     between roughly 480-1150px the row still overflowed (measured 810px
+     content in a 768px viewport) even with the links gone. Compact the
+     CTA to an icon-only square at the same breakpoint the hamburger
+     takes over: logo + phone icon + menu button, nothing that wraps. */
+  .nav-phone-cta-text { display: none; }
+  .nav-phone-cta { padding: 9px; }
 }
 
 @media (max-width: 700px) {
