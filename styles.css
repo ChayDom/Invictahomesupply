@@ -1600,6 +1600,18 @@ footer.site-footer {
 }
 .optin .btn-outline:hover { background: var(--cream); color: var(--charcoal); }
 
+/* ---------- About page: compact spacing (shares .page-heading/.section/
+   .optin with other pages, so overrides are scoped to body.about-page
+   instead of changing the shared base rules). ---------- */
+.about-page .page-heading { padding: 24px 32px 6px; }
+.about-page .section { padding: 26px 32px; }
+.about-page .section .section-head { margin-bottom: 20px; }
+.about-page .optin { padding: 30px 32px; }
+.about-page .steps { gap: 20px; }
+.about-page .about-image-grid { gap: 16px; }
+.about-page .audience-grid { gap: 16px; }
+.about-page .audience-card { padding: 20px 18px; }
+
 /* ---------- Recently reserved ticker ---------- */
 .ticker-wrap {
   background: var(--cream-dim);
@@ -1661,7 +1673,7 @@ footer.site-footer {
   background: #fff;
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
-  padding: 36px 24px;
+  padding: 24px 20px;
   text-align: center;
 }
 .audience-card .emoji {
