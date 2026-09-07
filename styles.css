@@ -1386,6 +1386,7 @@ nav.primary-nav a.active {
 .contact-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  align-items: start;
   gap: 56px;
   max-width: var(--max-width);
   margin: 0 auto;
