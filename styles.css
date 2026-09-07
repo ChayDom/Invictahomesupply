@@ -1446,8 +1446,8 @@ footer.site-footer {
 }
 .footer-grid {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr;
-  gap: 40px;
+  grid-template-columns: 1.6fr 1fr 1fr 1fr;
+  gap: 32px;
   max-width: var(--max-width);
   margin: 0 auto 40px;
 }
@@ -1485,7 +1485,12 @@ footer.site-footer {
   .category-grid, .product-grid { grid-template-columns: repeat(2, 1fr); }
   .two-col, .contact-grid { grid-template-columns: 1fr; gap: 32px; }
   .steps, .audience-grid { grid-template-columns: 1fr; }
-  .footer-grid { grid-template-columns: 1fr; gap: 24px; }
+  /* 2 columns instead of stacking all 4 sections full-width — keeps the
+     footer from getting much taller on mobile now that it has a 4th
+     section. The description spans both columns since it's the one
+     section that reads badly at half width. */
+  .footer-grid { grid-template-columns: 1fr 1fr; gap: 24px 32px; }
+  .footer-grid > div:first-child { grid-column: 1 / -1; }
 }
 
 /* The full desktop nav row (logo + 4 links + phone/CTA, none of which
