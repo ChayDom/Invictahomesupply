@@ -873,6 +873,7 @@ function bindSidebarFilterExtras() {
     document.body.classList.add("modal-open");
   };
   document.getElementById("mobile-filters-btn")?.addEventListener("click", openDrawer);
+  document.getElementById("mobile-calc-btn")?.addEventListener("click", () => openCalculatorModal(false));
   document.getElementById("sidebar-close-btn")?.addEventListener("click", closeShopSidebarDrawer);
   document.getElementById("sidebar-apply-btn-mobile")?.addEventListener("click", closeShopSidebarDrawer);
   backdrop?.addEventListener("click", closeShopSidebarDrawer);
@@ -1229,6 +1230,9 @@ function updateViewToggle() {
 
   const calcCard = document.getElementById("sidebar-calc-card");
   if (calcCard) calcCard.hidden = !flooring;
+
+  const mobileCalcBtn = document.getElementById("mobile-calc-btn");
+  if (mobileCalcBtn) mobileCalcBtn.hidden = !flooring;
 
   const grid = document.getElementById("catalog-grid");
   if (grid) grid.hidden = contractor;

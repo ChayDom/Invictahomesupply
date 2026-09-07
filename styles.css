@@ -916,6 +916,17 @@ nav.primary-nav a.active {
   gap: 6px;
 }
 .mobile-filters-btn svg { width: 15px; height: 15px; flex-shrink: 0; }
+/* Mobile-only "Flooring Calculator" shortcut (see #mobile-calc-btn in
+   shop.html) — hidden here same as .mobile-filters-btn, shown by the
+   700px breakpoint below. Desktop never needs it: the sidebar's own
+   calculator card is already visible there without opening anything. */
+.mobile-calc-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.mobile-calc-btn svg { width: 15px; height: 15px; flex-shrink: 0; }
 .results-count {
   font-size: 0.78rem;
   color: var(--text-muted);
@@ -1389,6 +1400,7 @@ nav.primary-nav a.active {
   }
   .shop-sidebar-backdrop[hidden] { display: none; }
   .mobile-filters-btn { display: inline-flex; }
+  .mobile-calc-btn { display: inline-flex; }
   .results-toolbar .sort-control { margin-left: 0; }
 }
 
@@ -1616,25 +1628,25 @@ footer.site-footer {
   .filter-count-desktop { display: none; }
   .filter-count-mobile { display: inline; }
 
-  /* Toolbar: search gets its own full-width row; Filters/count/Sort/View
-     compact onto one row underneath instead of each wrapping to its own
-     full-width line. */
+  /* Toolbar: search and (Flooring only) the calculator shortcut each get
+     their own full-width row; Filters/count/View share one compact row;
+     Sort gets its own full-width row too, below, so its select is never
+     cramped or truncated. */
   .results-toolbar { gap: 8px; margin-bottom: 10px; }
   .search-control { flex: 1 1 100%; max-width: none; order: 1; }
-  .mobile-filters-btn { order: 2; padding: 7px 12px; font-size: 0.7rem; }
-  .results-count { order: 3; font-size: 0.7rem; }
-  .results-toolbar .sort-control { order: 4; margin-left: 0; }
-  .sort-control label { display: none; }
-  /* Native <select> auto-sizes to its longest option ("Price: High to
-     Low") even while showing the shorter selected one ("Featured") —
-     left unconstrained this alone was ~155-190px wide, more than
-     Filters+count+View combined and enough to push View onto its own
-     row. Capping the box and ellipsing keeps the whole compact-controls
-     row on one line at 360px+. */
-  .sort-control select { padding: 7px 8px; font-size: 0.7rem; max-width: 92px; overflow: hidden; text-overflow: ellipsis; }
-  .view-toggle { order: 5; padding: 2px; }
+  .mobile-calc-btn { order: 2; flex: 1 1 100%; padding: 9px 12px; font-size: 0.78rem; }
+  .mobile-filters-btn { order: 3; padding: 7px 12px; font-size: 0.7rem; }
+  .results-count { order: 4; font-size: 0.7rem; }
+  .view-toggle { order: 5; padding: 2px; margin-left: auto; }
   .view-toggle-btn { padding: 6px 9px; }
   .view-toggle-label { display: none; }
+  /* Own full-width row, below the compact Filters/count/View row —
+     previously this shared that row with a max-width + ellipsis, which
+     cut selected options like "Price: High to Low" down to unreadable
+     fragments ("Price: Hi..."). A full-width select needs neither. */
+  .results-toolbar .sort-control { order: 6; flex: 1 1 100%; margin-left: 0; }
+  .sort-control label { display: none; }
+  .sort-control select { width: 100%; padding: 8px 12px; font-size: 0.8rem; }
 
   .active-filter-chips { margin-bottom: 12px; gap: 6px; }
   .filter-chip { padding: 5px 10px; font-size: 0.72rem; }
