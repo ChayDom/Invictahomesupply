@@ -310,6 +310,15 @@ nav.primary-nav a.active {
   color: var(--gold);
 }
 
+/* Keeps "from $X.XX / sq ft." from wrapping mid-phrase (the price
+   getting separated from "/ sq ft" looked broken) — the surrounding
+   <br>s in the markup put this whole group, and "In stock in
+   McKinney." after it, on their own lines regardless of viewport
+   width, so this only needs to stop wraps *within* the group. */
+.hero-line-nowrap {
+  white-space: nowrap;
+}
+
 .hero p {
   max-width: 520px;
   margin: 0 0 30px;
