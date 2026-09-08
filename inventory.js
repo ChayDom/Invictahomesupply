@@ -23,11 +23,14 @@
      isn't read here.
 
    Category resolution still needs a fallback because every row won't
-   have a clean one of the 8 site categories in `Category` on day one:
-   resolveWebCategory() checks for an exact match first, then an explicit
-   keyword allowlist, then (only for a genuinely blank Category) infers
-   Flooring from flooring-shaped attributes. Anything else is not
-   published — see LEGACY_CATEGORY_RULES/hasFlooringAttributes.
+   have a clean one of the 19 canonical categories (see CATEGORY_CONFIG)
+   in `Category` on day one: resolveWebCategory() checks for an exact
+   match first, then an explicit keyword allowlist, then (only for a
+   genuinely blank Category) infers Flooring from flooring-shaped
+   attributes. Anything else — including the legacy "Home Improvement"
+   catch-all this migration retired — resolves to the visible "Other"
+   category rather than being excluded from the site; see
+   LEGACY_CATEGORY_RULES/hasFlooringAttributes.
 
    Availability prefers the `Status` text (which can carry a specific
    "Reserved"/"Sold Out" label the badge/pill will show verbatim), then
@@ -67,34 +70,75 @@ window.AIRTABLE_CONFIG = {
 const CACHE_KEY = "invicta_inventory_cache_v6";
 const INVENTORY_ENDPOINT = "/api/inventory";
 
-// The 8 public-facing website categories. An item is only resolved to one
-// of these when Category is already an exact match, or matches one of the
-// explicit rules below — see resolveWebCategory(). "Electronics & Smart
-// Home" is matched by exact string only (via the .includes() check right
-// below) — deliberately no fuzzy LEGACY_CATEGORY_RULES entry for it, so an
-// Electronics row is never silently folded into Home Improvement or any
-// other category by a loose keyword match.
-const WEB_CATEGORIES = [
-  "Flooring",
-  "Water Heaters",
-  "Appliances",
-  "Plumbing & Bath",
-  "Lawn & Outdoor",
-  "Tools",
-  "Home Improvement",
-  "Electronics & Smart Home",
+// ===================================================================
+// CANONICAL WEBSITE CATEGORY CONFIGURATION — single source of truth for
+// every category name, its site-wide display order, and the homepage/
+// shop-page presentation metadata that depends on it. Every other list,
+// map, filter, tile, count, or URL slug in this file (WEB_CATEGORIES,
+// CATEGORY_SLUGS, the homepage tiles, the shop page's primary shortcut
+// bar, and the "Browse Categories" panel) is derived from this array —
+// nothing else should hardcode a category name list. Array order IS the
+// canonical display order (1-19); "Other" is always last, an intentional
+// fallback bucket (see resolveWebCategory below), never a homepage tile.
+//
+// homepageOrder: only the 7 categories the homepage shows a tile for
+// (plus a fixed 8th "Browse All Categories" tile, not listed here since
+// it isn't a real category) carry this, numbered 1-7 in the order the
+// tiles should appear. A tile only actually renders when that category
+// currently has at least one published item — see
+// updateHomepageDynamicContent().
+//
+// shopShortcutOrder: only the 4 categories that get a permanent shortcut
+// button in the shop page's compact primary bar (between the fixed "All
+// Products" and "Browse Categories" buttons) carry this. Every other
+// populated category is still reachable, just via "Browse Categories"
+// rather than a permanent button — see initShopControls()/
+// renderCategoryBrowser().
+// ===================================================================
+const CATEGORY_CONFIG = [
+  { name: "Flooring", slug: "flooring", homepageOrder: 1, shopShortcutOrder: 1 },
+  { name: "Water Heaters", slug: "water-heaters", homepageOrder: 2 },
+  { name: "Appliances", slug: "appliances", homepageOrder: 3, shopShortcutOrder: 2 },
+  { name: "Plumbing & Bath", slug: "plumbing-bath", homepageOrder: 6 },
+  { name: "Lawn & Outdoor", slug: "lawn-outdoor", homepageOrder: 5, shopShortcutOrder: 4 },
+  { name: "Tools", slug: "tools", homepageOrder: 4, shopShortcutOrder: 3 },
+  { name: "Electrical & Lighting", slug: "electrical-lighting" },
+  { name: "Electronics & Smart Home", slug: "electronics-smart-home", homepageOrder: 7 },
+  { name: "Paint & Supplies", slug: "paint-supplies" },
+  { name: "Building Materials", slug: "building-materials" },
+  { name: "Doors & Windows", slug: "doors-windows" },
+  { name: "Heating & Cooling", slug: "heating-cooling" },
+  { name: "Home & Furniture", slug: "home-furniture" },
+  { name: "Cleaning & Household", slug: "cleaning-household" },
+  { name: "Health & Personal Care", slug: "health-personal-care" },
+  { name: "Automotive", slug: "automotive" },
+  { name: "Sports & Fitness", slug: "sports-fitness" },
+  { name: "Toys & Collectibles", slug: "toys-collectibles" },
+  { name: "Other", slug: "other", isFallback: true },
 ];
 
-// Explicit allowlist only — this is NOT a catch-all. During migration,
-// Category can hold either a clean 8-category value (matched above) or an
-// older/broader label; only labels matching one of these rules resolve to
-// a web category. Anything else (Gaming, Toys, Collectibles, Health &
-// Personal Care, or any other unrecognized non-blank value) is
-// deliberately left unresolved and the item is not published, even if
-// Post to Website is TRUE upstream — those product lines are out of scope
-// for this home-improvement storefront and must not be guessed into a
-// tab. A genuinely blank Category is handled separately in
-// resolveWebCategory (see hasFlooringAttributes) rather than here.
+const WEB_CATEGORIES = CATEGORY_CONFIG.map(c => c.name);
+
+// ---------------------------------------------------------------------
+// Legacy/unknown Category handling — ISOLATED here so it's easy to
+// remove once Product Catalog has been reclassified onto the 19
+// canonical names above. Explicit keyword allowlist only, matched
+// against the Category *field* text (never the product name — this file
+// never guesses a category from what a product is called). During
+// migration, Category can hold either a clean canonical value (matched
+// above, before this ever runs) or an older/broader label; only labels
+// matching one of these rules resolve to a specific canonical category.
+// Anything else — including the legacy "Home Improvement" catch-all,
+// which has deliberately been given no rule here now that it's no
+// longer a canonical category — falls through to "Other" in
+// resolveWebCategory(), same as any other unrecognized non-blank value.
+// "Other" is an intentional, visible fallback, not an unpublished item:
+// unlike the old behavior, a row's Category no longer excludes it from
+// the site. "Electronics & Smart Home" is matched by exact canonical
+// name only (via CATEGORY_CONFIG above) — deliberately no fuzzy rule for
+// it here, so an Electronics row is never silently folded into another
+// category or into Other by a loose keyword match.
+// ---------------------------------------------------------------------
 const LEGACY_CATEGORY_RULES = [
   { test: /^flooring$/i, category: "Flooring" },
   { test: /^appliances$/i, category: "Appliances" },
@@ -102,7 +146,18 @@ const LEGACY_CATEGORY_RULES = [
   { test: /^water heaters?$/i, category: "Water Heaters" },
   { test: /plumbing|sinks?/i, category: "Plumbing & Bath" },
   { test: /lawn|outdoor/i, category: "Lawn & Outdoor" },
-  { test: /lighting|windows\s*&?\s*doors|blinds|shutters/i, category: "Home Improvement" },
+  { test: /electrical|wiring|welding cable|breakers?|outlets?|switches/i, category: "Electrical & Lighting" },
+  { test: /lighting|blinds|shutters/i, category: "Electrical & Lighting" },
+  { test: /paint|primer|coatings?|stains?|caulk/i, category: "Paint & Supplies" },
+  { test: /lumber|roofing|insulation|drywall|concrete|siding|building materials?/i, category: "Building Materials" },
+  { test: /windows?\s*&?\s*doors|storm doors?/i, category: "Doors & Windows" },
+  { test: /hvac|air condition|evaporative cooler|space heaters?|heating|cooling/i, category: "Heating & Cooling" },
+  { test: /furniture|shelving|home storage|d[ée]cor/i, category: "Home & Furniture" },
+  { test: /vacuums?|cleaning|household/i, category: "Cleaning & Household" },
+  { test: /personal care|hygiene|deodorant|grooming|oral care/i, category: "Health & Personal Care" },
+  { test: /automotive|vehicle/i, category: "Automotive" },
+  { test: /sports|fitness|exercise/i, category: "Sports & Fitness" },
+  { test: /toys?|collectibles?|games?/i, category: "Toys & Collectibles" },
 ];
 
 // A row is treated as flooring-shaped if it's explicitly priced by the
@@ -117,9 +172,14 @@ function hasFlooringAttributes(f) {
     || isPositiveNumber(f["Thickness MM"]) || isPositiveNumber(f["Wear Layer MIL"]);
 }
 
-// Returns a valid web category, or null if the item should not be
-// published (see LEGACY_CATEGORY_RULES comment above — null is a
-// deliberate "do not show" signal, not a bug).
+// Always returns a valid canonical web category — never null. Category is
+// no longer a "do not publish this item" signal (that changed with the
+// 19-category migration): a row whose Category doesn't resolve to
+// anything more specific now falls back to the visible "Other" category
+// rather than being silently unpublished, so nothing in the live catalog
+// disappears just because its Category field hasn't been reclassified
+// yet. See the LEGACY_CATEGORY_RULES comment above for the "Other"
+// fallback's scope and how to retire it later.
 function resolveWebCategory(f) {
   const category = (f["Category"] || "").trim();
   if (WEB_CATEGORIES.includes(category)) return category;
@@ -129,14 +189,14 @@ function resolveWebCategory(f) {
     // before this migration, so a blank-Category row with flooring
     // attributes is almost certainly an existing flooring listing whose
     // Category just never got filled in — infer Flooring rather than
-    // silently unpublishing something that's live today. Never extend
-    // this inference to non-flooring rows: a blank-Category row with no
-    // flooring attributes stays excluded, same as any other unrecognized
-    // Category, until it gets a real one from Product Catalog.
-    return hasFlooringAttributes(f) ? "Flooring" : null;
+    // defaulting it to Other. Never extend this inference to non-flooring
+    // rows: a blank-Category row with no flooring attributes goes to
+    // Other, same as any other unrecognized Category, until it gets a
+    // real one from Product Catalog.
+    return hasFlooringAttributes(f) ? "Flooring" : "Other";
   }
   const rule = LEGACY_CATEGORY_RULES.find(r => r.test.test(category));
-  return rule ? rule.category : null;
+  return rule ? rule.category : "Other";
 }
 
 // Unit Type's real values are Box/Each/Sq Ft/Roll (case as typed in the
@@ -170,10 +230,12 @@ function isAvailable(item) {
   return item.statusLabel === "In Stock";
 }
 
-// Maps one raw Airtable record into the shape the rest of this file uses,
-// or returns null if the item should not be published (see
-// resolveWebCategory) — category is the one field that can legitimately
-// mean "don't show this." Everything else has a graceful fallback.
+// Maps one raw Airtable record into the shape the rest of this file uses.
+// resolveWebCategory() now always resolves to a real canonical category
+// (falling back to "Other" rather than excluding the row — see its own
+// comment), so this no longer has a "don't publish this item" case of its
+// own; kept returning a nullable value only as defensive future-proofing
+// for the fetchInventory().filter(Boolean) call below.
 // Canonicalizes Water Resistance to the same 4-value set the Airtable
 // sync enforces (see appscripts/WebsiteExport_Airtable_Sync_v2.js
 // IWA_WATER_RESISTANCE_VALUES) — exact-match only there, so a source
@@ -346,9 +408,9 @@ async function fetchInventory() {
     if (!res.ok) throw new Error(`Inventory request failed: ${res.status}`);
     const json = await res.json();
     const records = json.records || [];
-    // .filter(Boolean) drops records whose legacy Category doesn't match
-    // any rule in LEGACY_CATEGORY_RULES (see resolveWebCategory) — those
-    // are deliberately not published, not a mapping bug.
+    // .filter(Boolean) is defensive only — mapAirtableRecord() no longer
+    // returns null for any real record (every Category resolves to a
+    // canonical category, "Other" included — see resolveWebCategory).
     const items = records.map(r => mapAirtableRecord(r.id, r.fields || {})).filter(Boolean);
 
     localStorage.setItem(CACHE_KEY, JSON.stringify({ data: items, ts: Date.now() }));
@@ -1078,6 +1140,7 @@ function facetWaterResistanceOptions(narrowedItems) {
 // selection back to "Any/All" if it's no longer a valid option.
 function updateFacetFilterOptions(categoryItems, narrowedItems) {
   const brandSelect = document.getElementById("brand-filter");
+  const subcategoryGroup = document.getElementById("subcategory-filter-group");
   const subcategorySelect = document.getElementById("subcategory-filter");
 
   if (brandSelect) {
@@ -1086,8 +1149,16 @@ function updateFacetFilterOptions(categoryItems, narrowedItems) {
     brandSelect.innerHTML = `<option value="">All Brands</option>` + brands.map(b => `<option value="${b}">${b}</option>`).join("");
     brandSelect.value = currentBrand;
   }
-  if (subcategorySelect) {
-    const subcategories = facetSubcategoryOptions(categoryItems);
+  // Subcategory ("Type") only ever makes sense once a specific top-level
+  // category is selected — under "All Products" it would mix subcategory
+  // values from every category at once (e.g. Flooring's "Luxury Vinyl
+  // Plank" next to Appliances' "Refrigerator"), which isn't a meaningful
+  // filter. Hidden outright for "all"; otherwise shows only the
+  // subcategories actually present within the selected category, and
+  // hides itself if that category has none.
+  if (subcategoryGroup && subcategorySelect) {
+    const subcategories = currentCategory === "all" ? [] : facetSubcategoryOptions(categoryItems);
+    subcategoryGroup.hidden = subcategories.length === 0;
     if (!subcategories.includes(currentSubcategory)) currentSubcategory = "";
     subcategorySelect.innerHTML = `<option value="">All Types</option>` + subcategories.map(s => `<option value="${s}">${s}</option>`).join("");
     subcategorySelect.value = currentSubcategory;
@@ -1329,17 +1400,16 @@ function renderShopCatalog() {
 // Lets footer/homepage links like /shop#tools preselect a category tab
 // (legacy hash links) — ?cat=<Category Name> (URL-encoded exactly as the
 // category reads, e.g. ?cat=Plumbing+%26+Bath) is the primary format.
-const CATEGORY_SLUGS = {
-  "flooring": "Flooring",
-  "water-heaters": "Water Heaters",
-  "appliances": "Appliances",
-  "plumbing-bath": "Plumbing & Bath",
-  "lawn-outdoor": "Lawn & Outdoor",
-  "tools": "Tools",
-  "home-improvement": "Home Improvement",
-  "electronics-smart-home": "Electronics & Smart Home",
-};
+// Derived from CATEGORY_CONFIG (one source of truth) rather than a
+// separately hand-maintained slug map.
+const CATEGORY_SLUGS = Object.fromEntries(CATEGORY_CONFIG.map(c => [c.slug, c.name]));
 
+// Unknown/malformed/obsolete ?cat= or #hash values (a stale bookmark for
+// a retired category like Home Improvement, a typo, garbage input) simply
+// fail both checks below and return null — applyCategoryFromUrl() then
+// leaves currentCategory at its "all" default rather than throwing or
+// showing a broken page, so a bad category URL always degrades safely to
+// the full catalog.
 function categoryFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const catParam = params.get("cat");
@@ -1357,9 +1427,28 @@ function searchFromUrl() {
   return new URLSearchParams(window.location.search).get("q") || "";
 }
 
+// Marks the currently-selected category across every place that shows
+// one: the compact primary bar's shortcut buttons (data-filter, only for
+// "all" plus the categories that have a permanent shortcut button — see
+// CATEGORY_CONFIG's shopShortcutOrder), the "Browse Categories" button
+// itself (flagged active whenever the selected category isn't one of the
+// permanent shortcuts, so a selection made from inside the panel is still
+// visible on the bar), and every row inside the Browse Categories panel.
 function setActiveCategoryTab(category) {
-  document.querySelectorAll(".filter-btn").forEach(b => {
-    b.classList.toggle("active", b.getAttribute("data-filter") === category);
+  const shortcutBtns = document.querySelectorAll(".filter-btn[data-filter]");
+  let matchedShortcut = false;
+  shortcutBtns.forEach(b => {
+    const isMatch = b.getAttribute("data-filter") === category;
+    b.classList.toggle("active", isMatch);
+    if (isMatch) matchedShortcut = true;
+  });
+  const browseBtn = document.getElementById("browse-categories-btn");
+  if (browseBtn) browseBtn.classList.toggle("active", !matchedShortcut);
+
+  document.querySelectorAll(".category-browser-item").forEach(item => {
+    const isMatch = item.getAttribute("data-filter") === category;
+    item.classList.toggle("active", isMatch);
+    item.setAttribute("aria-current", isMatch ? "true" : "false");
   });
 }
 
@@ -1391,46 +1480,81 @@ function applyCategoryFromUrl() {
   if (search) currentSearch = search;
 }
 
-// One item count per category tab (e.g. "Flooring (18)"), computed from
-// the full fetched set — independent of the current search/facet filters,
-// since a tab count answers "how much is in this category," not "how much
-// matches what I just typed." All 7 canonical categories always render
-// (the site's category structure is fixed architecture, not something
-// that should shift around based on what's in stock this week) — a
-// category with zero published items shows "Coming Soon" in place of a
-// count instead of hiding the tab or showing a bare "(0)".
 // Shared wording for "how many published items are in this category" —
 // used by the homepage category tiles (see updateHomepageDynamicContent())
-// with the same counting rule as the shop tabs below (every published
-// item, in or out of stock — a tab/tile answers "does this category
-// exist here," not "can I buy one right now"), so the two never disagree
-// about the same category's count.
+// and the Browse Categories panel, so they never disagree about the same
+// category's count.
 function categoryProductCountLabel(count) {
   if (count === 0) return "Coming Soon";
   return `${count} product${count === 1 ? "" : "s"}`;
 }
 
-// Renders two count spans per tab — a full desktop label ("(Coming
-// Soon)"/"(N)") and a compact mobile one (just "0"/"N", no parentheses
-// or wordy "Coming Soon") — and lets CSS pick which is visible per
-// breakpoint. "Water Heaters (Coming Soon)" doesn't fit a horizontally
-// scrollable mobile chip without forcing an oversized tap target; the
-// bare number preserves the same information (zero = nothing in stock)
-// far more compactly. Selecting a zero-count category still shows the
-// full "No ... in stock right now" message (emptyCategoryMarkup) either
-// way, so nothing here changes what happens after a tap.
-function updateCategoryTabCounts() {
-  document.querySelectorAll(".filter-btn").forEach(btn => {
+// ---------------------------------------------------------------------
+// Shop page category navigation — split into two tiers so the page never
+// shows 19 permanent tabs:
+//
+// 1. A compact primary bar: "All Products", then whichever of the 4
+//    shortcut categories (see CATEGORY_CONFIG's shopShortcutOrder) are
+//    currently populated, then "Browse Categories" last.
+// 2. The "Browse Categories" panel: every populated canonical category
+//    (in canonical order, "Other" last since it's always last in
+//    CATEGORY_CONFIG), each with its live product count — this is the
+//    only place a category without a permanent shortcut (e.g. Paint &
+//    Supplies) is reachable from, so it must list all of them, not just
+//    the 4 on the bar.
+//
+// Both read the same live counts computed once per call; a category with
+// zero published items is omitted from both, never shown as an empty/
+// "Coming Soon" placeholder — a stale bookmark or old link into a
+// category that's since gone empty just falls back to showing nothing
+// selected in the bar/panel (renderShopCatalog()'s own emptyCategoryMarkup
+// still explains the empty state on the results side).
+// ---------------------------------------------------------------------
+function categoryCounts() {
+  const counts = {};
+  WEB_CATEGORIES.forEach(name => { counts[name] = 0; });
+  shopItems.forEach(i => { if (counts[i.webCategory] !== undefined) counts[i.webCategory]++; });
+  return counts;
+}
+
+function updateShopShortcutBar(counts) {
+  document.querySelectorAll(".filter-btn[data-filter]").forEach(btn => {
     const category = btn.getAttribute("data-filter");
     if (category === "all") return;
-    const count = shopItems.filter(i => i.webCategory === category).length;
-    btn.hidden = false;
-    btn.classList.toggle("filter-btn-empty", count === 0);
-    const label = btn.getAttribute("data-label") || btn.textContent.replace(/\s*\(\d+\)\s*$|\s*\(Coming Soon\)\s*$/, "").trim();
-    btn.setAttribute("data-label", label);
-    const emptyClass = count === 0 ? " filter-count-empty" : "";
-    btn.innerHTML = `${label} <span class="filter-count filter-count-desktop${emptyClass}">${count === 0 ? "(Coming Soon)" : `(${count})`}</span><span class="filter-count filter-count-mobile${emptyClass}">${count}</span>`;
+    const count = counts[category] || 0;
+    btn.hidden = count === 0;
   });
+}
+
+// Builds the Browse Categories panel's list: "All Products" first, then
+// every populated canonical category in CATEGORY_CONFIG order (which
+// already keeps "Other" last), each showing its live count. Delegated
+// click handling lives in initShopControls(); this only rebuilds markup,
+// so it's safe to call any time counts change.
+function renderCategoryBrowser(counts) {
+  const list = document.getElementById("category-browser-list");
+  if (!list) return;
+  const totalCount = shopItems.length;
+  const rows = [`<button type="button" class="category-browser-item" data-filter="all" role="listitem">
+      <span class="category-browser-item-name">All Products</span>
+      <span class="category-browser-item-count">${totalCount}</span>
+    </button>`];
+  CATEGORY_CONFIG.forEach(c => {
+    const count = counts[c.name] || 0;
+    if (count === 0) return;
+    rows.push(`<button type="button" class="category-browser-item${c.isFallback ? " category-browser-item-other" : ""}" data-filter="${escapeAttr(c.name)}" role="listitem">
+      <span class="category-browser-item-name">${c.name}</span>
+      <span class="category-browser-item-count">${count}</span>
+    </button>`);
+  });
+  list.innerHTML = rows.join("");
+}
+
+function updateCategoryTabCounts() {
+  const counts = categoryCounts();
+  updateShopShortcutBar(counts);
+  renderCategoryBrowser(counts);
+  setActiveCategoryTab(currentCategory);
 }
 
 // Wires the "Get a Quote" delegated click handler + modal bindings once
@@ -1453,6 +1577,48 @@ function initQuoteModal(items) {
   bindQuoteModal();
 }
 
+// Shared by every category-selection entry point (the primary bar's
+// shortcut buttons and every row in the Browse Categories panel) so
+// there's exactly one definition of "select a category": reset the
+// facet filters that don't carry across categories, sync the URL, and
+// re-render. "all" clears the category filter entirely.
+function selectCategory(category) {
+  currentCategory = category;
+  currentBrand = "";
+  currentSubcategory = "";
+  currentThickness = "";
+  currentWearLayer = "";
+  currentUnderlayment = "";
+  currentWaterResistance = "";
+  currentAvailability = "";
+  setActiveCategoryTab(category);
+  syncShopUrl(false);
+  updateSortOptionsVisibility();
+  renderShopCatalog();
+}
+
+function openCategoryBrowser() {
+  const overlay = document.getElementById("category-browser-overlay");
+  const trigger = document.getElementById("browse-categories-btn");
+  if (!overlay) return;
+  overlay.hidden = false;
+  if (trigger) trigger.setAttribute("aria-expanded", "true");
+  document.body.classList.add("modal-open");
+  // Move focus into the panel (its close button, the first interactive
+  // element) so keyboard/screen-reader users land inside the dialog
+  // rather than having focus silently stay on the trigger button behind it.
+  document.getElementById("category-browser-close")?.focus();
+}
+
+function closeCategoryBrowser() {
+  const overlay = document.getElementById("category-browser-overlay");
+  const trigger = document.getElementById("browse-categories-btn");
+  if (overlay) overlay.hidden = true;
+  if (trigger) trigger.setAttribute("aria-expanded", "false");
+  document.body.classList.remove("modal-open");
+  trigger?.focus();
+}
+
 function initShopControls(items) {
   shopItems = items;
 
@@ -1460,23 +1626,35 @@ function initShopControls(items) {
   applyCategoryFromUrl();
   syncShopUrl(true);
 
-  const filterBtns = document.querySelectorAll(".filter-btn");
-  filterBtns.forEach(btn => {
-    btn.addEventListener("click", () => {
-      filterBtns.forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      currentCategory = btn.getAttribute("data-filter");
-      currentBrand = "";
-      currentSubcategory = "";
-      currentThickness = "";
-      currentWearLayer = "";
-      currentUnderlayment = "";
-      currentWaterResistance = "";
-      currentAvailability = "";
-      syncShopUrl(false);
-      updateSortOptionsVisibility();
-      renderShopCatalog();
-    });
+  // The primary bar's real category buttons (excludes "Browse
+  // Categories", which has no data-filter — it opens the panel below).
+  document.querySelectorAll(".filter-btn[data-filter]").forEach(btn => {
+    btn.addEventListener("click", () => selectCategory(btn.getAttribute("data-filter")));
+  });
+
+  // Browse Categories: open/close via its trigger button, the backdrop,
+  // the panel's own close button, and Escape — same pattern as every
+  // other modal on this page (quote/calculator) for consistent behavior.
+  // Category selection inside the panel is one delegated listener (rows
+  // are rebuilt by renderCategoryBrowser() whenever counts change, so a
+  // per-row listener would need constant re-binding).
+  document.getElementById("browse-categories-btn")?.addEventListener("click", openCategoryBrowser);
+  document.getElementById("category-browser-close")?.addEventListener("click", closeCategoryBrowser);
+  const categoryBrowserOverlay = document.getElementById("category-browser-overlay");
+  // Only closes on a direct backdrop click — e.target === overlay excludes
+  // clicks inside .category-browser-panel, which bubble but don't target
+  // the overlay itself (same guard the quote/calculator modals use).
+  categoryBrowserOverlay?.addEventListener("click", (e) => {
+    if (e.target === categoryBrowserOverlay) closeCategoryBrowser();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && categoryBrowserOverlay && !categoryBrowserOverlay.hidden) closeCategoryBrowser();
+  });
+  document.getElementById("category-browser-list")?.addEventListener("click", (e) => {
+    const item = e.target.closest(".category-browser-item");
+    if (!item) return;
+    selectCategory(item.getAttribute("data-filter"));
+    closeCategoryBrowser();
   });
 
   const sortSelect = document.getElementById("sort-select");
@@ -1913,14 +2091,21 @@ function updateHomepageDynamicContent(items) {
   // Category tiles: real counts from the live feed, not hardcoded. The
   // category comes from each tile's own href (?cat=...) rather than a
   // separate data attribute — one source of truth for which tile is
-  // which category. Replaces (rather than appends to) the tile's static
+  // which category; a tile with no ?cat= at all (the fixed "Browse All
+  // Categories" 8th tile) simply has no count to look up and is left
+  // alone. Replaces (rather than appends to) the tile's static
   // description once loaded: .tile-copy's footer is a fixed height sized
   // for exactly a title + one short subtitle line (see .category-tile
   // .tile-copy in styles.css), and "LVP, laminate & tile · 22 products"
-  // is long enough to wrap and overflow that box on the narrow 7-across
-  // desktop grid — "22 products" / "Coming Soon" alone always fits.
-  // data-base (the original static copy) is left in the DOM either way,
-  // as the pre-JS/no-JS fallback text already rendered.
+  // is long enough to wrap and overflow that box — "22 products" alone
+  // always fits.
+  //
+  // A category with zero currently-published items gets its tile HIDDEN
+  // outright (not dimmed/"Coming Soon" — see the homepage design spec:
+  // "do not create empty-looking tiles with a zero count," "omit rather
+  // than replace with an arbitrary category"). Since index.html only
+  // ever ships the 7 priority-category tiles + the fixed Browse All tile
+  // (8 max), this can only ever shrink the grid, never grow it past 8.
   document.querySelectorAll(".category-tile[href]").forEach(tile => {
     let cat;
     try {
@@ -1928,10 +2113,9 @@ function updateHomepageDynamicContent(items) {
     } catch (e) { cat = null; }
     if (!cat || !WEB_CATEGORIES.includes(cat)) return;
     const sub = tile.querySelector(".tile-sub");
-    if (!sub) return;
     const count = items.filter(i => i.webCategory === cat).length;
-    sub.textContent = categoryProductCountLabel(count);
-    tile.classList.toggle("category-tile-empty", count === 0);
+    if (sub) sub.textContent = categoryProductCountLabel(count);
+    tile.hidden = count === 0;
   });
 }
 

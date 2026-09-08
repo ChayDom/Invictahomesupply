@@ -560,13 +560,14 @@ nav.primary-nav a.active {
   margin-top: 2px;
   line-height: 1.3;
 }
-/* A category with zero published items still links to a real (if empty)
-   shop view — see updateHomepageDynamicContent() in inventory.js — this
-   just reads as "not stocked yet" rather than a normal, browsable tile:
-   slightly dimmed photo + a muted, italic count instead of the usual
-   cream-dim tone. */
-.category-tile.category-tile-empty { opacity: 0.72; }
-.category-tile.category-tile-empty .tile-sub { font-style: italic; }
+/* A category with zero currently-published items is hidden outright by
+   updateHomepageDynamicContent() in inventory.js rather than shown dimmed
+   — no CSS state needed here for that case. .category-tile-browse-all
+   (the fixed 8th "Browse All Categories" tile) gets a lighter, more
+   neutral gradient than the photo-style category tiles so it visibly
+   reads as a "see everything" action rather than one more product
+   category. */
+.category-tile-browse-all .icon { color: rgba(238,241,234,0.55); }
 @media (max-width: 900px) {
   .category-tile-grid { grid-template-columns: repeat(4, 1fr); }
 }
@@ -1020,14 +1021,24 @@ nav.primary-nav a.active {
 }
 .search-clear:hover { background: var(--cream-dim); color: var(--charcoal); }
 
+/* Compact primary category bar — "All Products", up to 4 shortcut
+   buttons (Flooring/Appliances/Tools/Lawn & Outdoor, each hidden via
+   [hidden] when empty — see updateShopShortcutBar() in inventory.js),
+   and "Browse Categories" last. Deliberately never grows into a 19-tab
+   row — every other populated category is only reachable through the
+   Browse Categories panel below. */
 .filter-row {
   display: flex;
   gap: 10px;
+  align-items: center;
   justify-content: center;
   flex-wrap: wrap;
   margin-bottom: 44px;
 }
 .filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 9px 20px;
   border: 1px solid var(--line);
   background: #fff;
@@ -1036,46 +1047,80 @@ nav.primary-nav a.active {
   text-transform: uppercase;
   cursor: pointer;
   border-radius: 999px;
+  font-family: 'Inter', sans-serif;
 }
 .filter-btn[hidden] { display: none; }
-.filter-btn .filter-count {
-  opacity: 0.6;
-  font-weight: 500;
-  margin-left: 3px;
-}
-/* Two count spans per tab (see updateCategoryTabCounts()) — the full
-   "(Coming Soon)"/"(N)" desktop label is swapped for a bare "0"/"N" on
-   mobile, where the category row becomes a horizontal scroll strip and
-   "Water Heaters (Coming Soon)" would force an oversized chip. */
-.filter-count-mobile { display: none; }
 .filter-btn.active,
 .filter-btn:hover {
   background: var(--charcoal);
   color: var(--cream);
   border-color: var(--charcoal);
 }
-/* A category with zero published items still gets its tab (all 7
-   canonical categories always render — see updateCategoryTabCounts())
-   but reads as "nothing here yet" rather than a normal, stocked
-   category: muted text/border, and the "(Coming Soon)" count keeps its
-   own tone even once .active/:hover flips the tab's background dark. */
-.filter-btn.filter-btn-empty {
-  color: var(--text-muted);
-  border-color: var(--line);
+.filter-btn:focus-visible {
+  outline: 2px solid var(--charcoal);
+  outline-offset: 2px;
 }
-.filter-btn.filter-btn-empty .filter-count-empty {
-  opacity: 0.75;
-  font-style: italic;
+.browse-categories-btn svg { width: 14px; height: 14px; }
+
+/* ---------- Browse Categories panel ---------- */
+/* Reuses the .modal-overlay/.modal pattern (see the Get a Quote/Flooring
+   Calculator modals) for consistent open/close/backdrop/Escape behavior
+   — see openCategoryBrowser()/closeCategoryBrowser() in inventory.js. */
+/* .modal.category-browser-panel (two classes) deliberately outranks the
+   later plain .modal { max-width: 440px } rule regardless of source
+   order — this panel needs to be wider than the quote/calculator
+   modals to fit a 2-3 column category grid. */
+.modal.category-browser-panel { max-width: 640px; }
+.category-browser-panel h3 { margin: 0 0 14px; font-size: 1.15rem; }
+.category-browser-list {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  max-height: min(60vh, 520px);
+  overflow-y: auto;
 }
-.filter-btn.filter-btn-empty.active,
-.filter-btn.filter-btn-empty:hover {
-  background: var(--text-muted);
-  border-color: var(--text-muted);
-  /* Without this, an empty category's active/hover state set the same
-     muted tone as both background AND text (inherited from
-     .filter-btn-empty above) — the label went fully invisible the
-     moment you tapped a zero-count tab like Water Heaters. */
+.category-browser-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.82rem;
+  color: var(--charcoal);
+  text-align: left;
+  cursor: pointer;
+}
+.category-browser-item:hover { border-color: var(--charcoal); }
+.category-browser-item.active {
+  background: var(--charcoal);
+  border-color: var(--charcoal);
   color: var(--cream);
+}
+.category-browser-item:focus-visible {
+  outline: 2px solid var(--charcoal);
+  outline-offset: 2px;
+}
+.category-browser-item-name { overflow-wrap: break-word; }
+.category-browser-item-count {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  opacity: 0.65;
+}
+/* "Other" is always the last populated row (CATEGORY_CONFIG keeps it
+   last in canonical order, and renderCategoryBrowser() only ever appends
+   in that order) — a slightly muted tone marks it as the temporary
+   catch-all it is, distinct from the 18 real categories above it. */
+.category-browser-item-other {
+  border-style: dashed;
+  color: var(--text-muted);
+}
+.category-browser-item-other.active { color: var(--cream); }
+@media (max-width: 700px) {
+  .category-browser-list { grid-template-columns: repeat(2, 1fr); }
 }
 
 .sort-control {
@@ -1612,27 +1657,21 @@ footer.site-footer {
      controls. Nothing here removes a control — Filters/Sort/View/search/
      category counts/active-filter chips all stay, just much smaller. */
 
-  /* Category tabs: one horizontally scrollable row instead of wrapping
-     into ~5 stacked rows of large pills (the single biggest chunk of
-     "empty" space above the first product on mobile). */
-  .filter-row {
-    flex-wrap: nowrap;
-    justify-content: flex-start;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    margin: 0 -20px 12px;
-    padding: 0 20px 4px;
-  }
-  .filter-row::-webkit-scrollbar { display: none; }
+  /* Category bar: just "All Products" + "Browse Categories" on mobile —
+     the 4 permanent shortcut buttons (Flooring/Appliances/Tools/Lawn &
+     Outdoor) that show on desktop are hidden here rather than becoming a
+     horizontally-scrolling strip, per the "one Browse Categories button,
+     no long row of chips" mobile requirement. Nothing is lost — every
+     category (shortcuts included) is still one tap away inside the
+     panel that button opens. */
+  .filter-row { flex-wrap: nowrap; justify-content: center; margin-bottom: 12px; }
+  .filter-btn-shortcut { display: none; }
   .filter-btn {
     flex-shrink: 0;
     white-space: nowrap;
     padding: 8px 14px;
     font-size: 0.72rem;
   }
-  .filter-count-desktop { display: none; }
-  .filter-count-mobile { display: inline; }
 
   /* Toolbar: search and (Flooring only) the calculator shortcut each get
      their own full-width row; Filters/count/View share one compact row;

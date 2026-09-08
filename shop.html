@@ -67,19 +67,44 @@
 <h1 class="visually-hidden">Browse our inventory</h1>
 
 <section class="section shop-section" style="padding-top:20px;">
-  <!-- 1. category tabs, with a live item count per category — zero-count
-       tabs hide automatically (see updateCategoryTabCounts() in
-       inventory.js). Reads/writes ?cat= on the URL. -->
+  <!-- 1. Compact primary category bar — "All Products" plus up to 4
+       permanent shortcut buttons (see CATEGORY_CONFIG's shopShortcutOrder
+       in inventory.js: Flooring, Appliances, Tools, Lawn & Outdoor), each
+       hidden automatically when that category has zero published items
+       (see updateShopShortcutBar()). "Browse Categories" opens the panel
+       below, which lists every one of the 19 canonical categories that
+       currently has published items, with live counts — the only place
+       a category without a permanent shortcut (e.g. Electrical &
+       Lighting, Paint & Supplies) is reachable from. This intentionally
+       never grows into a 19-tab row. Reads/writes ?cat= on the URL. -->
   <div class="filter-row" id="category-filter-row">
-    <button class="filter-btn active" data-filter="all">All</button>
-    <button class="filter-btn" data-filter="Flooring">Flooring</button>
-    <button class="filter-btn" data-filter="Water Heaters">Water Heaters</button>
-    <button class="filter-btn" data-filter="Appliances">Appliances</button>
-    <button class="filter-btn" data-filter="Plumbing &amp; Bath">Plumbing &amp; Bath</button>
-    <button class="filter-btn" data-filter="Lawn &amp; Outdoor">Lawn &amp; Outdoor</button>
-    <button class="filter-btn" data-filter="Tools">Tools</button>
-    <button class="filter-btn" data-filter="Home Improvement">Home Improvement</button>
-    <button class="filter-btn" data-filter="Electronics &amp; Smart Home">Electronics &amp; Smart Home</button>
+    <button class="filter-btn active" data-filter="all">All Products</button>
+    <button class="filter-btn filter-btn-shortcut" data-filter="Flooring">Flooring</button>
+    <button class="filter-btn filter-btn-shortcut" data-filter="Appliances">Appliances</button>
+    <button class="filter-btn filter-btn-shortcut" data-filter="Tools">Tools</button>
+    <button class="filter-btn filter-btn-shortcut" data-filter="Lawn &amp; Outdoor">Lawn &amp; Outdoor</button>
+    <button type="button" class="filter-btn browse-categories-btn" id="browse-categories-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="category-browser-panel">
+      Browse Categories
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    </button>
+  </div>
+
+  <!-- Browse Categories panel — every populated canonical category (all
+       19, "Other" last), with live counts. Built by renderCategoryBrowser()
+       in inventory.js; kept in the same overlay/modal pattern as the
+       Get a Quote / Flooring Calculator modals so its open/close/Escape/
+       backdrop-click behavior is consistent site-wide. Two-to-three
+       columns on desktop, two on mobile (see styles.css); a plain
+       vertical list would also satisfy "readable ... on mobile" but the
+       grid keeps the panel shorter, so it never covers the primary bar
+       or search control above it. -->
+  <div class="modal-overlay" id="category-browser-overlay" hidden>
+    <div class="modal category-browser-panel" id="category-browser-panel" role="dialog" aria-modal="true" aria-labelledby="category-browser-title">
+      <button type="button" class="modal-close" id="category-browser-close" aria-label="Close category browser">&times;</button>
+      <div class="eyebrow">Browse Categories</div>
+      <h3 id="category-browser-title">All categories</h3>
+      <div class="category-browser-list" id="category-browser-list" role="list"></div>
+    </div>
   </div>
 
   <!-- Sidebar (desktop) / drawer (mobile, see .mobile-filters-btn below and
@@ -122,7 +147,12 @@
         <button type="button" class="clear-all-btn" id="clear-all-filters-btn">Clear all</button>
       </div>
 
-      <details class="filter-group" open>
+      <!-- Only shown once a specific top-level category is selected (not
+           "All Products"), and only when that category actually has
+           subcategory values — see updateFacetFilterOptions() in
+           inventory.js. One compact dropdown, never a permanent chip per
+           subcategory. -->
+      <details class="filter-group" id="subcategory-filter-group" open hidden>
         <summary>Type</summary>
         <select id="subcategory-filter" class="sidebar-select" aria-label="Filter by type">
           <option value="">All Types</option>
@@ -406,8 +436,8 @@
       <a href="/shop?cat=Plumbing+%26+Bath">Plumbing &amp; Bath</a>
       <a href="/shop?cat=Lawn+%26+Outdoor">Lawn &amp; Outdoor</a>
       <a href="/shop?cat=Tools">Tools</a>
-      <a href="/shop?cat=Home+Improvement">Home Improvement</a>
       <a href="/shop?cat=Electronics+%26+Smart+Home">Electronics &amp; Smart Home</a>
+      <a href="/shop">Browse All Categories</a>
     </div>
     <div>
       <h4>Company</h4>
