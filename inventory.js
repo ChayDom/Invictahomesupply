@@ -513,13 +513,25 @@ function statusBadge(item) {
   return item.isNew ? `<span class="badge badge-new">New</span>` : "";
 }
 
-// Builds the prefilled "Text about this item" SMS body — always includes
-// the product name and its Product Key (falling back to the Airtable
-// record id only for the rare item with no Product Key) so a reply
-// doesn't require looking anything up.
+// Absolute, shareable product-page link for SMS/quote text bodies. Always
+// the plain product.html?id= link (never carries the shop page's &from=
+// back-link state — that's only meaningful for on-site "Back to
+// inventory" navigation, not a link texted off-site to a customer).
+function smsProductUrl(item) {
+  return `${window.location.origin}/product.html?id=${encodeURIComponent(item.productKey || item.id)}`;
+}
+
+// Builds the prefilled "Text about this item" SMS body. Customer-facing —
+// so it identifies the item by name, current price, and a link to its
+// product page, never by its raw Product Key/id (that stays internal, for
+// Airtable lookup and page routing only — see productDetailHref/
+// smsProductUrl, and the hidden quote-field-product-key form field).
+// Flooring items get an extra blank "Sq Ft needed:" line for the customer
+// to fill in before sending.
 function smsMessageForItem(item) {
-  const key = item.productKey || item.id;
-  return `Hi, I'm interested in ${item.name} (${key}).`;
+  const priceText = quotePriceText(item);
+  const base = `Hi, I'm interested in ${item.name}${priceText ? ` (${priceText})` : ""} — ${smsProductUrl(item)}`;
+  return item.webCategory === "Flooring" ? `${base}\nSq Ft needed: ` : base;
 }
 
 function smsHrefForItem(item) {
@@ -1941,7 +1953,6 @@ function productDetailSpecRows(item) {
     add("Subcategory", item.webSubcategory);
     add("Quantity Available", typeof item.qtyAvailable === "number" ? item.qtyAvailable : "");
   }
-  add("Product Key", item.productKey);
   return rows;
 }
 
