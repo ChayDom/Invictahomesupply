@@ -230,6 +230,41 @@ function isAvailable(item) {
   return item.statusLabel === "In Stock";
 }
 
+// Single source of truth for "does this item legitimately count as
+// available Luxury Vinyl Plank flooring" — used by the homepage's
+// starting-price calculation (see computeLvpStartingPrice()) and safe to
+// reuse anywhere else on the site that needs the same LVP eligibility
+// rule, so a single definition can never drift out of sync with itself
+// across pages. "Published" is enforced upstream, server-side, in
+// netlify/functions/inventory.mts (Airtable filterByFormula
+// {Post to Website} = TRUE()) — Post to Website is never sent to the
+// client at all, so every item in the `items` array this file works
+// with has already passed that gate; there is nothing further to check
+// for "published" here. What IS checked explicitly, item by item:
+// category, subcategory, in-stock status, a genuinely positive
+// Quantity Available (not just inferred from the Status text), and a
+// genuinely positive per-sq-ft Price.
+function isEligibleLvpFlooring(item) {
+  return item.webCategory === "Flooring"
+    && item.webSubcategory === "Luxury Vinyl Plank"
+    && isAvailable(item)
+    && typeof item.qtyAvailable === "number" && item.qtyAvailable > 0
+    && typeof item.price === "number" && item.price > 0;
+}
+
+// Pure, independently testable: the lowest per-sq-ft price among every
+// eligible LVP row, or null if none qualify (never $0/undefined/NaN —
+// callers must leave the existing static placeholder price in place
+// when this returns null, exactly as updateHomepageDynamicContent()
+// already does). See test/homepage-lvp-price.test.mjs for the
+// regression fixture (an unpublished-equivalent item excluded from the
+// input array entirely, a published item at the expected lower price,
+// and an out-of-stock item at an even lower price that must not win).
+function computeLvpStartingPrice(items) {
+  const prices = items.filter(isEligibleLvpFlooring).map(i => i.price);
+  return prices.length ? Math.min(...prices) : null;
+}
+
 // Maps one raw Airtable record into the shape the rest of this file uses.
 // resolveWebCategory() now always resolves to a real canonical category
 // (falling back to "Other" rather than excluding the row — see its own
@@ -2077,11 +2112,10 @@ function updateHomepageDynamicContent(items) {
   const priceEl = document.getElementById("hero-price");
   const sqftEl = document.getElementById("stat-sqft");
   const flooring = items.filter(i => i.webCategory === "Flooring" && isAvailable(i));
-  const lvp = flooring.filter(i => i.webSubcategory === "Luxury Vinyl Plank");
 
   if (priceEl) {
-    const prices = lvp.map(i => i.price).filter(p => typeof p === "number" && p > 0);
-    if (prices.length) priceEl.textContent = money2(Math.min(...prices));
+    const startingPrice = computeLvpStartingPrice(items);
+    if (startingPrice !== null) priceEl.textContent = money2(startingPrice);
   }
   if (sqftEl) {
     const totalSqFt = flooring.reduce((sum, i) => sum + (typeof i.availableSqFt === "number" ? i.availableSqFt : 0), 0);
