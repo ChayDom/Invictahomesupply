@@ -16,13 +16,14 @@
      Quantity Available, Status (In Stock/Reserved/Sold Out text), Box
      Price, Sq Ft Per Unit, Available Sq Ft, Thickness MM, Wear Layer MIL,
      Underlayment Attached (Yes/No), Water Resistance, Details, Highlights,
-     Product URL, Photos (attachment, may be empty/absent), Reference
-     Image URL (single-URL fallback), Post to Website (server-side gate
-     only), Date Added. There is no separate "In Stock" boolean field —
-     confirmed against the live schema — so it isn't read here.
+     Card Spec 1, Card Spec 2, Card Spec 3, Product URL, Photos (attachment,
+     may be empty/absent), Reference Image URL (single-URL fallback), Post
+     to Website (server-side gate only), Date Added. There is no separate
+     "In Stock" boolean field — confirmed against the live schema — so it
+     isn't read here.
 
    Category resolution still needs a fallback because every row won't
-   have a clean one of the 7 site categories in `Category` on day one:
+   have a clean one of the 8 site categories in `Category` on day one:
    resolveWebCategory() checks for an exact match first, then an explicit
    keyword allowlist, then (only for a genuinely blank Category) infers
    Flooring from flooring-shaped attributes. Anything else is not
@@ -66,9 +67,13 @@ window.AIRTABLE_CONFIG = {
 const CACHE_KEY = "invicta_inventory_cache_v6";
 const INVENTORY_ENDPOINT = "/api/inventory";
 
-// The 7 public-facing website categories. An item is only resolved to one
+// The 8 public-facing website categories. An item is only resolved to one
 // of these when Category is already an exact match, or matches one of the
-// explicit rules below — see resolveWebCategory().
+// explicit rules below — see resolveWebCategory(). "Electronics & Smart
+// Home" is matched by exact string only (via the .includes() check right
+// below) — deliberately no fuzzy LEGACY_CATEGORY_RULES entry for it, so an
+// Electronics row is never silently folded into Home Improvement or any
+// other category by a loose keyword match.
 const WEB_CATEGORIES = [
   "Flooring",
   "Water Heaters",
@@ -77,13 +82,14 @@ const WEB_CATEGORIES = [
   "Lawn & Outdoor",
   "Tools",
   "Home Improvement",
+  "Electronics & Smart Home",
 ];
 
 // Explicit allowlist only — this is NOT a catch-all. During migration,
-// Category can hold either a clean 7-category value (matched above) or an
+// Category can hold either a clean 8-category value (matched above) or an
 // older/broader label; only labels matching one of these rules resolve to
-// a web category. Anything else (Electronics, Gaming, Toys, Collectibles,
-// Health & Personal Care, or any other unrecognized non-blank value) is
+// a web category. Anything else (Gaming, Toys, Collectibles, Health &
+// Personal Care, or any other unrecognized non-blank value) is
 // deliberately left unresolved and the item is not published, even if
 // Post to Website is TRUE upstream — those product lines are out of scope
 // for this home-improvement storefront and must not be guessed into a
@@ -267,6 +273,9 @@ function mapAirtableRecord(id, f) {
     waterResistance: normalizeWaterResistance(f["Water Resistance"], f["Name"]),
     details: f["Details"] || "",
     highlights: f["Highlights"] || "",
+    cardSpec1: (f["Card Spec 1"] || "").toString().trim(),
+    cardSpec2: (f["Card Spec 2"] || "").toString().trim(),
+    cardSpec3: (f["Card Spec 3"] || "").toString().trim(),
     productUrl: f["Product URL"] || "",
     statusLabel: resolveStatusLabel(f),
     photos,
@@ -426,19 +435,34 @@ function flooringStructuredChips(item) {
   return chips;
 }
 
+// Non-Flooring categories' compact card pills: Card Spec 1/2/3, in that
+// order, skipping any that are blank — authoritative curated values, never
+// parsed or inferred from Highlights/title. No category-specific logic
+// here (no "if water heater"/"if TV" branches) — every non-Flooring
+// category, present or future, goes through this same field triplet.
+function cardSpecChips(item) {
+  return [item.cardSpec1, item.cardSpec2, item.cardSpec3].filter(Boolean);
+}
+
 // Structured fields first, Highlights only to fill remaining slots up to
 // maxChips (3, the card's chip-row convention everywhere on the site) —
 // the structured-first priority is Flooring-specific because it's the
-// only category with real structured fields so far; every other category
-// still uses Highlights as its primary chip source. Returns both the
-// chips to show and the Highlights lines NOT used as chips, so "More
-// details" never repeats a line already shown as a chip.
+// only category with real structured fields so far. Every other category
+// uses its curated Card Spec 1/2/3 values as chips instead — Highlights
+// are full sentences, not pill-sized, so they're never used as card chips
+// outside Flooring's own fallback; they stay available in full on the
+// product detail page and this card's own "More details" section.
+// Returns both the chips to show and the Highlights lines NOT already
+// shown as a chip, so "More details" never repeats a line already shown.
 function chipsAndRemainingHighlights(item, maxChips = 3) {
-  const structured = item.webCategory === "Flooring" ? flooringStructuredChips(item) : [];
   const allHighlights = highlightBullets(item.highlights);
-  if (structured.length >= maxChips) return { chips: structured.slice(0, maxChips), remainingHighlights: allHighlights };
-  const need = maxChips - structured.length;
-  return { chips: structured.concat(allHighlights.slice(0, need)), remainingHighlights: allHighlights.slice(need) };
+  if (item.webCategory === "Flooring") {
+    const structured = flooringStructuredChips(item);
+    if (structured.length >= maxChips) return { chips: structured.slice(0, maxChips), remainingHighlights: allHighlights };
+    const need = maxChips - structured.length;
+    return { chips: structured.concat(allHighlights.slice(0, need)), remainingHighlights: allHighlights.slice(need) };
+  }
+  return { chips: cardSpecChips(item).slice(0, maxChips), remainingHighlights: allHighlights };
 }
 
 // Boxes-available-aware low-stock messaging for Flooring's compact card.
@@ -634,8 +658,9 @@ function priceBlock(item) {
 }
 
 // Compact card: square image -> category (+ subcategory, if set) -> name
-// -> up to 3 chips (structured Flooring fields first, Highlights fill the
-// rest) -> short price -> availability line -> one CTA. Long copy
+// -> up to 3 chips (structured Flooring fields for Flooring, Card Spec
+// 1/2/3 for every other category) -> short price -> availability line ->
+// one CTA. Long copy
 // (Details, remaining Highlights, a product reference link) moves into a
 // collapsed <details> section instead of living on the card — keeps the
 // row/card itself from turning back into a wall of text.
@@ -1312,6 +1337,7 @@ const CATEGORY_SLUGS = {
   "lawn-outdoor": "Lawn & Outdoor",
   "tools": "Tools",
   "home-improvement": "Home Improvement",
+  "electronics-smart-home": "Electronics & Smart Home",
 };
 
 function categoryFromUrl() {
@@ -1858,16 +1884,25 @@ function bindCalculatorModal() {
 
 // ---------------------------------------------------------------------
 // Homepage hero price + stat strip — both computed from the live fetched
-// inventory, never hardcoded. "Lowest price" only ever considers
-// published + in-stock Flooring rows with a real positive Price.
+// inventory, never hardcoded. The hero headline advertises LVP
+// specifically ("Brand-new LVP flooring from $X / sq ft"), so its price
+// must only ever be drawn from published + in-stock Luxury Vinyl Plank
+// rows with a real positive Price — not Flooring as a whole, or a
+// cheaper Laminate/Hybrid Resilient/etc. row gets misrepresented as LVP.
+// If no eligible LVP row exists, priceEl is left untouched so the
+// static "$1.50" placeholder already in index.html's markup shows
+// instead of a wrong or blank price. The sq-ft stat's own copy
+// ("sq ft of flooring in stock") describes all Flooring, not LVP, so it
+// intentionally keeps the broader Flooring-wide total.
 // ---------------------------------------------------------------------
 function updateHomepageDynamicContent(items) {
   const priceEl = document.getElementById("hero-price");
   const sqftEl = document.getElementById("stat-sqft");
   const flooring = items.filter(i => i.webCategory === "Flooring" && isAvailable(i));
+  const lvp = flooring.filter(i => i.webSubcategory === "Luxury Vinyl Plank");
 
   if (priceEl) {
-    const prices = flooring.map(i => i.price).filter(p => typeof p === "number" && p > 0);
+    const prices = lvp.map(i => i.price).filter(p => typeof p === "number" && p > 0);
     if (prices.length) priceEl.textContent = money2(Math.min(...prices));
   }
   if (sqftEl) {

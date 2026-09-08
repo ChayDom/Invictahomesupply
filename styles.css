@@ -481,7 +481,12 @@ nav.primary-nav a.active {
    row reads as a photo strip rather than icon cards. ---------- */
 .category-tile-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  /* 4 across (2 clean rows of 4 for the 8 canonical categories) — was a
+     hardcoded repeat(7, 1fr) sized for exactly 7 tiles; an 8th tile
+     wrapped it into a lopsided 7-then-1 layout. Reuses the same column
+     count the 900px breakpoint below already established, rather than
+     introducing a third distinct desktop layout. */
+  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
   max-width: var(--max-width);
   margin: 0 auto;
@@ -667,7 +672,8 @@ nav.primary-nav a.active {
   letter-spacing: 0.02em;
   padding: 4px 9px;
   border-radius: 999px;
-  white-space: nowrap;
+  max-width: 100%;
+  overflow-wrap: break-word;
 }
 
 /* ---------- Expandable "More details" ---------- */
@@ -1808,6 +1814,12 @@ footer.site-footer {
    .optin with other pages, so overrides are scoped to body.about-page
    instead of changing the shared base rules). ---------- */
 .about-page .page-heading { padding: 24px 32px 6px; }
+/* "Our Story" now runs two short paragraphs instead of one — .page-heading
+   p's shared margin:0 (fine for every other page's single paragraph)
+   left them running together with no gap. Scoped to a second-or-later
+   paragraph so contact.html/index.html's single-paragraph intros are
+   untouched. */
+.about-page .page-heading p + p { margin-top: 10px; }
 .about-page .section { padding: 26px 32px; }
 .about-page .section .section-head { margin-bottom: 20px; }
 .about-page .optin { padding: 30px 32px; }

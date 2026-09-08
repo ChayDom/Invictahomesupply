@@ -145,7 +145,8 @@ Originally found — **no value normalization before typecast**:
 - `Category`, `Water Resistance`, and `Underlayment Attached` are now
   validated with `iwaEnum_()` against fixed allowlists (`Flooring`/`Water
   Heaters`/`Appliances`/`Plumbing & Bath`/`Lawn & Outdoor`/`Tools`/`Home
-  Improvement` for Category; `Waterproof`/`Water Resistant`/`Not Water
+  Improvement`/`Electronics & Smart Home`/`Other` for Category;
+  `Waterproof`/`Water Resistant`/`Not Water
   Resistant`/`Unknown` for Water Resistance; `Yes`/`No` for Underlayment
   Attached) before being sent. A value that's blank stays blank as before;
   a value that's present but not an exact allowlist match is now also sent
