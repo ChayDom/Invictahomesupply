@@ -16,10 +16,11 @@
      Quantity Available, Status (In Stock/Reserved/Sold Out text), Box
      Price, Sq Ft Per Unit, Available Sq Ft, Thickness MM, Wear Layer MIL,
      Underlayment Attached (Yes/No), Water Resistance, Details, Highlights,
-     Product URL, Photos (attachment, may be empty/absent), Reference
-     Image URL (single-URL fallback), Post to Website (server-side gate
-     only), Date Added. There is no separate "In Stock" boolean field —
-     confirmed against the live schema — so it isn't read here.
+     Card Spec 1, Card Spec 2, Card Spec 3, Product URL, Photos (attachment,
+     may be empty/absent), Reference Image URL (single-URL fallback), Post
+     to Website (server-side gate only), Date Added. There is no separate
+     "In Stock" boolean field — confirmed against the live schema — so it
+     isn't read here.
 
    Category resolution still needs a fallback because every row won't
    have a clean one of the 8 site categories in `Category` on day one:
@@ -272,6 +273,9 @@ function mapAirtableRecord(id, f) {
     waterResistance: normalizeWaterResistance(f["Water Resistance"], f["Name"]),
     details: f["Details"] || "",
     highlights: f["Highlights"] || "",
+    cardSpec1: (f["Card Spec 1"] || "").toString().trim(),
+    cardSpec2: (f["Card Spec 2"] || "").toString().trim(),
+    cardSpec3: (f["Card Spec 3"] || "").toString().trim(),
     productUrl: f["Product URL"] || "",
     statusLabel: resolveStatusLabel(f),
     photos,
@@ -431,19 +435,34 @@ function flooringStructuredChips(item) {
   return chips;
 }
 
+// Non-Flooring categories' compact card pills: Card Spec 1/2/3, in that
+// order, skipping any that are blank — authoritative curated values, never
+// parsed or inferred from Highlights/title. No category-specific logic
+// here (no "if water heater"/"if TV" branches) — every non-Flooring
+// category, present or future, goes through this same field triplet.
+function cardSpecChips(item) {
+  return [item.cardSpec1, item.cardSpec2, item.cardSpec3].filter(Boolean);
+}
+
 // Structured fields first, Highlights only to fill remaining slots up to
 // maxChips (3, the card's chip-row convention everywhere on the site) —
 // the structured-first priority is Flooring-specific because it's the
-// only category with real structured fields so far; every other category
-// still uses Highlights as its primary chip source. Returns both the
-// chips to show and the Highlights lines NOT used as chips, so "More
-// details" never repeats a line already shown as a chip.
+// only category with real structured fields so far. Every other category
+// uses its curated Card Spec 1/2/3 values as chips instead — Highlights
+// are full sentences, not pill-sized, so they're never used as card chips
+// outside Flooring's own fallback; they stay available in full on the
+// product detail page and this card's own "More details" section.
+// Returns both the chips to show and the Highlights lines NOT already
+// shown as a chip, so "More details" never repeats a line already shown.
 function chipsAndRemainingHighlights(item, maxChips = 3) {
-  const structured = item.webCategory === "Flooring" ? flooringStructuredChips(item) : [];
   const allHighlights = highlightBullets(item.highlights);
-  if (structured.length >= maxChips) return { chips: structured.slice(0, maxChips), remainingHighlights: allHighlights };
-  const need = maxChips - structured.length;
-  return { chips: structured.concat(allHighlights.slice(0, need)), remainingHighlights: allHighlights.slice(need) };
+  if (item.webCategory === "Flooring") {
+    const structured = flooringStructuredChips(item);
+    if (structured.length >= maxChips) return { chips: structured.slice(0, maxChips), remainingHighlights: allHighlights };
+    const need = maxChips - structured.length;
+    return { chips: structured.concat(allHighlights.slice(0, need)), remainingHighlights: allHighlights.slice(need) };
+  }
+  return { chips: cardSpecChips(item).slice(0, maxChips), remainingHighlights: allHighlights };
 }
 
 // Boxes-available-aware low-stock messaging for Flooring's compact card.
@@ -627,8 +646,9 @@ function priceBlock(item) {
 }
 
 // Compact card: square image -> category (+ subcategory, if set) -> name
-// -> up to 3 chips (structured Flooring fields first, Highlights fill the
-// rest) -> short price -> availability line -> one CTA. Long copy
+// -> up to 3 chips (structured Flooring fields for Flooring, Card Spec
+// 1/2/3 for every other category) -> short price -> availability line ->
+// one CTA. Long copy
 // (Details, remaining Highlights, a product reference link) moves into a
 // collapsed <details> section instead of living on the card — keeps the
 // row/card itself from turning back into a wall of text.
