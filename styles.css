@@ -672,7 +672,8 @@ nav.primary-nav a.active {
   letter-spacing: 0.02em;
   padding: 4px 9px;
   border-radius: 999px;
-  white-space: nowrap;
+  max-width: 100%;
+  overflow-wrap: break-word;
 }
 
 /* ---------- Expandable "More details" ---------- */
