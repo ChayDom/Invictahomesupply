@@ -276,25 +276,44 @@ nav.primary-nav a.active {
   padding: 90px 32px;
 }
 
+/* Desktop only: capped to ~470px total height (via min-height + the
+   reduced padding below) so the category tiles start showing sooner
+   without scrolling, per the "shorter hero" request — mobile/tablet
+   keep the taller, auto-height hero above since their stacked text
+   already needs the room. flex + align-items:center vertically centers
+   the headline block inside that shorter box regardless of exactly how
+   tall the 3-line h1 + eyebrow + paragraph + button stack renders, and
+   the 40px vertical padding is the floor of breathing room around the
+   CTA even if min-height is ever satisfied by content alone. */
+@media (min-width: 901px) {
+  .hero {
+    min-height: 470px;
+    padding: 40px 32px;
+    display: flex;
+    align-items: center;
+  }
+}
+
 .hero-content {
   max-width: var(--max-width);
+  width: 100%;
   margin: 0 auto;
 }
 
 /* Real-photo hero: a background image plus a left-to-right dark green
    scrim so light, left-aligned text stays readable regardless of the
-   photo underneath. Swap --hero-photo's url() for a real inventory/
-   showroom/pallet shot (drop it in /assets and set the inline
-   custom property on the section) — until real photography is supplied,
-   a dark-green photographic-feel gradient stands in so nothing here
-   reads as generic stock imagery. */
+   photo underneath. background-position: right center keeps the framed
+   photo's right-hand flooring/living-room detail in view (rather than
+   center-cropping it) at every width — the scrim is strongest on the
+   left precisely because that's where the photo matters least and the
+   text sits. */
 .hero-photo {
   position: relative;
   background:
     linear-gradient(90deg, rgba(15, 22, 17, 0.94) 0%, rgba(20, 28, 22, 0.78) 45%, rgba(28, 40, 32, 0.5) 100%),
     var(--hero-photo, linear-gradient(120deg, #2f4234 0%, #1c2820 55%, #24352a 100%));
   background-size: cover;
-  background-position: center;
+  background-position: right center;
 }
 
 
@@ -558,17 +577,24 @@ nav.primary-nav a.active {
    reads as a "see everything" action rather than one more product
    category. */
 .category-tile-browse-all .icon { color: rgba(238,241,234,0.65); }
+/* 4 across on desktop (>900px, set on .category-tile-grid itself), 2
+   across on tablet/mobile down to a very narrow phone, then 1 across —
+   never 5+, and never so narrow a 4-column row would squeeze each tile
+   down to an unreadable sliver. */
 @media (max-width: 900px) {
-  .category-tile-grid { grid-template-columns: repeat(4, 1fr); }
+  .category-tile-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 480px) {
-  .category-tile-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .category-tile-grid { gap: 10px; }
   .category-tile { height: 130px; }
   .category-tile .tile-title { font-size: 0.78rem; }
   /* The 64px desktop icon is oversized against a 130px-tall mobile tile
      (nearly half its height) — scale back down so it still reads as a
      watermark behind the title/subtitle rather than crowding them. */
   .category-tile .icon { width: 48px; height: 48px; top: 10px; right: 10px; }
+}
+@media (max-width: 360px) {
+  .category-tile-grid { grid-template-columns: 1fr; }
 }
 
 .category-card {
