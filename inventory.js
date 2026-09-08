@@ -1852,16 +1852,25 @@ function bindCalculatorModal() {
 
 // ---------------------------------------------------------------------
 // Homepage hero price + stat strip — both computed from the live fetched
-// inventory, never hardcoded. "Lowest price" only ever considers
-// published + in-stock Flooring rows with a real positive Price.
+// inventory, never hardcoded. The hero headline advertises LVP
+// specifically ("Brand-new LVP flooring from $X / sq ft"), so its price
+// must only ever be drawn from published + in-stock Luxury Vinyl Plank
+// rows with a real positive Price — not Flooring as a whole, or a
+// cheaper Laminate/Hybrid Resilient/etc. row gets misrepresented as LVP.
+// If no eligible LVP row exists, priceEl is left untouched so the
+// static "$1.50" placeholder already in index.html's markup shows
+// instead of a wrong or blank price. The sq-ft stat's own copy
+// ("sq ft of flooring in stock") describes all Flooring, not LVP, so it
+// intentionally keeps the broader Flooring-wide total.
 // ---------------------------------------------------------------------
 function updateHomepageDynamicContent(items) {
   const priceEl = document.getElementById("hero-price");
   const sqftEl = document.getElementById("stat-sqft");
   const flooring = items.filter(i => i.webCategory === "Flooring" && isAvailable(i));
+  const lvp = flooring.filter(i => i.webSubcategory === "Luxury Vinyl Plank");
 
   if (priceEl) {
-    const prices = flooring.map(i => i.price).filter(p => typeof p === "number" && p > 0);
+    const prices = lvp.map(i => i.price).filter(p => typeof p === "number" && p > 0);
     if (prices.length) priceEl.textContent = money2(Math.min(...prices));
   }
   if (sqftEl) {
