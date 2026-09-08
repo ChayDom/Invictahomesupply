@@ -156,27 +156,47 @@ etc.) is shared by both the dropdown renderer and the pill renderer, so
 
 ## How the site behaves during migration (nothing currently live disappears)
 
-`Post to Website` remains the only publish gate — not `Category`. Until
-every row has a clean 7-category `Category` value:
+`Post to Website` remains the only publish gate — not `Category`. The
+site's canonical category list is the 19 categories in `CATEGORY_CONFIG`
+(`inventory.js`): Flooring, Water Heaters, Appliances, Plumbing & Bath,
+Lawn & Outdoor, Tools, Electrical & Lighting, Electronics & Smart Home,
+Paint & Supplies, Building Materials, Doors & Windows, Heating & Cooling,
+Home & Furniture, Cleaning & Household, Health & Personal Care,
+Automotive, Sports & Fitness, Toys & Collectibles, and Other. There is no
+`Home Improvement` category anymore — it was retired as an overly broad
+catch-all.
 
-- A `Category` that isn't an exact match falls back through an **explicit
-  allowlist — this is not a catch-all**:
+Unlike the old 7-category system, an item is **never unpublished because
+of its `Category` value** — a `Category` that isn't an exact canonical
+match falls back through an **explicit allowlist — this is not a
+catch-all**, and anything that still doesn't resolve lands in the
+always-visible `Other` category rather than being hidden:
 
-  | `Category` value | Resolves to |
-  |---|---|
-  | `Flooring` | Flooring |
-  | `Appliances` | Appliances |
-  | `Tools` | Tools |
-  | `Water Heaters` | Water Heaters |
-  | Contains "Plumbing" or "Sinks" | Plumbing & Bath |
-  | Contains "Lawn" or "Outdoor" | Lawn & Outdoor |
-  | Contains "Lighting", "Windows & Doors", "Blinds", or "Shutters" | Home Improvement |
-  | **Blank**, and `Unit Type` = `Sq Ft` or a flooring-specific field (`Sq Ft Per Unit`, `Box Price`, `Available Sq Ft`, `Thickness MM`, `Wear Layer MIL`) is a positive number | **Flooring** — this site was flooring-only pre-migration, so a blank-Category row with flooring attributes is almost certainly an existing flooring listing whose Category never got filled in |
-  | Blank, with none of those attributes | **Not published** |
-  | Anything else (non-blank, unrecognized — e.g. Electronics, Gaming, Toys, Collectibles, Health & Personal Care) | **Not published**, even if `Post to Website` is `TRUE` — those product lines are out of scope for this storefront and are never guessed into a tab |
+| `Category` value | Resolves to |
+|---|---|
+| Exact match to one of the 19 canonical names above | That category |
+| `Flooring` / `Appliances` / `Tools` / `Water Heaters` (loose legacy spelling) | The matching category |
+| Contains "Plumbing" or "Sinks" | Plumbing & Bath |
+| Contains "Lawn" or "Outdoor" | Lawn & Outdoor |
+| Contains "Electrical", "Wiring", "Breakers", "Outlets", "Switches", "Lighting", "Blinds", or "Shutters" | Electrical & Lighting |
+| Contains "Paint", "Primer", "Coatings", "Stains", or "Caulk" | Paint & Supplies |
+| Contains "Lumber", "Roofing", "Insulation", "Drywall", "Concrete", "Siding", or "Building Materials" | Building Materials |
+| Contains "Windows & Doors" or "Storm Doors" | Doors & Windows |
+| Contains "HVAC", "Air Condition", "Evaporative Cooler", "Space Heaters", "Heating", or "Cooling" | Heating & Cooling |
+| Contains "Furniture", "Shelving", "Home Storage", or "Décor" | Home & Furniture |
+| Contains "Vacuums", "Cleaning", or "Household" | Cleaning & Household |
+| Contains "Personal Care", "Hygiene", "Deodorant", "Grooming", or "Oral Care" | Health & Personal Care |
+| Contains "Automotive" or "Vehicle" | Automotive |
+| Contains "Sports", "Fitness", or "Exercise" | Sports & Fitness |
+| Contains "Toys", "Collectibles", or "Games" | Toys & Collectibles |
+| **Blank**, and `Unit Type` = `Sq Ft` or a flooring-specific field (`Sq Ft Per Unit`, `Box Price`, `Available Sq Ft`, `Thickness MM`, `Wear Layer MIL`) is a positive number | **Flooring** — this site was flooring-only pre-migration, so a blank-Category row with flooring attributes is almost certainly an existing flooring listing whose Category never got filled in |
+| Blank, with none of those attributes | **Other** |
+| Legacy `Home Improvement` value, or anything else non-blank and unrecognized | **Other** — a visible, intentional fallback bucket, not an unpublished item. The Product Catalog has since been reclassified onto the 19 canonical categories above, so this should be rare in practice; it exists as a safety net, not the expected path. |
 
   This logic lives in `resolveWebCategory()` / `LEGACY_CATEGORY_RULES` /
-  `hasFlooringAttributes()` in `inventory.js`.
+  `hasFlooringAttributes()` in `inventory.js`, deliberately isolated so
+  the legacy/unknown-value fallback rules can be removed later without
+  touching the exact-match path.
 - Availability (`isAvailable()`/`resolveStatusLabel()`) prefers the
   `Status` text (shown verbatim on the pill when it's more specific than
   "In Stock", e.g. "Reserved"), then `Quantity Available > 0`. There is no

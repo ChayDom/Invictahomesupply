@@ -402,7 +402,11 @@ Do not blindly replace all existing Apps Script code without reviewing what exis
 
 13. Canonical website categories
 
-These are final:
+Superseded — the original 7-category list below (with Home Improvement as
+a catch-all 7th category) was replaced by a 19-category system once
+Product Catalog, Apps Script, and Airtable were reclassified. Home
+Improvement is no longer a valid category. The current canonical list
+(final, in display order) is:
 
 Flooring
 Water Heaters
@@ -410,13 +414,36 @@ Appliances
 Plumbing & Bath
 Lawn & Outdoor
 Tools
-Home Improvement
+Electrical & Lighting
+Electronics & Smart Home
+Paint & Supplies
+Building Materials
+Doors & Windows
+Heating & Cooling
+Home & Furniture
+Cleaning & Household
+Health & Personal Care
+Automotive
+Sports & Fitness
+Toys & Collectibles
+Other
 
 Do not use old website categories such as:
 
 Renovation Supplies
+Home Improvement
 
-The website filter UI should use the canonical seven categories plus All.
+The single source of truth for this list is CATEGORY_CONFIG in
+inventory.js — the website's homepage tiles, shop-page shortcut bar,
+Browse Categories panel, and category-resolution logic are all derived
+from it. Legacy/unrecognized Category values (including old
+Home Improvement records) resolve to the always-visible "Other" category
+rather than being unpublished — see resolveWebCategory()/
+LEGACY_CATEGORY_RULES in inventory.js.
+
+(Original 7-category list, kept for history only — no longer accurate:
+Flooring, Water Heaters, Appliances, Plumbing & Bath, Lawn & Outdoor,
+Tools, Home Improvement.)
 
 14. Website merchandising model
 
