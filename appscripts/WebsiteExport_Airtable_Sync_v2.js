@@ -60,7 +60,9 @@ const IWA_CATEGORY_VALUES = [
   'Plumbing & Bath',
   'Lawn & Outdoor',
   'Tools',
-  'Home Improvement'
+  'Home Improvement',
+  'Electronics & Smart Home',
+  'Other'
 ];
 
 const IWA_WATER_RESISTANCE_VALUES = [
