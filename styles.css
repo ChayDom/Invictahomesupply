@@ -495,11 +495,12 @@ nav.primary-nav a.active {
    the heading) reads as too much dead air stacked directly under the
    already-padded dark stat strip. Scoped to this section only (via
    .category-section on the <section> in index.html) so no other
-   .section on the site is affected. Bottom padding (below the cards,
-   into whatever follows) is untouched — only asked to close up the
-   stats-strip -> heading -> cards side. */
-.category-section { padding-top: 50px; }
-.category-section .section-head { margin-bottom: 30px; }
+   .section on the site is affected. padding-top/bottom and the
+   section-head's margin-bottom are each ~18-20% below their generic
+   .section values (50->40, 88->70, 30->24) to close up the space
+   above and below the tile grid specifically. */
+.category-section { padding-top: 40px; padding-bottom: 70px; }
+.category-section .section-head { margin-bottom: 24px; }
 .category-tile {
   position: relative;
   height: 180px;
@@ -529,7 +530,10 @@ nav.primary-nav a.active {
   right: 12px;
   width: 64px;
   height: 64px;
-  color: rgba(238,241,234,0.5);
+  /* ~14% brighter than the previous 0.5 alpha (line weight/style
+     unchanged) so each icon reads a touch more clearly against its dark
+     tile without becoming a bold/filled look. */
+  color: rgba(238,241,234,0.57);
 }
 /* Fixed HEIGHT (not min-height) footer, tall enough for a 2-line title
    plus the subtitle, pinned to the tile's bottom, with content
@@ -576,7 +580,7 @@ nav.primary-nav a.active {
    neutral gradient than the photo-style category tiles so it visibly
    reads as a "see everything" action rather than one more product
    category. */
-.category-tile-browse-all .icon { color: rgba(238,241,234,0.65); }
+.category-tile-browse-all .icon { color: rgba(238,241,234,0.73); }
 /* 4 across on desktop (>900px, set on .category-tile-grid itself), 2
    across on tablet/mobile down to a very narrow phone, then 1 across —
    never 5+, and never so narrow a 4-column row would squeeze each tile
@@ -645,6 +649,24 @@ nav.primary-nav a.active {
    origin precedence — so toggling `hidden` on this grid wouldn't actually
    hide it without this override. */
 .product-grid[hidden] { display: none; }
+
+/* Homepage "New This Week" only — equal-height cards with price,
+   availability, the "More details" link, and the SMS/quote buttons all
+   aligned across the row. Scoped to this one grid (by ID, so it beats
+   .product-grid's align-items:start above) rather than changing the
+   shared .product-grid rule, since the shop page's #catalog-grid is
+   exactly the case that rule's own comment warns about: a customer
+   expanding "More details" on one shop card while others stay collapsed
+   would stretch every card in that row and visibly shift their prices/
+   buttons — an acceptable, common pattern for a static 4-card promo row
+   that nobody is mid-filtering, but not one to impose on the full,
+   interactive catalog grid. .product-info's existing flex:1 plus
+   .product-price's margin-top:auto (below) already push price/
+   availability/details-link down to a shared baseline once the card
+   itself stretches; .product-actions, a sibling after .product-info,
+   naturally lines up at that same bottom edge with no further changes
+   needed. */
+#new-arrivals-grid { align-items: stretch; }
 
 .product-card {
   background: #fff;
@@ -1851,6 +1873,11 @@ footer.site-footer {
   text-align: center;
   padding: 64px 32px;
 }
+/* Homepage-only: ~25% less vertical padding than the shared .optin
+   default (64->48) — scoped by ID so about.html's copy of this section
+   is unaffected. Heading/paragraph/button stay centered via the base
+   .optin rules above (text-align:center, and the p's own margin:0 auto). */
+#optin-newsletter { padding: 48px 32px; }
 .optin h2 { color: var(--cream); }
 .optin p {
   color: var(--cream-dim);
