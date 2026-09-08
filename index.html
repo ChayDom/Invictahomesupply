@@ -83,22 +83,11 @@
   </div>
 </header>
 
-<!-- Hero background is a designed dark-green gradient standing in for a
-     real photo — no real Invicta warehouse/flooring photography exists in
-     this repo yet (see README). Swap in a real shot by setting
-     style="--hero-photo:url('/assets/...')" on this <section> once one is
-     available; the left-to-right dark green scrim in styles.css will keep
-     working the same way over a photo. -->
-<section class="hero hero-photo">
-  <!-- Decorative watermark filling the empty space to the right of the
-       text column on wide viewports — the same flooring-plank glyph used
-       elsewhere on the site (category tile/icon), not a fabricated
-       warehouse/customer photo. Purely decorative: aria-hidden, and
-       hidden outright on narrower viewports where there's no spare room
-       for it (see styles.css). Swap for a real photo per the comment
-       above once one is supplied — the scrim already reads correctly
-       over either. -->
-  <svg class="hero-watermark" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><rect x="4" y="18" width="18" height="9"/><rect x="22" y="18" width="18" height="9"/><rect x="4" y="27" width="18" height="9"/><rect x="22" y="9" width="18" height="9"/><rect x="4" y="9" width="18" height="9"/><rect x="22" y="27" width="18" height="9"/></svg>
+<!-- Real hero photo: a living-room LVP flooring shot in
+     /assets/hero/hero-living-room-flooring.png. The left-to-right dark
+     green scrim in styles.css keeps the left-aligned text readable while
+     the photo shows through on the right. -->
+<section class="hero hero-photo" style="--hero-photo:url('/assets/hero/hero-living-room-flooring.png');">
   <div class="hero-content">
     <div class="eyebrow">Flooring &middot; Water heaters &middot; Tools &middot; Lawn &amp; outdoor &middot; Appliances &middot; more</div>
     <h1>Luxury Vinyl Plank Flooring<br><span class="hero-line-nowrap">from <span class="hero-price" id="hero-price">$1.50</span> / Sq ft.</span><br>In stock in McKinney, TX.</h1>

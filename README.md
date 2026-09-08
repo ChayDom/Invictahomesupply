@@ -347,12 +347,13 @@ and we can walk through it live using a browser tool.
   listener in `app.js`) to roughly 64-70px tall. At ≤480px it collapses
   to logo + phone icon + hamburger — the "Call or text" label and the CTA
   button both drop, but the phone icon stays a real tap target.
-- **Homepage hero** — a designed dark-green gradient stands in for a real
-  photo (see the comment in `index.html` — swap `--hero-photo` for a real
-  warehouse/flooring shot once one exists; no real Invicta photography is
-  in this repo to reuse, and generic stock photography was avoided on
-  purpose). The `$X.XX` in the headline and the sq-ft figure in the stat
-  strip are both computed live from the fetched inventory
+- **Homepage hero** — a real living-room LVP flooring photo
+  (`assets/hero/hero-living-room-flooring.png`, set via the `--hero-photo`
+  custom property on the `.hero` section in `index.html`), with a
+  left-to-right dark green scrim (`styles.css`) keeping the left-aligned
+  text readable while the photo shows through on the right. The `$X.XX`
+  in the headline and the sq-ft figure in the stat strip are both
+  computed live from the fetched inventory
   (`updateHomepageDynamicContent()` in `inventory.js`) — never hardcoded.
 - **Category tiles** — also placeholder gradients (a large faint icon per
   tile) for the same reason; swap in real category photos when available.

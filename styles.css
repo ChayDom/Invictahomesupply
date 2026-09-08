@@ -297,26 +297,6 @@ nav.primary-nav a.active {
   background-position: center;
 }
 
-/* Fills the large empty gradient area to the right of the (left-aligned,
-   max-width:720px) text column on wide viewports with an on-brand
-   geometric watermark instead of leaving it blank — see the comment on
-   this element in index.html for why an actual photo isn't used yet.
-   Hidden below 1150px, where the hero's own padding leaves no real room
-   beside the text without it starting to overlap. */
-.hero-watermark {
-  display: none;
-  position: absolute;
-  top: 50%;
-  right: 6%;
-  width: 320px;
-  height: 320px;
-  transform: translateY(-50%) rotate(-8deg);
-  color: rgba(238, 241, 234, 0.08);
-  pointer-events: none;
-}
-@media (min-width: 1150px) {
-  .hero-watermark { display: block; }
-}
 
 .hero .eyebrow {
   text-transform: uppercase;
