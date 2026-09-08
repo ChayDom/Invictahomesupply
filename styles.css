@@ -510,17 +510,27 @@ nav.primary-nav a.active {
   display: block;
   transition: transform 0.2s ease;
 }
+/* Same issue as .btn[hidden] elsewhere in this file: .category-tile's own
+   `display: block` (equal specificity to [hidden], but an author rule
+   always beats the browser's default [hidden]{display:none}) otherwise
+   keeps a hidden tile visible. Without this, updateHomepageDynamicContent()
+   setting tile.hidden = true on a zero-count category did nothing visible
+   — a real bug, caught by testing an actual zero-count homepage tile
+   rather than assuming the [hidden] property alone was enough. */
+.category-tile[hidden] { display: none; }
 .category-tile:hover { transform: translateY(-3px); }
-/* Small watermark, pinned to the top-right corner and sized well below
-   the tile's text footer, so it never sits behind — or hangs off the
-   edge of — the title/subtitle. */
+/* Watermark, pinned to the top-right corner and sized well below the
+   tile's text footer, so it never sits behind — or hangs off the edge
+   of — the title/subtitle. Sized and lightened up a step from the
+   original (56px/0.35 alpha) so each icon reads clearly as its own
+   shape at a glance, not just a faint corner mark. */
 .category-tile .icon {
   position: absolute;
-  top: 14px;
-  right: 14px;
-  width: 56px;
-  height: 56px;
-  color: rgba(238,241,234,0.35);
+  top: 12px;
+  right: 12px;
+  width: 64px;
+  height: 64px;
+  color: rgba(238,241,234,0.5);
 }
 /* Fixed HEIGHT (not min-height) footer, tall enough for a 2-line title
    plus the subtitle, pinned to the tile's bottom, with content
@@ -567,7 +577,7 @@ nav.primary-nav a.active {
    neutral gradient than the photo-style category tiles so it visibly
    reads as a "see everything" action rather than one more product
    category. */
-.category-tile-browse-all .icon { color: rgba(238,241,234,0.55); }
+.category-tile-browse-all .icon { color: rgba(238,241,234,0.65); }
 @media (max-width: 900px) {
   .category-tile-grid { grid-template-columns: repeat(4, 1fr); }
 }
@@ -575,6 +585,10 @@ nav.primary-nav a.active {
   .category-tile-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .category-tile { height: 130px; }
   .category-tile .tile-title { font-size: 0.78rem; }
+  /* The 64px desktop icon is oversized against a 130px-tall mobile tile
+     (nearly half its height) — scale back down so it still reads as a
+     watermark behind the title/subtitle rather than crowding them. */
+  .category-tile .icon { width: 48px; height: 48px; top: 10px; right: 10px; }
 }
 
 .category-card {
