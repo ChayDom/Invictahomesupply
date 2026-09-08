@@ -481,7 +481,12 @@ nav.primary-nav a.active {
    row reads as a photo strip rather than icon cards. ---------- */
 .category-tile-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  /* 4 across (2 clean rows of 4 for the 8 canonical categories) — was a
+     hardcoded repeat(7, 1fr) sized for exactly 7 tiles; an 8th tile
+     wrapped it into a lopsided 7-then-1 layout. Reuses the same column
+     count the 900px breakpoint below already established, rather than
+     introducing a third distinct desktop layout. */
+  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
   max-width: var(--max-width);
   margin: 0 auto;

@@ -22,7 +22,7 @@
      confirmed against the live schema — so it isn't read here.
 
    Category resolution still needs a fallback because every row won't
-   have a clean one of the 7 site categories in `Category` on day one:
+   have a clean one of the 8 site categories in `Category` on day one:
    resolveWebCategory() checks for an exact match first, then an explicit
    keyword allowlist, then (only for a genuinely blank Category) infers
    Flooring from flooring-shaped attributes. Anything else is not
@@ -66,9 +66,13 @@ window.AIRTABLE_CONFIG = {
 const CACHE_KEY = "invicta_inventory_cache_v6";
 const INVENTORY_ENDPOINT = "/api/inventory";
 
-// The 7 public-facing website categories. An item is only resolved to one
+// The 8 public-facing website categories. An item is only resolved to one
 // of these when Category is already an exact match, or matches one of the
-// explicit rules below — see resolveWebCategory().
+// explicit rules below — see resolveWebCategory(). "Electronics & Smart
+// Home" is matched by exact string only (via the .includes() check right
+// below) — deliberately no fuzzy LEGACY_CATEGORY_RULES entry for it, so an
+// Electronics row is never silently folded into Home Improvement or any
+// other category by a loose keyword match.
 const WEB_CATEGORIES = [
   "Flooring",
   "Water Heaters",
@@ -77,13 +81,14 @@ const WEB_CATEGORIES = [
   "Lawn & Outdoor",
   "Tools",
   "Home Improvement",
+  "Electronics & Smart Home",
 ];
 
 // Explicit allowlist only — this is NOT a catch-all. During migration,
-// Category can hold either a clean 7-category value (matched above) or an
+// Category can hold either a clean 8-category value (matched above) or an
 // older/broader label; only labels matching one of these rules resolve to
-// a web category. Anything else (Electronics, Gaming, Toys, Collectibles,
-// Health & Personal Care, or any other unrecognized non-blank value) is
+// a web category. Anything else (Gaming, Toys, Collectibles, Health &
+// Personal Care, or any other unrecognized non-blank value) is
 // deliberately left unresolved and the item is not published, even if
 // Post to Website is TRUE upstream — those product lines are out of scope
 // for this home-improvement storefront and must not be guessed into a
@@ -1300,6 +1305,7 @@ const CATEGORY_SLUGS = {
   "lawn-outdoor": "Lawn & Outdoor",
   "tools": "Tools",
   "home-improvement": "Home Improvement",
+  "electronics-smart-home": "Electronics & Smart Home",
 };
 
 function categoryFromUrl() {
