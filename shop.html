@@ -297,30 +297,41 @@
         </div>
         <div class="contractor-cards" id="contractor-cards"></div>
       </div>
+
+      <!-- Compact subscribe strip — same subscription flow/logic as the
+           homepage's full #inventory-updates form (see .optin-form's
+           shared handler in app.js), just shorter copy and less vertical
+           padding (.optin-compact below) so it doesn't compete with the
+           homepage section for attention.
+           Lives inside .shop-results (this main-content column) rather
+           than as a .shop-layout sibling, and after BOTH #catalog-grid
+           and #contractor-view (whichever is visible — see
+           updateViewToggle() in inventory.js) so it always follows
+           whatever results the visitor is actually looking at, on
+           mobile too. This is also what makes it fill the otherwise-
+           empty space below a short result set: .shop-layout is a CSS
+           grid whose implicit row sizes to the taller of its two
+           columns (sidebar vs. main content — see .shop-layout in
+           styles.css), so a taller main column here directly shrinks
+           that gap instead of just adding more content after it. -->
+      <section class="optin optin-compact">
+        <h2>Want to know when new items arrive?</h2>
+        <p>Get one weekly email featuring our newest inventory.</p>
+        <form class="optin-form" id="subscribe-form-shop">
+          <div class="optin-form-row">
+            <label for="subscribe-email-shop" class="sr-only">Email address</label>
+            <input type="email" id="subscribe-email-shop" name="email" placeholder="you@example.com" autocomplete="email" maxlength="254" required>
+            <button type="submit" class="btn btn-dark" id="subscribe-submit-shop">Subscribe</button>
+          </div>
+          <div class="optin-hp">
+            <label for="subscribe-company-shop">Leave this field blank</label>
+            <input type="text" id="subscribe-company-shop" name="company" tabindex="-1" autocomplete="off">
+          </div>
+          <p class="optin-status" id="subscribe-status-shop" role="status" aria-live="polite" hidden></p>
+        </form>
+      </section>
     </div>
   </div>
-</section>
-
-<!-- Compact subscribe strip — same subscription flow/logic as the
-     homepage's full #inventory-updates form (see .optin-form's shared
-     handler in app.js), just shorter copy and less vertical padding
-     (.optin-compact below) so it doesn't compete with the homepage
-     section for attention. -->
-<section class="optin optin-compact">
-  <h2>Want to know when new items arrive?</h2>
-  <p>Get one weekly email featuring our newest inventory.</p>
-  <form class="optin-form" id="subscribe-form-shop">
-    <div class="optin-form-row">
-      <label for="subscribe-email-shop" class="sr-only">Email address</label>
-      <input type="email" id="subscribe-email-shop" name="email" placeholder="you@example.com" autocomplete="email" maxlength="254" required>
-      <button type="submit" class="btn btn-dark" id="subscribe-submit-shop">Subscribe</button>
-    </div>
-    <div class="optin-hp">
-      <label for="subscribe-company-shop">Leave this field blank</label>
-      <input type="text" id="subscribe-company-shop" name="company" tabindex="-1" autocomplete="off">
-    </div>
-    <p class="optin-status" id="subscribe-status-shop" role="status" aria-live="polite" hidden></p>
-  </form>
 </section>
 
 <!-- Get a Quote modal (flooring products) — populated/opened by inventory.js.

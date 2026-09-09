@@ -230,6 +230,64 @@ function isAvailable(item) {
   return item.statusLabel === "In Stock";
 }
 
+// Genuine floor-covering materials only — the positive allowlist
+// isQuoteEligibleFlooring() checks Subcategory against. Category ===
+// "Flooring" alone is too broad for the quote workflow: the same
+// Category also holds underlayment, saws, tools, trim/transitions and
+// other installation accessories, which must never get a sq-ft quote CTA
+// even though they're shelved under Flooring. This is deliberately a
+// positive list, not an accessory-exclusion list — a newly introduced
+// accessory subcategory stays quote-ineligible by default instead of
+// silently slipping through. Add new genuine flooring materials here as
+// they're introduced; comparisons are case/whitespace-insensitive (see
+// normalizeForCompare), so casing in Airtable doesn't need to match
+// exactly.
+const QUOTE_ELIGIBLE_FLOORING_SUBCATEGORIES = [
+  "Luxury Vinyl Plank",
+  "Laminate",
+  "Hybrid Resilient",
+  "Bamboo Engineered",
+  "Engineered Hardwood",
+  "Glue Down",
+  "Vinyl Tile",
+  "Tile",
+  "Vinyl Composition Tile",
+  "Sheet Vinyl",
+];
+const QUOTE_ELIGIBLE_FLOORING_SUBCATEGORIES_NORMALIZED = QUOTE_ELIGIBLE_FLOORING_SUBCATEGORIES.map(s => s.trim().toLowerCase());
+
+// Safe case/whitespace-insensitive text compare helper — null/undefined/
+// non-string values (a blank Airtable cell, a number, whatever) normalize
+// to "" rather than throwing.
+function normalizeForCompare(v) {
+  return typeof v === "string" ? v.trim().toLowerCase() : "";
+}
+
+function isPositiveNumber(v) {
+  return typeof v === "number" && !isNaN(v) && v > 0;
+}
+
+// Single source of truth for whether an item gets the "Get a Quote"
+// (sq-ft quote modal) CTA — every render path that can show that button
+// (actionButtons(), initProductDetail()) must call this rather than
+// re-deriving eligibility locally, so the two views can never disagree.
+// Category === "Flooring" alone is too broad (see
+// QUOTE_ELIGIBLE_FLOORING_SUBCATEGORIES above); Subcategory against that
+// allowlist is the primary classification control — a blank/
+// unrecognized/"Other Flooring" subcategory is excluded by simply not
+// being in the list, no separate check needed. The three numeric fields
+// are the ones the quote modal/workflow actually needs (price per sq ft,
+// sq ft per box/unit, total sq ft available) — an approved flooring
+// material missing any of them is still not eligible, since a quote
+// can't be built without that data (and this never invents a placeholder
+// value to make it eligible anyway).
+function isQuoteEligibleFlooring(item) {
+  if (!item || item.webCategory !== "Flooring") return false;
+  if (!isAvailable(item)) return false;
+  if (!QUOTE_ELIGIBLE_FLOORING_SUBCATEGORIES_NORMALIZED.includes(normalizeForCompare(item.webSubcategory))) return false;
+  return isPositiveNumber(item.price) && isPositiveNumber(item.sqFtPerUnit) && isPositiveNumber(item.availableSqFt);
+}
+
 // Single source of truth for "does this item legitimately count as
 // available Luxury Vinyl Plank flooring" — used by the homepage's
 // starting-price calculation (see computeLvpStartingPrice()) and safe to
@@ -669,18 +727,21 @@ function smsHrefForItem(item) {
 }
 
 // One CTA per card for most categories — opens the visitor's SMS app with
-// a prefilled message. Flooring cards get a second "Get a Quote" button
-// (the sq-ft-needed quote modal) alongside the Text CTA, since a sq-ft
-// quote makes sense there and nowhere else — the Contractor View table
-// (see renderContractorTable) uses a single "Text to Hold" CTA instead,
-// matching its denser, comparison-first design. Out-of-stock items keep
-// the card visible but swap the CTA(s) for a disabled pill instead.
+// a prefilled message. Quote-eligible Flooring cards get a second
+// "Get a Quote" button (the sq-ft-needed quote modal) alongside the
+// Check Availability CTA — see isQuoteEligibleFlooring() for exactly
+// which Flooring rows qualify (Category alone is too broad: it also
+// covers underlayment/tools/trim, which must never show this button).
+// The Contractor View table (see renderContractorTable) uses a single
+// "Text to Hold" CTA instead, matching its denser, comparison-first
+// design. Out-of-stock items keep the card visible but swap the CTA(s)
+// for a disabled pill instead.
 function actionButtons(item) {
   if (!isAvailable(item)) {
     return `<span class="btn btn-outline btn-small btn-block" style="opacity:.5; cursor:default;">${item.statusLabel}</span>`;
   }
   const smsHref = smsHrefForItem(item);
-  if (item.webCategory !== "Flooring") {
+  if (!isQuoteEligibleFlooring(item)) {
     return `<a href="${smsHref}" class="btn btn-dark btn-small btn-block">Check Availability</a>`;
   }
   return `<a href="${smsHref}" class="btn btn-dark btn-small">Check Availability</a>
@@ -2277,7 +2338,7 @@ function initProductDetail(items) {
         <h1>${item.name}</h1>
         ${statusBadge(item)}
         ${priceBlock(item)}
-        ${item.webCategory === "Flooring" && isAvailable(item)
+        ${isQuoteEligibleFlooring(item)
           ? `<button type="button" class="btn btn-outline btn-small" data-quote-id="${item.id}">Get a Quote</button>`
           : ""}
         ${specRows.length ? `<div class="product-detail-specs"><table>${specRows.map(([l, v]) => `<tr><td>${l}</td><td>${v}</td></tr>`).join("")}</table></div>` : ""}

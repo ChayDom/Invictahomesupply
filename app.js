@@ -45,10 +45,26 @@ document.addEventListener("DOMContentLoaded", () => {
   const toggle = document.querySelector(".menu-toggle");
   const nav = document.querySelector("nav.primary-nav");
   if (toggle && nav) {
-    toggle.addEventListener("click", () => {
-      const open = nav.classList.toggle("open");
+    const setNavOpen = (open) => {
+      nav.classList.toggle("open", open);
       toggle.classList.toggle("open", open);
       toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    };
+    toggle.addEventListener("click", () => {
+      setNavOpen(!nav.classList.contains("open"));
+    });
+    // Escape closes the open nav and returns focus to the button that
+    // opened it, so keyboard users aren't dropped back at the top of the
+    // page. Guarded by nav's own open state (same self-guarded pattern as
+    // inventory.js's quote-modal/calculator-modal Escape listeners) so
+    // this is an independent handler that only ever acts on the mobile
+    // nav — it doesn't touch the Filters drawer or either modal, and
+    // doesn't replace/merge with their own listeners.
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && nav.classList.contains("open")) {
+        setNavOpen(false);
+        toggle.focus();
+      }
     });
   }
 

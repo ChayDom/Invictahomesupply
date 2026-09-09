@@ -2027,6 +2027,19 @@ footer.site-footer {
 .optin-compact { padding: 28px 32px; }
 .optin-compact h2 { font-size: 1.2rem; margin-bottom: 0.3em; }
 .optin-compact p { margin-bottom: 16px; }
+/* Shop page only: this panel now lives inside .shop-results (the main-
+   content column of .shop-layout's grid — see shop.html) rather than as
+   a .shop-layout sibling, so it needs its own top margin to read as a
+   distinct block below the grid/Contractor View instead of butting up
+   against the last card. ~48px matches the site's existing "generous
+   section-to-section" spacing scale (e.g. .category-section's own
+   gap-fix comments use the same value); the mobile override below drops
+   to 32px, still within that same scale's mobile reduction ratio (see
+   .section's 64px->56px desktop->mobile step above). */
+.shop-results .optin-compact { margin-top: 48px; border-radius: var(--radius-card); }
+@media (max-width: 700px) {
+  .shop-results .optin-compact { margin-top: 32px; }
+}
 
 /* ---------- Subscribe-confirmed / unsubscribed status pages ---------- */
 .status-page {
