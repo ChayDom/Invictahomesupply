@@ -168,6 +168,35 @@ test("priceBlock: non-Flooring categories are completely unaffected by this chan
   assert.match(html, /199 boxes available/);
 });
 
+// --- Per-sq-ft price weight in the desktop Contractor View table ----------
+//
+// Card View/product-detail price-line and the mobile Contractor cards'
+// price span were already bold (font-weight: 700) before this task —
+// confirmed with getComputedStyle in a real Playwright render, not
+// assumed. The desktop Contractor View table's PER SQ FT column was the
+// one place still rendering at the table's default weight (400). This
+// wraps that cell's value in <strong>, exactly matching the pattern the
+// mobile card already uses, and leaves the PER BOX column (and every
+// other cell) untouched.
+
+test("renderContractorTable: PER SQ FT cell is bold (<strong>), PER BOX cell is not", () => {
+  renderContractorTable([flooringItem()]);
+  assert.match(tableBody.innerHTML, /<td><strong>\$2\.01<\/strong><\/td>/);
+  // Box price cell (contractorBoxPriceCell) is unchanged — no <strong> added.
+  assert.match(tableBody.innerHTML, /<td>\$42\.11<\/td>/);
+  assert.equal(/<td><strong>\$42\.11<\/strong><\/td>/.test(tableBody.innerHTML), false);
+});
+
+test("renderContractorTable: a missing price still renders the unchanged placeholder, not a bolded empty value", () => {
+  renderContractorTable([flooringItem({ price: undefined })]);
+  assert.match(tableBody.innerHTML, /<td>&mdash;<\/td>/);
+});
+
+test("renderContractorTable: bolding the price cell does not change its text/value, only wraps it", () => {
+  renderContractorTable([flooringItem({ price: 3.4 })]);
+  assert.match(tableBody.innerHTML, /<strong>\$3\.40<\/strong>/);
+});
+
 if (failures > 0) {
   console.error(`\n${failures} test(s) failed.`);
   process.exit(1);

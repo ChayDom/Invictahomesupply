@@ -992,7 +992,7 @@ function renderContractorTable(items, emptyMessage = CATALOG_MESSAGES.emptyFilte
         </div>
       </td>
       <td>${chips.length ? `<div class="spec-chips">${chips.map(c => `<span class="spec-chip">${c}</span>`).join("")}</div>` : "&mdash;"}</td>
-      <td>${typeof item.price === "number" ? money2(item.price) : "&mdash;"}</td>
+      <td>${typeof item.price === "number" ? `<strong>${money2(item.price)}</strong>` : "&mdash;"}</td>
       <td>${contractorBoxPriceCell(item)}</td>
       <td class="${lowStock ? "low-stock-emph" : ""}">${availLabel}</td>
       <td class="contractor-actions-cell">${contractorRowCta(item)}</td>
