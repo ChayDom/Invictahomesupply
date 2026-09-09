@@ -383,6 +383,48 @@ await test("hasMore is false when exactly (or fewer than) 12 eligible products e
   assert.equal(hasMore, false);
 });
 
+await test("Flooring quantity text is 'N boxes available · X sq ft'; other categories are 'N units available'", async () => {
+  const s = subscriberRow({ "Confirmed At": "2026-01-01T00:00:00.000Z" });
+  subscribersStore.push(s);
+  productsStore.push(
+    productRow({
+      "Product Key": "FLOOR-1",
+      Category: "Flooring",
+      "Quantity Available": 14,
+      "Available Sq Ft": 331.66,
+      "Date Added": "2026-06-01",
+    }),
+    productRow({
+      "Product Key": "TOOL-1",
+      Category: "Tools",
+      "Quantity Available": 2,
+      "Date Added": "2026-06-01",
+    })
+  );
+  const summary = await digest.runWeeklyDigest({ origin: "https://example.com", now: new Date("2026-06-08T16:00:00Z") });
+  assert.equal(summary.accepted, 1);
+  assert.equal(resendCalls.length, 1);
+  const html = resendCalls[0].html;
+  assert.ok(html.includes("14 boxes available &middot; 331.66 sq ft") || html.includes("14 boxes available"), "flooring row shows box count");
+  assert.ok(html.includes("331.66 sq ft"), "flooring row shows available square footage");
+  assert.ok(html.includes("2 units available"), "non-flooring row shows plain unit count");
+});
+
+await test("whole-dollar prices drop the trailing .00; meaningful cents are kept", async () => {
+  const s = subscriberRow({ "Confirmed At": "2026-01-01T00:00:00.000Z" });
+  subscribersStore.push(s);
+  productsStore.push(
+    productRow({ "Product Key": "WHOLE-1", Price: 2, "Date Added": "2026-06-01" }),
+    productRow({ "Product Key": "CENTS-1", Price: 1.5, "Date Added": "2026-06-01" })
+  );
+  const summary = await digest.runWeeklyDigest({ origin: "https://example.com", now: new Date("2026-06-08T16:00:00Z") });
+  assert.equal(summary.accepted, 1);
+  const html = resendCalls[0].html;
+  assert.ok(html.includes("$2 "), "whole-dollar price has no trailing .00");
+  assert.ok(!html.includes("$2.00"), "whole-dollar price never renders as $2.00");
+  assert.ok(html.includes("$1.50"), "a price with meaningful cents keeps them");
+});
+
 // =======================================================================
 // End-to-end runWeeklyDigest — subscriber eligibility, sending, idempotency
 // =======================================================================

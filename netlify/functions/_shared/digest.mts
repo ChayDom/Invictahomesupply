@@ -106,8 +106,30 @@ export function alreadySentThisWeek(subscriber: SubscriberRecord, weekKey: strin
   return chicagoDateKey(new Date(ts)) === weekKey;
 }
 
+// Whole-dollar prices drop the trailing ".00" ($2 instead of $2.00);
+// anything with meaningful cents keeps them ($1.50, $2.99).
+function formatMoney(n: number): string {
+  return Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`;
+}
+
 function formatPriceText(p: EligibleProduct): string {
-  return `$${p.price.toFixed(2)} ${p.unitLabel}`;
+  return `${formatMoney(p.price)} ${p.unitLabel}`;
+}
+
+// Flooring is sold by the box, so its digest quantity line leads with
+// box count (the same Quantity Available field inventory.js's own
+// boxesAvailable() reads) and adds the total square footage when known;
+// everything else is sold in plain units.
+function formatQtyText(p: EligibleProduct): string | null {
+  if (!(p.qtyAvailable > 0)) return null;
+  const count = Math.round(p.qtyAvailable);
+  if (p.category === "Flooring") {
+    const sqftPart = p.availableSqFt
+      ? ` · ${p.availableSqFt.toLocaleString("en-US", { maximumFractionDigits: 2 })} sq ft`
+      : "";
+    return `${count} box${count === 1 ? "" : "es"} available${sqftPart}`;
+  }
+  return `${count} unit${count === 1 ? "" : "s"} available`;
 }
 
 function toDigestProduct(p: EligibleProduct, origin: string): DigestProduct {
@@ -115,7 +137,7 @@ function toDigestProduct(p: EligibleProduct, origin: string): DigestProduct {
     name: p.name,
     category: p.category,
     priceText: formatPriceText(p),
-    qtyText: p.qtyAvailable > 0 ? `${p.qtyAvailable} available` : null,
+    qtyText: formatQtyText(p),
     imageUrl: p.imageUrl,
     detailUrl: `${origin}${p.detailUrl}`,
   };

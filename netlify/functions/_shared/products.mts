@@ -34,6 +34,7 @@ export interface EligibleProduct {
   imageUrl: string | null;
   detailUrl: string; // relative path — /product.html?id=<key> — the same routing inventory.js's productDetailHref() uses
   dateAddedTs: number;
+  availableSqFt: number | null; // "Available Sq Ft" — Flooring-only; used to show "N boxes available · X sq ft" in the digest, same field inventory.js's own card math reads
 }
 
 function firstImageUrl(f: Record<string, unknown>): string | null {
@@ -111,6 +112,9 @@ export async function fetchEligibleNewProducts(): Promise<EligibleProduct[]> {
     const productKey = typeof f["Product Key"] === "string" ? f["Product Key"].trim() : "";
     if (!productKey) continue; // no key, no valid detail URL — excluded
 
+    const availableSqFtRaw = f["Available Sq Ft"];
+    const availableSqFt = typeof availableSqFtRaw === "number" && availableSqFtRaw > 0 ? availableSqFtRaw : null;
+
     eligible.push({
       productKey,
       name,
@@ -121,6 +125,7 @@ export async function fetchEligibleNewProducts(): Promise<EligibleProduct[]> {
       imageUrl: firstImageUrl(f),
       detailUrl: `/product.html?id=${encodeURIComponent(productKey)}`,
       dateAddedTs,
+      availableSqFt,
     });
   }
 

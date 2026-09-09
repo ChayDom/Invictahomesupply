@@ -76,27 +76,45 @@ const EMAIL_CARD_STYLE = "max-width:480px;margin:0 auto;background:#ffffff;borde
 const EMAIL_HEADER_STYLE = "background:#24352a;color:#eef1ea;padding:24px 32px;font-size:18px;font-weight:600;";
 const EMAIL_BODY_STYLE = "padding:32px;color:#24352a;font-size:15px;line-height:1.6;";
 const EMAIL_BUTTON_STYLE = "display:inline-block;background:#c14a26;color:#eef1ea;text-decoration:none;font-weight:600;font-size:14px;letter-spacing:0.02em;padding:14px 28px;border-radius:4px;margin:20px 0;";
-const EMAIL_FOOTER_STYLE = "padding:20px 32px;color:#667061;font-size:12px;border-top:1px solid #d7ddd0;line-height:1.6;";
+const EMAIL_FOOTER_STYLE = "padding:20px 32px;color:#667061;font-size:13px;line-height:1.55;border-top:1px solid #d7ddd0;text-align:center;";
+const EMAIL_FOOTER_INNER_STYLE = "max-width:340px;margin:0 auto;";
 
 // Shared required footer — every weekly digest AND welcome email must
-// carry all four of: the subscription-context line, the business
-// mailing address (CAN-SPAM), a personalized one-click unsubscribe
-// link, and a website + contact line. unsubscribeUrl/siteUrl are both
-// built by the caller from data this code already trusts (a record's
-// own Unsubscribe Token, and a fixed site origin) — mailingAddress is
-// the one value here that's plain server config text, not path-built,
-// so it's escaped like any other value that ends up in HTML.
+// carry, in order: the subscription-context line, the business name,
+// the operating-entity line, the mailing address (CAN-SPAM), and a
+// website/contact/unsubscribe line. Centered with a capped inner width
+// so lines stay short and readable rather than stretching edge to edge
+// (text-align:center, never justify — justified text at this width
+// reads as ragged, uneven gaps). unsubscribeUrl/siteUrl are both built
+// by the caller from data this code already trusts (a record's own
+// Unsubscribe Token, and a fixed site origin) — mailingAddress is the
+// one value here that's plain server config text, not path-built, so
+// it's escaped like any other value that ends up in HTML. "Operated by
+// Flipfusion Apps LLC" is its own line, deliberately not folded into
+// mailingAddress, so the operating entity's name always renders with
+// consistent spacing/capitalization instead of however it happens to
+// be typed into the mailing-address config value.
 function footerHtml(unsubscribeUrl: string, siteUrl: string, mailingAddress: string): string {
   return `<div style="${EMAIL_FOOTER_STYLE}">
-      You&rsquo;re receiving this because you subscribed to weekly inventory updates from Invicta Home Supply.<br>
-      ${escapeHtml(mailingAddress)}<br>
-      <a href="${escapeHtml(siteUrl)}" style="color:#667061;">invictahomesupply.com</a> &middot;
-      <a href="mailto:hello@invictahomesupply.com" style="color:#667061;">hello@invictahomesupply.com</a> &middot;
-      <a href="${escapeHtml(unsubscribeUrl)}" style="color:#667061;">Unsubscribe</a>
+      <div style="${EMAIL_FOOTER_INNER_STYLE}">
+        You&rsquo;re receiving this because you subscribed to weekly inventory updates from Invicta Home Supply.<br>
+        Invicta Home Supply<br>
+        Operated by Flipfusion Apps LLC<br>
+        ${escapeHtml(mailingAddress)}<br>
+        <a href="${escapeHtml(siteUrl)}" style="color:#667061;">Website</a> &middot;
+        <a href="mailto:hello@invictahomesupply.com" style="color:#667061;">Contact</a> &middot;
+        <a href="${escapeHtml(unsubscribeUrl)}" style="color:#667061;">Unsubscribe</a>
+      </div>
     </div>`;
 }
 function footerText(unsubscribeUrl: string, siteUrl: string, mailingAddress: string): string {
-  return `You're receiving this because you subscribed to weekly inventory updates from Invicta Home Supply.\n${mailingAddress}\n${siteUrl} | hello@invictahomesupply.com | Unsubscribe: ${unsubscribeUrl}`;
+  return [
+    "You're receiving this because you subscribed to weekly inventory updates from Invicta Home Supply.",
+    "Invicta Home Supply",
+    "Operated by Flipfusion Apps LLC",
+    mailingAddress,
+    `Website: ${siteUrl} | Contact: hello@invictahomesupply.com | Unsubscribe: ${unsubscribeUrl}`,
+  ].join("\n");
 }
 
 // Single opt-in (Phase 1, revised): there is no confirmation step, so
@@ -205,8 +223,9 @@ export function digestEmail(
   const html = `<div style="${EMAIL_WRAPPER_STYLE}">
   <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">See the latest inventory available for local pickup in McKinney.${preheaderPad}</div>
   <div style="${EMAIL_CARD_STYLE}max-width:560px;">
-    <div style="${EMAIL_HEADER_STYLE}">
-      New this week at Invicta Home Supply
+    <div style="${EMAIL_HEADER_STYLE}text-align:center;">
+      <div>New this week at Invicta Home Supply</div>
+      <div style="font-size:13px;font-weight:400;margin-top:6px;">Here are the latest products added to our inventory.</div>
     </div>
     <div style="${EMAIL_BODY_STYLE}padding:24px;">
       ${rowsHtml}
@@ -219,7 +238,7 @@ export function digestEmail(
   </div>
 </div>`;
 
-  const text = `New this week at Invicta Home Supply\nSee the latest inventory available for local pickup in McKinney.\n\n${rowsText}\n${moreLineText}\nBrowse all inventory: ${browseAllUrl}\n\n${footerText(unsubscribeUrl, siteUrl, mailingAddress)}`;
+  const text = `New this week at Invicta Home Supply\nHere are the latest products added to our inventory.\n\n${rowsText}\n${moreLineText}\nBrowse all inventory: ${browseAllUrl}\n\n${footerText(unsubscribeUrl, siteUrl, mailingAddress)}`;
 
   return {
     subject: "New this week at Invicta Home Supply",
