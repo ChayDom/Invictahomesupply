@@ -1776,13 +1776,35 @@ footer.site-footer {
        its wrapping without starving Inventory's own longer entries
        ("Electronics & Smart Home", "Browse All Categories"). */
     grid-template-columns: 0.85fr 1.15fr;
-    gap: 14px 16px;
+    /* Row spacing now comes from the divider margin/padding below
+       instead of the grid's own row-gap, so the two don't stack —
+       column-gap (between Inventory and Company) is unchanged. */
+    column-gap: 16px;
+    row-gap: 0;
+  }
+  /* Full-width section dividers — same hairline color/opacity as the
+     divider above the copyright row (.footer-bottom's border-top:
+     1px solid var(--charcoal-soft)), reused rather than a new color.
+     Built as margin+border+padding on the adjacent grid item (not a
+     separate element) so the line spans the same full width as that
+     item's own grid-column: 1 / -1, with ~22px of symmetric breathing
+     room on each side. */
+  .footer-grid > div:first-child {
+    padding-bottom: 22px;
+    margin-bottom: 22px;
+    border-bottom: 1px solid var(--charcoal-soft);
   }
   /* Contact is the 4th child of .footer-grid (brand/description,
      Inventory, Company, Contact, in that DOM order) — spans full width
      as its own row instead of sitting alone in the left column with an
-     empty cell beside it. */
-  .footer-grid > div:nth-child(4) { grid-column: 1 / -1; }
+     empty cell beside it, and its top border is the second divider,
+     separating it from the Inventory/Company row above. */
+  .footer-grid > div:nth-child(4) {
+    grid-column: 1 / -1;
+    margin-top: 22px;
+    padding-top: 22px;
+    border-top: 1px solid var(--charcoal-soft);
+  }
   .footer-grid h4 { margin-bottom: 10px; }
   .footer-grid p, .footer-grid a { font-size: 0.82rem; margin-bottom: 6px; }
 }

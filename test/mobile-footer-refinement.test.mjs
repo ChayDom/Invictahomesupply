@@ -32,7 +32,7 @@ function test(name, fn) {
 
 function cssRuleBody(selector, withinBlock) {
   const haystack = withinBlock || stylesSrc;
-  const re = new RegExp(selector.replace(/[.[\]>:]/g, "\\$&") + "\\s*\\{([^}]*)\\}");
+  const re = new RegExp(selector.replace(/[.[\]()>:]/g, "\\$&") + "\\s*\\{([^}]*)\\}");
   const m = haystack.match(re);
   assert.ok(m, `expected to find a CSS rule for ${selector}`);
   return m[1];
@@ -79,7 +79,8 @@ test("≤600px: .footer-grid gives Company (2nd column) more width than Inventor
 
 test("≤600px: Contact (4th child) spans the full grid width", () => {
   const block = mediaBlockContaining(600, ".footer-grid");
-  assert.match(block, /\.footer-grid\s*>\s*div:nth-child\(4\)\s*\{\s*grid-column:\s*1\s*\/\s*-1;?\s*\}/);
+  const body = cssRuleBody(".footer-grid > div:nth-child(4)", block);
+  assert.match(body, /grid-column:\s*1\s*\/\s*-1/);
 });
 
 test("≤600px: footer link/heading spacing is reduced from the shared defaults (0.88rem/8px, 16px)", () => {
@@ -89,6 +90,29 @@ test("≤600px: footer link/heading spacing is reduced from the shared defaults 
   assert.match(linkBody, /margin-bottom:\s*6px/);
   const h4Body = cssRuleBody(".footer-grid h4", block);
   assert.match(h4Body, /margin-bottom:\s*10px/);
+});
+
+test("≤600px: a full-width divider separates the description from Inventory/Company, reusing the copyright divider's hairline color", () => {
+  const block = mediaBlockContaining(600, ".footer-grid");
+  const body = cssRuleBody(".footer-grid > div:first-child", block);
+  assert.match(body, /border-bottom:\s*1px solid var\(--charcoal-soft\)/);
+  const paddingMatch = body.match(/padding-bottom:\s*(\d+)px/);
+  const marginMatch = body.match(/margin-bottom:\s*(\d+)px/);
+  assert.ok(paddingMatch && marginMatch, "expected padding-bottom and margin-bottom around the divider");
+  assert.ok(Number(paddingMatch[1]) >= 20 && Number(paddingMatch[1]) <= 24, `expected ~20-24px padding-bottom, got ${paddingMatch[1]}px`);
+  assert.ok(Number(marginMatch[1]) >= 20 && Number(marginMatch[1]) <= 24, `expected ~20-24px margin-bottom, got ${marginMatch[1]}px`);
+});
+
+test("≤600px: a full-width divider separates Inventory/Company from Contact, same hairline color, no vertical divider added between Inventory and Company", () => {
+  const block = mediaBlockContaining(600, ".footer-grid");
+  const body = cssRuleBody(".footer-grid > div:nth-child(4)", block);
+  assert.match(body, /border-top:\s*1px solid var\(--charcoal-soft\)/);
+  const paddingMatch = body.match(/padding-top:\s*(\d+)px/);
+  const marginMatch = body.match(/margin-top:\s*(\d+)px/);
+  assert.ok(paddingMatch && marginMatch, "expected padding-top and margin-top around the divider");
+  assert.ok(Number(paddingMatch[1]) >= 20 && Number(paddingMatch[1]) <= 24, `expected ~20-24px padding-top, got ${paddingMatch[1]}px`);
+  assert.ok(Number(marginMatch[1]) >= 20 && Number(marginMatch[1]) <= 24, `expected ~20-24px margin-top, got ${marginMatch[1]}px`);
+  assert.doesNotMatch(block, /border-(left|right):\s*1px solid/);
 });
 
 test("the existing ≤900px tablet .footer-grid rule is untouched (still the even 1fr 1fr split)", () => {
