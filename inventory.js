@@ -2318,6 +2318,62 @@ function renderProductNotFound(container, message) {
   </div>`;
 }
 
+// Client-side reinforcement only — the actual fix for social crawlers
+// (Facebook/iMessage/etc., which generally never run this script) is
+// netlify/edge-functions/product-meta.ts rewriting these same tags in
+// the server response before it ever reaches the browser. This function
+// exists so a real browser's title bar/back-forward history/print
+// preview stay correct, and as a second layer in case the edge function
+// itself ever falls back to generic metadata for a product that does
+// exist (e.g. a transient Airtable failure at request time).
+function setMetaContent(selector, value) {
+  const el = document.querySelector(selector);
+  if (el) el.setAttribute("content", value);
+}
+
+function setProductPageRobotsMeta(content) {
+  let el = document.querySelector('meta[name="robots"]');
+  if (content) {
+    if (!el) {
+      el = document.createElement("meta");
+      el.setAttribute("name", "robots");
+      document.head.appendChild(el);
+    }
+    el.setAttribute("content", content);
+  } else if (el) {
+    // A valid product was found — never leave a stale noindex behind
+    // from an earlier invalid-state render on this same document.
+    el.remove();
+  }
+}
+
+function updateProductPageMetadata(item) {
+  const PRODUCTION_ORIGIN = "https://invictahomesupply.com";
+  const title = `${item.name} | Invicta Home Supply`;
+  const summary = item.details || item.highlights || `${item.name} — ${item.webCategory} at Invicta Home Supply.`;
+  const description = summary.replace(/\s+/g, " ").trim().slice(0, 300);
+  // Built from scratch from the Product Key only — never copied from
+  // window.location — so it never carries tracking params, never uses
+  // the current (possibly preview) hostname, and can never point at a
+  // different product.
+  const canonicalUrl = `${PRODUCTION_ORIGIN}/product.html?id=${encodeURIComponent(item.productKey || item.id)}`;
+  const image = (item.photos && item.photos[0]) || `${PRODUCTION_ORIGIN}/assets/og/invicta-og-image.png`;
+
+  document.title = title;
+  setMetaContent('meta[name="description"]', description);
+  const canonicalLink = document.querySelector('link[rel="canonical"]');
+  if (canonicalLink) canonicalLink.setAttribute("href", canonicalUrl);
+  setMetaContent('meta[property="og:type"]', "product");
+  setMetaContent('meta[property="og:url"]', canonicalUrl);
+  setMetaContent('meta[property="og:title"]', title);
+  setMetaContent('meta[property="og:description"]', description);
+  setMetaContent('meta[property="og:image"]', image);
+  setMetaContent('meta[name="twitter:title"]', title);
+  setMetaContent('meta[name="twitter:description"]', description);
+  setMetaContent('meta[name="twitter:image"]', image);
+  setProductPageRobotsMeta(null);
+}
+
 function initProductDetail(items) {
   const container = document.getElementById("product-detail-root");
   if (!container) return;
@@ -2326,14 +2382,19 @@ function initProductDetail(items) {
   const item = id ? items.find(i => (i.productKey || i.id) === id) : null;
 
   if (!item) {
+    // Missing id, unknown id, and unpublished-so-absent-from-`items` are
+    // all indistinguishable here by design (items already only contains
+    // Post to Website = TRUE records — see fetchInventory()) — same
+    // "don't leak which case it is" rule the edge function follows.
+    // A genuine inventory-fetch failure (lastFetchError set) still gets
+    // noindex too: this render can't validate the id either way, so it
+    // must not claim to be a valid, indexable product page.
+    setProductPageRobotsMeta("noindex, follow");
     renderProductNotFound(container, lastFetchError ? CATALOG_MESSAGES.error : null);
     return;
   }
 
-  document.title = `${item.name} | Invicta Home Supply`;
-  const metaDesc = document.querySelector('meta[name="description"]');
-  const summary = item.details || item.highlights || `${item.name} — ${item.webCategory} at Invicta Home Supply.`;
-  if (metaDesc) metaDesc.setAttribute("content", summary.replace(/\s+/g, " ").slice(0, 300));
+  updateProductPageMetadata(item);
 
   const categoryLabel = item.webSubcategory ? `${item.webCategory} &middot; ${item.webSubcategory}` : item.webCategory;
   const specRows = productDetailSpecRows(item);
