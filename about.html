@@ -40,7 +40,7 @@
     <nav class="primary-nav">
       <a href="index.html">Home</a>
       <a href="/shop">Inventory</a>
-      <a href="about.html" class="active">About Us</a>
+      <a href="about.html" class="active">About</a>
       <a href="contact.html">Visit &amp; Pickup</a>
     </nav>
     <div class="nav-actions">
@@ -59,12 +59,23 @@
   </div>
 </header>
 
-<div class="page-heading">
-  <div class="eyebrow">Our Story</div>
-  <h1>Quality products. Better prices.</h1>
-  <p>Invicta Home Supply offers brand-new flooring and home improvement products at prices below traditional retail. By sourcing overstock inventory, working with trusted manufacturers, and keeping our overhead low, we pass the savings directly to our customers.</p>
-  <p>Browse online, inspect products locally, and arrange pickup in McKinney or delivery throughout DFW.</p>
-</div>
+<!-- Our Story — unchanged copy (eyebrow/h1/both paragraphs, verbatim),
+     now paired with a real warehouse photo instead of standing alone
+     as plain text. Text markup comes before the image so a mobile
+     single-column stack (.about-split's ≤900px rule) naturally reads
+     text-then-photo. -->
+<section class="about-split">
+  <div class="about-split-text">
+    <span class="eyebrow">Our Story</span>
+    <h1>Quality products. Better prices.</h1>
+    <p>Invicta Home Supply offers brand-new flooring and home improvement products at prices below traditional retail. By sourcing overstock inventory, working with trusted manufacturers, and keeping our overhead low, we pass the savings directly to our customers.</p>
+    <p>Browse online, inspect products locally, and arrange pickup in McKinney or delivery throughout DFW.</p>
+  </div>
+  <div class="about-split-media">
+    <img src="/assets/about/20250206_175311.jpg" alt="Pallets of flooring boxes stacked in the Invicta Home Supply warehouse" loading="lazy" width="1800" height="1350">
+    <span class="about-split-caption">Flooring inventory in our McKinney warehouse</span>
+  </div>
+</section>
 
 <section class="section">
   <div class="section-head">
@@ -73,30 +84,43 @@
   </div>
   <div class="steps">
     <div class="step">
+      <div class="step-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      </div>
       <h4>See Before You Buy</h4>
       <p>See the product locally before making your decision.</p>
     </div>
     <div class="step">
+      <div class="step-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.2" fill="currentColor" stroke="none"/></svg>
+      </div>
       <h4>Priced Below Retail</h4>
       <p>Brand-new inventory at competitive prices without traditional retail overhead.</p>
     </div>
     <div class="step">
+      <div class="step-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="14" height="12"/><path d="M15 8h4l3 3v4h-7z"/><circle cx="5.5" cy="18" r="2"/><circle cx="17.5" cy="18" r="2"/></svg>
+      </div>
       <h4>Local Pickup &amp; DFW Delivery</h4>
       <p>Pickup in McKinney, TX, with delivery options available throughout DFW.</p>
     </div>
   </div>
 </section>
 
-<section class="section" style="background:#fff;">
-  <div class="about-image-grid">
-    <div class="about-image-slot">
-      <img src="/assets/about/20250206_175311.jpg" alt="Pallets of flooring boxes stacked in the Invicta Home Supply warehouse" loading="lazy" width="1800" height="1350">
-      <span>Flooring inventory in our McKinney warehouse</span>
-    </div>
-    <div class="about-image-slot">
-      <img src="/assets/about/20260428_103306.jpg" alt="In-stock safes, appliances, and hardware on the warehouse shelves" loading="lazy" width="1350" height="1800">
-      <span>In-stock appliances, tools &amp; more</span>
-    </div>
+<!-- More Than Flooring — this section didn't exist on the page before;
+     built from facts already stated elsewhere on the site (the
+     footer/meta-description category list and the second warehouse
+     photo's existing caption), not invented. See the session report
+     for the exact wording so it can be adjusted or approved. -->
+<section class="about-split about-split-more">
+  <div class="about-split-text">
+    <span class="eyebrow">More Than Flooring</span>
+    <h2>Appliances, water heaters, tools &amp; more</h2>
+    <p>Alongside flooring, we carry brand-new overstock appliances, water heaters, tools, and other home improvement products — all in stock and priced below retail.</p>
+  </div>
+  <div class="about-split-media">
+    <img src="/assets/about/20260428_103306.jpg" alt="In-stock safes, appliances, and hardware on the warehouse shelves" loading="lazy" width="1350" height="1800">
+    <span class="about-split-caption">In-stock appliances, tools &amp; more</span>
   </div>
 </section>
 
@@ -107,17 +131,23 @@
   </div>
   <div class="audience-grid">
     <div class="audience-card">
-      <div class="emoji">🏠</div>
+      <div class="audience-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>
+      </div>
       <h3>Homeowners</h3>
       <p>Renovate without paying retail markup — see the actual product before you commit.</p>
     </div>
     <div class="audience-card">
-      <div class="emoji">🔨</div>
+      <div class="audience-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z"/></svg>
+      </div>
       <h3>Contractors &amp; Installers</h3>
       <p>Stock job sites fast with in-stock materials priced below retail. Ask about volume pricing.</p>
     </div>
     <div class="audience-card">
-      <div class="emoji">🏢</div>
+      <div class="audience-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="1"/><line x1="9" y1="7.5" x2="9" y2="7.51"/><line x1="15" y1="7.5" x2="15" y2="7.51"/><line x1="9" y1="12" x2="9" y2="12.01"/><line x1="15" y1="12" x2="15" y2="12.01"/><line x1="9" y1="16.5" x2="9" y2="16.51"/><line x1="15" y1="16.5" x2="15" y2="16.51"/></svg>
+      </div>
       <h3>Property Managers &amp; Investors</h3>
       <p>Furnish flips and turnovers quickly with quality materials that protect your margin.</p>
     </div>
@@ -152,7 +182,7 @@
     </div>
     <div>
       <h4>Company</h4>
-      <a href="about.html">About Us</a>
+      <a href="about.html">About</a>
       <a href="contact.html">Visit &amp; Pickup</a>
       <a href="contact.html#faq">Frequently Asked</a>
       <a href="/shop">Browse Inventory</a>

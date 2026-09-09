@@ -399,33 +399,6 @@ nav.primary-nav a.active {
 .hero .btn-dark { background: var(--amber); border-color: var(--amber); color: var(--cream); }
 .hero .btn-dark:hover { background: var(--amber-dark); border-color: var(--amber-dark); color: var(--cream); }
 
-/* ---------- Compact page heading (Inventory/About/Visit Us) — replaces
-   the old dark full-bleed hero on non-homepage pages, so content starts
-   much closer to the top of the viewport. ---------- */
-.page-heading {
-  max-width: var(--max-width);
-  margin: 0 auto;
-  padding: 36px 32px 12px;
-}
-.page-heading .eyebrow {
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  font-size: 0.72rem;
-  color: var(--amber-dark);
-  margin-bottom: 10px;
-  display: block;
-}
-.page-heading h1 {
-  font-size: clamp(1.75rem, 3.4vw, 2rem);
-  margin: 0 0 8px;
-}
-.page-heading p {
-  color: var(--text-muted);
-  font-size: 0.95rem;
-  max-width: 62ch;
-  margin: 0;
-}
-
 /* ---------- Section headings ---------- */
 .section {
   padding: 88px 32px;
@@ -1574,6 +1547,18 @@ nav.primary-nav a.active {
   font-family: 'Zilla Slab', serif;
 }
 .step p { color: var(--text-muted); font-size: 0.92rem; }
+/* Open, uncarded icon treatment for About page's "Why Choose Invicta"
+   (a simple orange line icon above each title) — distinct from
+   .step .num's numbered-circle style the homepage's "How it works"
+   uses, so neither page affects the other despite sharing .steps/.step
+   for the shared 3-column grid/spacing. */
+.step-icon {
+  width: 30px;
+  height: 30px;
+  margin: 0 auto 14px;
+  color: var(--amber);
+}
+.step-icon svg { width: 100%; height: 100%; }
 
 #how-it-works { padding: 60px 32px; }
 #how-it-works .section-head { margin-bottom: 36px; }
@@ -2064,21 +2049,16 @@ footer.site-footer {
   flex-wrap: wrap;
 }
 
-/* ---------- About page: compact spacing (shares .page-heading/.section/
-   .optin with other pages, so overrides are scoped to body.about-page
-   instead of changing the shared base rules). ---------- */
-.about-page .page-heading { padding: 24px 32px 6px; }
-/* "Our Story" now runs two short paragraphs instead of one — .page-heading
-   p's shared margin:0 (fine for every other page's single paragraph)
-   left them running together with no gap. Scoped to a second-or-later
-   paragraph so contact.html/index.html's single-paragraph intros are
-   untouched. */
-.about-page .page-heading p + p { margin-top: 10px; }
+/* ---------- About page: compact spacing (shares .section/.optin with
+   other pages, so overrides are scoped to body.about-page instead of
+   changing the shared base rules). .about-split isn't shared with any
+   other page, so its own spacing is set directly on .about-split-text/
+   .about-split-media above rather than through a body.about-page
+   override. ---------- */
 .about-page .section { padding: 26px 32px; }
 .about-page .section .section-head { margin-bottom: 20px; }
 .about-page .optin { padding: 30px 32px; }
 .about-page .steps { gap: 20px; }
-.about-page .about-image-grid { gap: 16px; }
 .about-page .audience-grid { gap: 16px; }
 .about-page .audience-card { padding: 20px 18px; }
 
@@ -2235,10 +2215,15 @@ footer.site-footer {
   padding: 24px 20px;
   text-align: center;
 }
-.audience-card .emoji {
-  font-size: 2rem;
-  margin-bottom: 16px;
+/* Same open orange-line-icon treatment as .step-icon (Why Choose
+   Invicta) — replaces the previous emoji glyph. */
+.audience-card .audience-icon {
+  width: 28px;
+  height: 28px;
+  margin: 0 auto 16px;
+  color: var(--amber);
 }
+.audience-card .audience-icon svg { width: 100%; height: 100%; }
 .audience-card h3 {
   font-size: 1.05rem;
   margin-bottom: 10px;
@@ -2640,34 +2625,55 @@ nav.primary-nav.open {
   .product-detail { grid-template-columns: 1fr; gap: 24px; padding: 20px; }
 }
 
-/* ---------- About page image slots ---------- */
-.about-image-grid {
+/* ---------- About page: text/photo split sections ("Our Story" and
+   "More Than Flooring") — a real repository photo fills one half via
+   object-fit:cover with a gradient-bottomed caption, the same
+   img+span technique the old 2-up placeholder grid used, just at full
+   split-row height instead of a fixed 16:9 tile. Text always comes
+   before the image in DOM order (both here and in about.html's
+   markup) so a mobile single-column stack naturally reads text-then-
+   photo with no extra CSS. .about-split-media's own min-height is the
+   source of truth for the row's height — grid items default to
+   align-items:stretch, so .about-split-text stretches to match once
+   the row resolves to that height, rather than depending on the grid
+   container's own height (an implicit auto row doesn't inherit a
+   min-height set on the grid container itself). */
+.about-split {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 24px;
-  max-width: var(--max-width);
-  margin: 0 auto;
 }
-.about-image-slot {
-  /* Shorter than the previous 4/3 — a tall placeholder box for an icon
-     this small reads as an oversized empty tile rather than an
-     intentional layout choice. */
-  aspect-ratio: 16 / 9;
-  border-radius: var(--radius-card);
-  background: linear-gradient(135deg, var(--charcoal-soft), var(--charcoal));
+.about-split-text {
   display: flex;
-  align-items: flex-end;
-  overflow: hidden;
+  flex-direction: column;
+  justify-content: center;
+  padding: 56px 48px;
+}
+.about-split-text .eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.75rem;
+  color: var(--amber-dark);
+  margin-bottom: 12px;
+  display: block;
+}
+.about-split-text h1 {
+  font-size: clamp(1.9rem, 3.4vw, 2.5rem);
+  line-height: 1.15;
+  margin: 0 0 14px;
+  /* Balances line lengths where supported, so short headings don't
+     leave one word alone on the last line at narrow widths; ignored
+     harmlessly (falls back to normal wrapping) on older browsers. */
+  text-wrap: balance;
+}
+.about-split-text h2 { margin: 0 0 14px; text-wrap: balance; }
+.about-split-text p { margin: 0 0 10px; }
+.about-split-text p:last-child { margin-bottom: 0; }
+.about-split-media {
   position: relative;
+  overflow: hidden;
+  min-height: 460px;
 }
-.about-image-slot svg {
-  position: absolute;
-  top: 50%; left: 50%;
-  width: 20%; height: 20%;
-  transform: translate(-50%, -50%);
-  color: rgba(238,241,234,0.18);
-}
-.about-image-slot img {
+.about-split-media img {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -2675,14 +2681,25 @@ nav.primary-nav.open {
   object-fit: cover;
   object-position: center;
 }
-.about-image-slot span {
-  position: relative;
+.about-split-caption {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
   padding: 12px 16px;
   font-size: 0.78rem;
   color: var(--cream);
   background: linear-gradient(0deg, rgba(0,0,0,0.55), transparent);
-  width: 100%;
 }
-@media (max-width: 700px) {
-  .about-image-grid { grid-template-columns: 1fr; }
+/* Dark variant ("More Than Flooring") — mirrors .optin's existing
+   dark-panel text treatment (cream heading, cream-dim body) instead
+   of inventing a one-off color pairing. */
+.about-split-more { background: var(--charcoal); }
+.about-split-more .about-split-text h2 { color: var(--cream); }
+.about-split-more .about-split-text p { color: var(--cream-dim); }
+
+@media (max-width: 900px) {
+  .about-split { grid-template-columns: 1fr; }
+  .about-split-text { padding: 40px 32px; }
+  /* Shorter than the desktop 460px — "a deliberate image height," not
+     the desktop panel height squeezed onto a narrow screen. */
+  .about-split-media { min-height: 240px; }
 }
