@@ -1643,6 +1643,13 @@ footer.site-footer {
   color: var(--cream-dim);
   padding: 44px 32px 24px;
 }
+/* About page only: its CTA (.optin) and the footer are both --charcoal
+   with nothing between them, so the two ran together with no visible
+   seam. Scoped to that exact adjacency (no other page has a .optin
+   immediately before the footer) rather than a general footer rule,
+   and reuses the same --charcoal-soft hairline .footer-bottom already
+   uses internally — not a new color or a heavier line. */
+.optin + footer.site-footer { border-top: 1px solid var(--charcoal-soft); }
 .footer-grid {
   display: grid;
   grid-template-columns: 1.6fr 1fr 1fr 1fr;
@@ -1672,7 +1679,13 @@ footer.site-footer {
   border-top: 1px solid var(--charcoal-soft);
   padding-top: 22px;
   font-size: 0.78rem;
-  color: var(--text-muted);
+  /* Was --text-muted (#667061) — a muted color tuned for light/cream
+     backgrounds, not this dark footer, so it read as too faint against
+     --charcoal. --cream-dim is the same token the rest of this footer
+     already uses for secondary text (.footer-grid p/a), so this stays
+     visually secondary (dimmer than the cream headings/links above)
+     while landing well above WCAG AA contrast on --charcoal. */
+  color: var(--cream-dim);
   display: flex;
   justify-content: space-between;
   flex-wrap: wrap;
@@ -2647,6 +2660,25 @@ nav.primary-nav.open {
   gap: 40px;
   align-items: center;
 }
+/* Our Story sits directly above "Why Choose Invicta" (a .section with
+   its own 26px top padding, .about-page-scoped) — the combined 56+26
+   read as more of a break than intended between two sections that are
+   meant to feel connected, so its bottom padding is reduced. Scoped to
+   .about-split-story specifically so More Than Flooring's own rhythm
+   (into Who We Serve below it) is untouched. Applies at every width —
+   40px happens to match the ≤900px .about-split-inner override
+   already below, so this doesn't fight it there. */
+.about-split-story .about-split-inner { padding-bottom: 40px; }
+/* The desktop-only "give the photo more visual weight" change (wider
+   column + taller panel, further down) must stay inside this same
+   min-width guard: a bare .about-split-story .about-split-inner rule
+   is two classes (0,0,2,0) versus the ≤900px stacking rule's one class
+   (0,0,1,0) — outside a media query it would win at EVERY width on
+   specificity alone and silently break the mobile single-column stack
+   despite that rule appearing later in the file. */
+@media (min-width: 901px) {
+  .about-split-story .about-split-inner { grid-template-columns: 1.1fr 1fr; }
+}
 .about-split-text .eyebrow {
   text-transform: uppercase;
   letter-spacing: 0.18em;
@@ -2675,6 +2707,17 @@ nav.primary-nav.open {
      requested 320-380px range. */
   height: 360px;
 }
+/* Our Story's photo is slightly taller than the shared default, to
+   match the wider column set above (.about-split-story .about-split-inner)
+   — grown together so the displayed crop's proportions stay close to
+   before rather than just stretching height against the same width.
+   More Than Flooring's panel is untouched. Same min-width guard as
+   that column-width rule, and for the same reason: unguarded, this
+   would out-specificity (and so silently override) the ≤900px
+   .about-split-media height rule at every width. */
+@media (min-width: 901px) {
+  .about-split-story .about-split-media { height: 390px; }
+}
 .about-split-media img {
   position: absolute;
   inset: 0;
@@ -2693,10 +2736,15 @@ nav.primary-nav.open {
 .about-split-caption {
   position: absolute;
   left: 0; right: 0; bottom: 0;
-  padding: 12px 16px;
+  /* 16px horizontal / 14px bottom keeps the text itself off the
+     image's edges even though the gradient backdrop runs flush to
+     bottom:0 — a taller top inset (20px) gives the gradient more room
+     to fade in before it reaches the text, instead of the text
+     sitting right at the gradient's darkest edge. */
+  padding: 20px 16px 14px;
   font-size: 0.78rem;
   color: var(--cream);
-  background: linear-gradient(0deg, rgba(0,0,0,0.55), transparent);
+  background: linear-gradient(0deg, rgba(0,0,0,0.6), rgba(0,0,0,0.6) 20%, transparent);
 }
 /* Dark variant ("More Than Flooring") — mirrors .optin's existing
    dark-panel text treatment (cream heading, cream-dim body) instead
