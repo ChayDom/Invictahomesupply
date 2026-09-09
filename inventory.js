@@ -602,18 +602,26 @@ function productDetailHref(item) {
 // icons use the actual "small" thumbnail (photoThumbs); clicking one
 // swaps the main <img>'s src to that same index's FULL-size photo
 // (data-full), never the small variant, via bindThumbClicks().
+// A blank spacer standing in for the thumbnail strip on cards with 0-1
+// photos (no thumb row rendered — a single/no image has nothing to pick
+// between) — keeps .photo-wrap the same total height as a card that does
+// have a thumb row, so price/actions still start at the same offset
+// across a row of cards on the grid. Empty/aria-hidden — never fake
+// thumbnails standing in for photos that don't exist.
+const THUMB_ROW_SPACER = '<div class="thumb-row-spacer" aria-hidden="true"></div>';
+
 function photoBlock(item) {
   const href = productDetailHref(item);
   if (!item.photos || item.photos.length === 0) {
     return `<a class="product-photo main-photo" href="${href}" aria-label="${escapeAttr(item.name)} — no photo available">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M9 3v18"/></svg>
-    </a>`;
+    </a>${THUMB_ROW_SPACER}`;
   }
   const alt = escapeAttr(item.name);
   const thumbs = item.photos.length > 1
     ? `<div class="thumb-row">${item.photos.map((p, i) =>
         `<img class="thumb${i === 0 ? " active" : ""}" src="${item.photoThumbs[i]}" data-full="${item.photos[i]}" alt="" loading="lazy" width="40" height="40" tabindex="0" role="button" aria-label="View photo ${i + 1} of ${item.photos.length}"${i === 0 ? ' aria-current="true"' : ""}>`).join("")}</div>`
-    : "";
+    : THUMB_ROW_SPACER;
   return `<a class="product-photo main-photo" href="${href}">
     <img src="${item.photoCards[0]}" alt="${alt}" loading="lazy" width="600" height="600" data-main-photo>
   </a>${thumbs}`;

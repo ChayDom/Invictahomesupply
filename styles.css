@@ -1794,7 +1794,7 @@ footer.site-footer {
   /* Gallery thumbnails and the "More details" expander belong on the
      product detail page at this size, not competing for space in a
      72px-wide card. */
-  .product-card .thumb-row { display: none; }
+  .product-card .thumb-row, .product-card .thumb-row-spacer { display: none; }
   .product-card .product-more { display: none; }
   .product-card .product-info { grid-column: 2; grid-row: 1; padding: 0; }
   .product-card .product-actions { grid-column: 2; grid-row: 2; padding: 0; margin-top: 8px; }
@@ -1855,6 +1855,13 @@ footer.site-footer {
   border-bottom: 1px solid var(--line);
   overflow-x: auto;
 }
+/* Same total box height as .thumb-row (8+8 padding + 40px thumb + 1px
+   border), rendered for a card with 0-1 photos (see photoBlock() in
+   inventory.js) so its price/actions still start at the same vertical
+   offset as a card in the same row that does have a thumb row —
+   deliberately blank, no border/content standing in for photos that
+   aren't there. */
+.thumb-row-spacer { height: 57px; }
 .thumb {
   width: 40px;
   height: 40px;
