@@ -100,6 +100,23 @@ test("CSS: .product-price .price-unit is font-weight 700 (same as price-line)", 
   assert.match(cssRuleBody(".product-price .price-unit"), /font-weight:\s*700/);
 });
 
+test("CSS: .product-price .price-unit uses var(--charcoal), not the muted gray, so it reads as one emphasized expression with the number", () => {
+  const body = cssRuleBody(".product-price .price-unit");
+  assert.match(body, /color:\s*var\(--charcoal\)/);
+  assert.doesNotMatch(body, /color:\s*var\(--text-muted\)/);
+});
+
+test("CSS: .product-price .price-unit keeps its existing font-size (0.85rem) and font-family (Inter) — only color changed", () => {
+  const body = cssRuleBody(".product-price .price-unit");
+  assert.match(body, /font-size:\s*0\.85rem/);
+  assert.match(body, /font-family:\s*'Inter', sans-serif/);
+});
+
+test("CSS: .product-detail-price .price-unit is untouched — still var(--text-muted)", () => {
+  const body = cssRuleBody(".product-detail-price .price-unit");
+  assert.match(body, /color:\s*var\(--text-muted\)/);
+});
+
 test("CSS: .product-price .price-avail (quantity/availability text) is font-weight 500, not bold", () => {
   const body = cssRuleBody(".product-price .price-avail");
   assert.match(body, /font-weight:\s*500/);

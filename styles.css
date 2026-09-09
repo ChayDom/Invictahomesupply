@@ -838,10 +838,15 @@ nav.primary-nav a.active {
   font-weight: 700;
 }
 
+/* Regular Card View only (.product-detail-price has its own separate
+   .price-unit rule, untouched) — charcoal instead of the muted gray so
+   the unit ("/ sq ft"/"each") reads as part of one bold price
+   expression with the number beside it, rather than a separate muted
+   fragment despite already sharing the same font-weight: 700. */
 .product-price .price-unit {
   font-family: 'Inter', sans-serif;
   font-size: 0.85rem;
-  color: var(--text-muted);
+  color: var(--charcoal);
   font-weight: 700;
 }
 
