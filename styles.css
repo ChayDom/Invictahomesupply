@@ -1760,6 +1760,33 @@ footer.site-footer {
   .footer-grid > div:first-child { grid-column: 1 / -1; }
 }
 
+/* Phones only (~600px and below) — the 900px 2-column footer above still
+   left Company's longer links (Frequently Asked/Browse Inventory/the
+   weekly-updates link) wrapping onto 2-3 lines in an even 1fr/1fr split,
+   and Contact sat alone in the left column of its own row instead of
+   using the full width available to it — both made the footer read as
+   taller than it needed to be at this width. Slightly smaller link
+   text/spacing, a wider Company column, and a tighter row gap address
+   each directly without touching the 900px tablet layout or the desktop
+   footer (max-width: 900px above is untouched). */
+@media (max-width: 600px) {
+  .footer-grid {
+    /* Company's own links are consistently the longest in this column
+       set — a bit more width than Inventory's even split cuts most of
+       its wrapping without starving Inventory's own longer entries
+       ("Electronics & Smart Home", "Browse All Categories"). */
+    grid-template-columns: 0.85fr 1.15fr;
+    gap: 14px 16px;
+  }
+  /* Contact is the 4th child of .footer-grid (brand/description,
+     Inventory, Company, Contact, in that DOM order) — spans full width
+     as its own row instead of sitting alone in the left column with an
+     empty cell beside it. */
+  .footer-grid > div:nth-child(4) { grid-column: 1 / -1; }
+  .footer-grid h4 { margin-bottom: 10px; }
+  .footer-grid p, .footer-grid a { font-size: 0.82rem; margin-bottom: 6px; }
+}
+
 /* The full desktop nav row (logo + 4 links + phone/CTA, none of which
    shrink — see .brand/.nav-cta's own comments) needs ~1100px of content
    width to fit without wrapping or clipping; .max-width's 1200px
