@@ -1,6 +1,9 @@
 [build]
   functions = "netlify/functions"
 
+# Bumped to trigger a branch-deploy build now that "Branch deploys" was
+# re-enabled after the repo relink reset it to "None".
+
 # Canonical inventory route is /shop (no .html) — the old /shop.html URL
 # still works via a 301 so existing bookmarks/backlinks/search results
 # aren't broken, but every internal link and the sitemap point at /shop.
