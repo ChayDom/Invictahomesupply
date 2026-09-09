@@ -518,11 +518,19 @@ nav.primary-nav a.active {
    the heading) reads as too much dead air stacked directly under the
    already-padded dark stat strip. Scoped to this section only (via
    .category-section on the <section> in index.html) so no other
-   .section on the site is affected. padding-top/bottom and the
-   section-head's margin-bottom are each ~18-20% below their generic
-   .section values (50->40, 88->70, 30->24) to close up the space
-   above and below the tile grid specifically. */
-.category-section { padding-top: 40px; padding-bottom: 70px; }
+   .section on the site is affected. padding-top and the section-head's
+   margin-bottom are each ~18-20% below their generic .section values
+   (50->40, 30->24) to close up the space above the tile grid.
+   padding-bottom is separately tuned down to 44px (see the mobile
+   override below for the ≤700px value) — .category-section and
+   #fresh-inventory sit on nearly identical off-white backgrounds with
+   no color seam between them, so their combined padding read as one
+   long blank stretch at the original 70+64=134px; 44+44=88px keeps a
+   real pause without it reading as dead space. Fresh Inventory's own
+   bottom padding and the #inventory-updates/#how-it-works spacing
+   (both of which sit against a color change, so the same-size gap
+   reads as intentional) are untouched. */
+.category-section { padding-top: 40px; padding-bottom: 44px; }
 .category-section .section-head { margin-bottom: 24px; }
 .category-tile {
   position: relative;
@@ -1570,7 +1578,12 @@ nav.primary-nav a.active {
 #how-it-works { padding: 60px 32px; }
 #how-it-works .section-head { margin-bottom: 36px; }
 
-#fresh-inventory { padding: 64px 32px; }
+/* Top padding reduced from 64px to 44px to close up the near-seamless
+   gap with .category-section above (see that rule's own comment) — an
+   ID selector, so this applies at every width without needing a
+   separate mobile override. Bottom padding (and everything below,
+   into #inventory-updates) is untouched. */
+#fresh-inventory { padding: 44px 32px 64px; }
 #fresh-inventory .section-head { margin-bottom: 36px; }
 
 /* ---------- About / two-col ---------- */
@@ -1730,6 +1743,12 @@ footer.site-footer {
   .nav-row { padding: 16px 20px; }
   .hero { padding: 72px 20px; }
   .section { padding: 56px 20px; }
+  /* Same Categories -> Fresh Inventory gap fix as the desktop rule
+     above, at mobile's own scale — only the bottom edge, so
+     padding-top stays at the generic .section mobile value (56px)
+     above. Comes after .section's own mobile rule so it wins despite
+     equal (single-class) specificity. */
+  .category-section { padding-bottom: 40px; }
   .category-grid, .product-grid { grid-template-columns: 1fr 1fr; gap: 14px; }
   .wrap { padding: 0 20px; }
 
