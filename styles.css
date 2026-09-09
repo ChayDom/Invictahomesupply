@@ -1920,13 +1920,73 @@ footer.site-footer {
 .about-page .audience-grid { gap: 16px; }
 .about-page .audience-card { padding: 20px 18px; }
 
-/* ---------- Pickup & Hours (contact) page: tighter intro-to-cards gap.
-   .section's shared 88px top padding (stacked on .page-heading's own
-   bottom padding) left ~100px of empty space above the cards; scoped to
-   body.contact-page so index.html/shop.html/about.html keep their own
-   .section spacing. ---------- */
-.contact-page .page-heading { padding: 28px 32px 10px; }
+/* ---------- Visit & Pickup (contact) page: tighter intro-to-cards gap.
+   .section's shared 88px top padding left ~100px of empty space above
+   the cards; scoped to body.contact-page so index.html/shop.html/
+   about.html keep their own .section spacing. ---------- */
 .contact-page .section { padding: 48px 32px 56px; }
+/* Tighten FAQ rows so the (now much shorter) answers bring this card's
+   height in line with the contact card beside it, instead of leaving a
+   tall empty gap under the shorter column. */
+.contact-page .faq-item { padding: 9px 0; }
+.contact-page .faq-item h4 { margin-bottom: 4px; }
+
+/* ---------- Visit & Pickup (contact) page: full-bleed dark banner,
+   replacing the shared .page-heading. Sits flush under the header (no
+   .page-heading top padding to create a gap); inner content shares the
+   site's max-width so it lines up with the cards below. ---------- */
+.contact-banner {
+  background: var(--charcoal);
+  padding: 40px 32px;
+}
+.contact-banner-inner {
+  max-width: var(--max-width);
+  margin: 0 auto;
+}
+.contact-banner .eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.68rem;
+  color: var(--amber);
+  margin-bottom: 10px;
+  display: block;
+}
+.contact-banner h1 {
+  font-size: clamp(1.75rem, 3.4vw, 2rem);
+  color: var(--cream);
+  margin: 0 0 10px;
+}
+.contact-banner p {
+  color: var(--cream-dim);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  max-width: 560px;
+  margin: 0;
+}
+
+/* Contact card CTA row: Call now (primary) + Text us (outlined) carry
+   equal weight; Facebook/Instagram are icon-only and visibly quieter so
+   the two real actions read first. */
+.contact-actions {
+  margin-top: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  transition: all 0.2s ease;
+}
+.icon-btn svg { width: 18px; height: 18px; }
+.icon-btn:hover { color: var(--charcoal); border-color: var(--charcoal); }
 
 /* ---------- Recently reserved ticker ---------- */
 .ticker-wrap {
