@@ -1942,6 +1942,27 @@ footer.site-footer {
 .contact-banner-inner {
   max-width: var(--max-width);
   margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+/* Decorative pin/truck pair in the banner's corner — muted well below
+   the text's contrast so they read as a quiet accent, not competing
+   content. Hidden below the banner's own two-column breakpoint, where
+   there's no spare width for them beside the text. */
+.contact-banner-icons {
+  display: flex;
+  gap: 14px;
+  color: var(--charcoal-soft);
+  flex-shrink: 0;
+}
+.contact-banner-icons svg {
+  width: 44px;
+  height: 44px;
+}
+@media (max-width: 900px) {
+  .contact-banner-icons { display: none; }
 }
 .contact-banner .eyebrow {
   text-transform: uppercase;
