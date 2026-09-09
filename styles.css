@@ -21,6 +21,15 @@
 
 * { box-sizing: border-box; }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
 html, body {
   margin: 0;
   padding: 0;
@@ -1943,6 +1952,83 @@ footer.site-footer {
   border-color: var(--cream-dim);
 }
 .optin .btn-outline:hover { background: var(--cream); color: var(--charcoal); }
+
+/* ---------- Homepage email subscribe form (#optin-newsletter) ---------- */
+.optin-form {
+  max-width: 420px;
+  margin: 0 auto;
+}
+.optin-form-row {
+  display: flex;
+  gap: 10px;
+}
+.optin-form-row input[type="email"] {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 16px;
+  border: 1px solid var(--charcoal-soft);
+  border-radius: var(--radius);
+  background: var(--cream);
+  color: var(--charcoal);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.9rem;
+}
+.optin-form-row input[type="email"]:focus { outline: none; border-color: var(--amber); }
+.optin-form-row input[type="email"]:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.optin-form-row .btn { flex-shrink: 0; }
+/* Honeypot — present in the DOM and in the tab order's normal flow for
+   a screen reader (labeled, so it doesn't read as a mystery field), but
+   positioned off-screen so no sighted visitor ever sees or fills it in.
+   display:none would also hide it from some form-fillers that only skip
+   visually-hidden-but-focusable fields; this is the more reliable trap. */
+.optin-hp {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+.optin-consent {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  max-width: 420px;
+  margin: 12px auto 0;
+}
+.optin-status {
+  font-size: 0.85rem;
+  margin: 12px auto 0;
+  max-width: 420px;
+}
+.optin-status[data-state="error"] { color: var(--gold); }
+
+/* ---------- Subscribe-confirmed / unsubscribed status pages ---------- */
+.status-page {
+  display: flex;
+  justify-content: center;
+  padding: 64px 32px;
+}
+.status-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: 40px;
+  max-width: 440px;
+  text-align: center;
+}
+.status-icon {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.status-icon svg { width: 24px; height: 24px; }
+.status-icon-success { background: var(--cream-dim); color: var(--charcoal); }
+.status-icon-invalid { background: var(--cream-dim); color: var(--amber-dark); }
+.status-card p { color: var(--text-muted); margin: 0 0 24px; }
 
 /* ---------- About page: compact spacing (shares .page-heading/.section/
    .optin with other pages, so overrides are scoped to body.about-page

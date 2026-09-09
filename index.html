@@ -194,9 +194,21 @@
 </section>
 
 <section class="optin" id="optin-newsletter">
-  <h2>Never miss new inventory</h2>
-  <p>Text START to get a heads-up the moment new flooring, water heaters, appliances, or tools go live. No spam, opt out anytime.</p>
-  <a href="sms:" data-sms-optin class="btn btn-dark">Text START to <span data-phone></span></a>
+  <h2>Get new inventory by email</h2>
+  <p>Subscribe for a weekly email featuring newly added flooring, appliances, tools, and more.</p>
+  <form class="optin-form" id="subscribe-form">
+    <div class="optin-form-row">
+      <label for="subscribe-email" class="sr-only">Email address</label>
+      <input type="email" id="subscribe-email" name="email" placeholder="you@example.com" autocomplete="email" maxlength="254" required>
+      <button type="submit" class="btn btn-dark" id="subscribe-submit">Subscribe</button>
+    </div>
+    <div class="optin-hp">
+      <label for="subscribe-company">Leave this field blank</label>
+      <input type="text" id="subscribe-company" name="company" tabindex="-1" autocomplete="off">
+    </div>
+    <p class="optin-consent">By subscribing, you agree to receive inventory updates from Invicta Home Supply. You can unsubscribe anytime.</p>
+    <p class="optin-status" id="subscribe-status" role="status" aria-live="polite" hidden></p>
+  </form>
 </section>
 
 <section class="section" id="how-it-works">

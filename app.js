@@ -34,9 +34,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const body = explicitBody || (item ? `Hi! I'd like to check availability for: ${item}` : "Hi! I have a question about a product I saw on the Invicta Home Supply website.");
     el.href = `sms:${cfg.phoneHref}?&body=${encodeURIComponent(body)}`;
   });
-  document.querySelectorAll("a[data-sms-optin]").forEach(el => {
-    el.href = `sms:${cfg.phoneHref}?&body=${encodeURIComponent("START")}`;
-  });
   document.querySelectorAll("a[data-mail-link]").forEach(el => el.href = `mailto:${cfg.email}`);
   document.querySelectorAll("a[data-fb-link]").forEach(el => el.href = cfg.facebookUrl);
   document.querySelectorAll("a[data-ig-link]").forEach(el => el.href = cfg.instagramUrl);
@@ -78,4 +75,61 @@ document.addEventListener("DOMContentLoaded", () => {
   // Shop page category filter + sort is handled in inventory.js, since
   // combining the two requires re-rendering from the fetched item array
   // rather than just hiding/showing already-rendered cards.
+
+  bindSubscribeForm();
 });
+
+// Homepage "Get new inventory by email" form (#optin-newsletter in
+// index.html) -> POST /api/subscribe (netlify/functions/subscribe.mts).
+// One neutral status message either way — the endpoint itself never
+// reveals whether an address was new, already pending, or already
+// active, so this doesn't either.
+function bindSubscribeForm() {
+  const form = document.getElementById("subscribe-form");
+  if (!form) return;
+  const emailInput = document.getElementById("subscribe-email");
+  const submitBtn = document.getElementById("subscribe-submit");
+  const statusEl = document.getElementById("subscribe-status");
+  const honeypot = document.getElementById("subscribe-company");
+
+  const showStatus = (text, state) => {
+    statusEl.textContent = text;
+    statusEl.hidden = false;
+    if (state) statusEl.setAttribute("data-state", state);
+    else statusEl.removeAttribute("data-state");
+  };
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!form.reportValidity()) return;
+
+    submitBtn.disabled = true;
+    const originalLabel = submitBtn.textContent;
+    submitBtn.textContent = "Subscribing…";
+    showStatus("", null);
+    statusEl.hidden = true;
+
+    try {
+      const res = await fetch("/api/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: emailInput.value,
+          company: honeypot ? honeypot.value : "",
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        showStatus(data.message || "Check your email to confirm your subscription.", "success");
+        form.reset();
+      } else {
+        showStatus(data.error || "Something went wrong. Please try again.", "error");
+      }
+    } catch (err) {
+      showStatus("Something went wrong. Please check your connection and try again.", "error");
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalLabel;
+    }
+  });
+}
