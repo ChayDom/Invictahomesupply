@@ -2179,12 +2179,29 @@ function bindCalculatorModal() {
 // must only ever be drawn from published + in-stock Luxury Vinyl Plank
 // rows with a real positive Price — not Flooring as a whole, or a
 // cheaper Laminate/Hybrid Resilient/etc. row gets misrepresented as LVP.
-// If no eligible LVP row exists, priceEl is left untouched so the
-// static "$1.50" placeholder already in index.html's markup shows
-// instead of a wrong or blank price. The sq-ft stat's own copy
-// ("sq ft of flooring in stock") describes all Flooring, not LVP, so it
-// intentionally keeps the broader Flooring-wide total.
+//
+// #hero-price starts in index.html as a neutral CSS skeleton
+// (.hero-price-skeleton, with an sr-only "Loading current flooring
+// price" label) — never a plausible-looking hardcoded number a visitor
+// could mistake for real data while the fetch is still in flight. When
+// no eligible LVP row exists (a genuine fetch failure, or a catalog that
+// legitimately has none right now), setHeroPriceUnavailable() replaces
+// the whole "from $X / sq ft" clause with a neutral "View current
+// inventory" link instead of leaving the skeleton spinning forever or
+// falling back to a stale/fake price.
+//
+// The sq-ft stat's own copy ("sq ft of flooring in stock") describes all
+// Flooring, not LVP, so it intentionally keeps the broader Flooring-wide
+// total; its own neutral "—" placeholder (already in index.html) is
+// left as-is on failure/empty — no skeleton needed there since it was
+// already a safe, honest placeholder before this change.
 // ---------------------------------------------------------------------
+function setHeroPriceUnavailable() {
+  const priceEl = document.getElementById("hero-price");
+  const line = priceEl ? priceEl.closest(".hero-line-nowrap") : null;
+  if (line) line.innerHTML = '<a href="/shop?cat=Flooring">View current inventory</a>';
+}
+
 function updateHomepageDynamicContent(items) {
   const priceEl = document.getElementById("hero-price");
   const sqftEl = document.getElementById("stat-sqft");
@@ -2192,7 +2209,14 @@ function updateHomepageDynamicContent(items) {
 
   if (priceEl) {
     const startingPrice = computeLvpStartingPrice(items);
-    if (startingPrice !== null) priceEl.textContent = money2(startingPrice);
+    if (startingPrice !== null) {
+      priceEl.classList.remove("hero-price-skeleton");
+      priceEl.removeAttribute("aria-live");
+      priceEl.removeAttribute("role");
+      priceEl.textContent = money2(startingPrice);
+    } else {
+      setHeroPriceUnavailable();
+    }
   }
   if (sqftEl) {
     const totalSqFt = flooring.reduce((sum, i) => sum + (typeof i.availableSqFt === "number" ? i.availableSqFt : 0), 0);

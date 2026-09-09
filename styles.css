@@ -359,6 +359,36 @@ nav.primary-nav a.active {
   color: var(--gold);
 }
 
+/* Neutral loading placeholder for .hero-price while /api/inventory is
+   still resolving — never a plausible-but-possibly-stale number (see
+   inventory.js's updateHomepageDynamicContent()/setHeroPriceLoading()).
+   Sized in `ch` (character width, tracks the h1's own responsive
+   font-size) rather than a fixed px, so it reserves roughly the same
+   footprint as the real price ("$1.20") and doesn't shift surrounding
+   text once the real value replaces it. The pulse is pure CSS — no text
+   content changes while it's animating — so it never triggers repeat
+   screen-reader announcements; the sr-only "Loading current flooring
+   price" text inside it is announced once (aria-live="polite" on the
+   parent, set in index.html) and again, once, when JS replaces it with
+   the real price text. */
+.hero-price-skeleton {
+  display: inline-block;
+  min-width: 4.5ch;
+  height: 0.85em;
+  vertical-align: -0.1em;
+  border-radius: 4px;
+  background: linear-gradient(90deg, rgba(238,241,234,0.14) 25%, rgba(238,241,234,0.32) 50%, rgba(238,241,234,0.14) 75%);
+  background-size: 200% 100%;
+  animation: hero-price-pulse 1.4s ease-in-out infinite;
+}
+@keyframes hero-price-pulse {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-price-skeleton { animation: none; background: rgba(238,241,234,0.22); }
+}
+
 /* Keeps "from $X.XX / sq ft." from wrapping mid-phrase (the price
    getting separated from "/ sq ft" looked broken) — the surrounding
    <br>s in the markup put this whole group, and "In stock in
