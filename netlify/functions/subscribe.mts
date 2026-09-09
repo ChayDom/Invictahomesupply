@@ -4,14 +4,17 @@ import {
   createSubscriber,
   updateSubscriber,
   generateToken,
+  type SubscriberFields,
 } from "./_shared/subscribers.mts";
-import { sendEmail, confirmationEmail } from "./_shared/resend.mts";
+import { sendEmail, welcomeEmail } from "./_shared/resend.mts";
 import { checkRateLimit, clientIp } from "./_shared/rate-limit.mts";
 
-// Phase 1 of weekly inventory email subscriptions — subscribe only. The
-// weekly digest send and its scheduled function are a later phase, not
-// built here. See confirm-subscription.mts / unsubscribe.mts for the
-// other two Phase 1 endpoints.
+// Phase 1 of weekly inventory email subscriptions — single opt-in: a
+// valid email is Active immediately, no confirmation step. (Originally
+// built as double opt-in; converted per a later request — see
+// confirm-subscription.mts for why that endpoint still exists as
+// legacy-only compatibility.) The weekly digest send and its scheduled
+// function are a later phase, not built here.
 
 const MAX_BODY_BYTES = 4 * 1024; // generous for {email, company}; anything bigger is malformed/abusive
 const MAX_EMAIL_LENGTH = 254; // RFC 5321 mailbox length limit
@@ -20,11 +23,13 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CONSENT_TEXT = "By subscribing, you agree to receive inventory updates from Invicta Home Supply. You can unsubscribe anytime.";
 
 // One identical message for every successful outcome (new signup,
-// pending retry, resubscribe, and already-active) — this is deliberate,
+// Pending/Unsubscribed reactivation, and already-Active) — deliberate,
 // not a placeholder: it's what keeps the endpoint from letting a caller
-// tell which of those four happened for a given address (see the
-// per-status branches below, all of which return this).
-const NEUTRAL_SUCCESS_MESSAGE = "If that address needs confirming, we just sent a confirmation email — check your inbox.";
+// tell which of those happened for a given address (see the
+// per-status branches below, all of which return this). Written to stay
+// true even when no email was actually sent (the already-Active case),
+// so it never promises something that branch doesn't do.
+const NEUTRAL_SUCCESS_MESSAGE = "You're subscribed to weekly inventory updates from Invicta Home Supply.";
 const GENERIC_ERROR_MESSAGE = "Something went wrong. Please try again in a moment.";
 
 function jsonResponse(status: number, body: Record<string, unknown>): Response {
@@ -99,48 +104,69 @@ export default async (req: Request, context: Context): Promise<Response> => {
   try {
     const existing = await findSubscriberByEmail(email);
     const nowIso = new Date().toISOString();
-    let confirmationToken: string | null = null;
-    let recordId: string | null = null;
+    let unsubscribeToken: string | null = null;
+    let shouldSendWelcome = false;
 
     if (!existing) {
-      confirmationToken = generateToken();
-      const record = await createSubscriber({
+      unsubscribeToken = generateToken();
+      await createSubscriber({
         Email: email,
-        Status: "Pending",
-        "Confirmation Token": confirmationToken,
-        "Unsubscribe Token": generateToken(),
+        Status: "Active",
+        "Confirmation Token": null,
+        "Unsubscribe Token": unsubscribeToken,
         "Consent Text": CONSENT_TEXT,
         "Consent Timestamp": nowIso,
+        "Confirmed At": nowIso,
       });
-      recordId = record.id;
+      shouldSendWelcome = true;
     } else {
       const status = existing.fields.Status;
       if (status === "Active") {
-        // Neutral response only — no Airtable write, no email.
+        // No duplicate record, no repeat welcome email — neutral
+        // response only.
         return jsonResponse(200, { message: NEUTRAL_SUCCESS_MESSAGE });
       }
       if (status === "Pending") {
-        confirmationToken = generateToken();
-        recordId = existing.id;
-        await updateSubscriber(existing.id, { "Confirmation Token": confirmationToken });
+        // A record from before the double-opt-in -> single-opt-in
+        // conversion, or one created by a still-in-flight request under
+        // the old flow — activate it the same as any other first-time
+        // subscribe. Its Unsubscribe Token was already generated at
+        // creation; only fall back to a fresh one if it's somehow
+        // missing.
+        const existingUnsubToken = existing.fields["Unsubscribe Token"];
+        unsubscribeToken = existingUnsubToken || generateToken();
+        const updateFields: SubscriberFields = {
+          Status: "Active",
+          "Confirmed At": nowIso,
+          "Confirmation Token": null,
+        };
+        if (!existingUnsubToken) updateFields["Unsubscribe Token"] = unsubscribeToken;
+        await updateSubscriber(existing.id, updateFields);
+        shouldSendWelcome = true;
       } else {
         // Unsubscribed (or any other/legacy value) -> re-subscribe.
-        confirmationToken = generateToken();
-        recordId = existing.id;
+        // Rotates the unsubscribe token (a previously-unsubscribed
+        // address gets a clean link) and refreshes consent, since
+        // resubscribing is a new consent event.
+        unsubscribeToken = generateToken();
         await updateSubscriber(existing.id, {
-          Status: "Pending",
-          "Confirmation Token": confirmationToken,
-          "Unsubscribe Token": generateToken(),
+          Status: "Active",
+          "Confirmed At": nowIso,
+          "Confirmation Token": null,
+          "Unsubscribe Token": unsubscribeToken,
           "Consent Text": CONSENT_TEXT,
           "Consent Timestamp": nowIso,
           "Unsubscribed At": null,
         });
+        shouldSendWelcome = true;
       }
     }
 
-    if (confirmationToken && recordId) {
-      const confirmUrl = `${new URL(req.url).origin}/api/confirm-subscription?token=${encodeURIComponent(confirmationToken)}`;
-      const emailContent = confirmationEmail(confirmUrl);
+    if (shouldSendWelcome && unsubscribeToken) {
+      const origin = new URL(req.url).origin;
+      const browseUrl = `${origin}/shop`;
+      const unsubscribeUrl = `${origin}/api/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`;
+      const emailContent = welcomeEmail(browseUrl, unsubscribeUrl);
       await sendEmail({ to: email, ...emailContent });
     }
 

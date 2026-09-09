@@ -66,27 +66,32 @@ const EMAIL_BODY_STYLE = "padding:32px;color:#24352a;font-size:15px;line-height:
 const EMAIL_BUTTON_STYLE = "display:inline-block;background:#c14a26;color:#eef1ea;text-decoration:none;font-weight:600;font-size:14px;letter-spacing:0.02em;padding:14px 28px;border-radius:4px;margin:20px 0;";
 const EMAIL_FOOTER_STYLE = "padding:20px 32px;color:#667061;font-size:12px;border-top:1px solid #d7ddd0;";
 
-// confirmUrl is a fully-formed absolute URL this function itself built
-// from the confirmation token — never anything from the request body, so
-// no user-controlled value ever reaches this template. Returns
-// {subject, html, text}; the caller adds `to`.
-export function confirmationEmail(confirmUrl: string): Omit<SendEmailInput, "to"> {
-  const safeUrl = escapeHtml(confirmUrl);
+// Single opt-in (Phase 1, revised): there is no confirmation step, so
+// there is no confirmation email template — sending one would put a
+// confirm link back in front of subscribers for a flow that no longer
+// has anything for it to confirm. browseUrl and unsubscribeUrl are both
+// fully-formed absolute URLs this function itself builds (browseUrl a
+// fixed path, unsubscribeUrl from the record's own Unsubscribe Token) —
+// never anything from the request body, so no user-controlled value
+// ever reaches this template. Returns {subject, html, text}; the caller
+// adds `to`.
+export function welcomeEmail(browseUrl: string, unsubscribeUrl: string): Omit<SendEmailInput, "to"> {
+  const safeBrowseUrl = escapeHtml(browseUrl);
+  const safeUnsubscribeUrl = escapeHtml(unsubscribeUrl);
   const html = `<div style="${EMAIL_WRAPPER_STYLE}">
   <div style="${EMAIL_CARD_STYLE}">
     <div style="${EMAIL_HEADER_STYLE}">Invicta Home Supply</div>
     <div style="${EMAIL_BODY_STYLE}">
-      <p style="margin:0 0 16px;">Confirm your subscription to get a weekly email featuring newly added flooring, appliances, tools, and more from Invicta Home Supply.</p>
-      <a href="${safeUrl}" style="${EMAIL_BUTTON_STYLE}">Confirm subscription</a>
-      <p style="margin:20px 0 0;color:#667061;font-size:13px;">If the button doesn't work, copy and paste this link:<br><span style="word-break:break-all;">${safeUrl}</span></p>
-      <p style="margin:20px 0 0;color:#667061;font-size:13px;">If you didn't request this, you can ignore this email — no subscription will be created.</p>
+      <p style="margin:0 0 16px;">You&rsquo;re subscribed. We&rsquo;ll send you one weekly email featuring newly added flooring, appliances, tools, and more.</p>
+      <a href="${safeBrowseUrl}" style="${EMAIL_BUTTON_STYLE}">Browse Inventory</a>
+      <p style="margin:20px 0 0;color:#667061;font-size:13px;">Didn&rsquo;t mean to subscribe, or want to stop? <a href="${safeUnsubscribeUrl}" style="color:#667061;">Unsubscribe</a> — one click, no login needed.</p>
     </div>
     <div style="${EMAIL_FOOTER_STYLE}">Invicta Home Supply &middot; McKinney, TX</div>
   </div>
 </div>`;
-  const text = `Confirm your subscription to Invicta Home Supply inventory updates.\n\nConfirm here: ${confirmUrl}\n\nIf you didn't request this, you can ignore this email — no subscription will be created.\n\nInvicta Home Supply, McKinney, TX`;
+  const text = `You're subscribed. We'll send you one weekly email featuring newly added flooring, appliances, tools, and more.\n\nBrowse inventory: ${browseUrl}\n\nDidn't mean to subscribe, or want to stop? Unsubscribe (one click, no login needed): ${unsubscribeUrl}\n\nInvicta Home Supply, McKinney, TX`;
   return {
-    subject: "Confirm your Invicta Home Supply subscription",
+    subject: "You’re subscribed to Invicta inventory updates",
     html,
     text,
   };

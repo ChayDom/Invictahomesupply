@@ -120,7 +120,7 @@ function bindSubscribeForm() {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        showStatus(data.message || "Check your email to confirm your subscription.", "success");
+        showStatus(data.message || "You're subscribed to weekly inventory updates from Invicta Home Supply.", "success");
         form.reset();
       } else {
         showStatus(data.error || "Something went wrong. Please try again.", "error");

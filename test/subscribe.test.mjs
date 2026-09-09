@@ -1,9 +1,14 @@
 #!/usr/bin/env node
 // ===================================================================
 // Regression/behavior tests for Phase 1 of weekly inventory email
-// subscriptions: POST /api/subscribe, GET /api/confirm-subscription,
-// GET /api/unsubscribe (netlify/functions/{subscribe,confirm-subscription,
-// unsubscribe}.mts + netlify/functions/_shared/*.mts).
+// subscriptions — single opt-in: POST /api/subscribe activates a
+// subscriber immediately and sends a welcome email, no confirmation
+// step. GET /api/confirm-subscription is retained only as legacy
+// compatibility for confirmation links sent before this conversion
+// (still exercised below since it's still live code). GET
+// /api/unsubscribe is unchanged (one-click, idempotent).
+// (netlify/functions/{subscribe,confirm-subscription,unsubscribe}.mts +
+// netlify/functions/_shared/*.mts)
 //
 // Imports and calls the real function modules directly (Node 22 strips
 // .mts type syntax natively — no build step, no test-only copy of the
@@ -169,37 +174,48 @@ await test("honeypot submission returns the same neutral success message but cre
   assert.equal(resendCalls.length, 0, "honeypot must not send an email");
 });
 
-await test("new subscription creates a Pending record with tokens/consent and sends one confirmation email", async () => {
+await test("new subscription is Active immediately, no confirmation token, and sends exactly one welcome email (no confirmation email)", async () => {
   const res = await subscribeHandler(subscribeRequest({ email: "  New@Example.com  " }));
   assert.equal(res.status, 200);
   assert.equal(store.length, 1);
   const record = store[0];
   assert.equal(record.fields.Email, "new@example.com", "email must be trimmed and lowercased before storing");
-  assert.equal(record.fields.Status, "Pending");
-  assert.match(record.fields["Confirmation Token"], /^[a-f0-9]{64}$/);
+  assert.equal(record.fields.Status, "Active", "single opt-in: Active immediately, no Pending step");
+  assert.ok(record.fields["Confirmed At"]);
+  assert.ok(!record.fields["Confirmation Token"], "Confirmation Token must stay blank in the single opt-in flow");
   assert.match(record.fields["Unsubscribe Token"], /^[a-f0-9]{64}$/);
-  assert.notEqual(record.fields["Confirmation Token"], record.fields["Unsubscribe Token"]);
   assert.equal(
     record.fields["Consent Text"],
     "By subscribing, you agree to receive inventory updates from Invicta Home Supply. You can unsubscribe anytime."
   );
   assert.ok(record.fields["Consent Timestamp"]);
-  assert.equal(resendCalls.length, 1);
+
+  assert.equal(resendCalls.length, 1, "exactly one email — the welcome email");
   assert.equal(resendCalls[0].to[0], "new@example.com");
   assert.equal(resendCalls[0].from, "Invicta Home Supply <updates@news.invictahomesupply.com>");
   assert.equal(resendCalls[0].reply_to, "hello@invictahomesupply.com");
-  assert.equal(resendCalls[0].subject, "Confirm your Invicta Home Supply subscription");
-  assert.ok(resendCalls[0].html.includes(record.fields["Confirmation Token"]), "confirmation link must carry this record's token");
-  assert.ok(resendCalls[0].text.includes(record.fields["Confirmation Token"]));
+  assert.equal(resendCalls[0].subject, "You’re subscribed to Invicta inventory updates");
+  assert.ok(!resendCalls[0].html.includes("Confirm"), "welcome email must not include a confirmation button/link");
+  assert.ok(!resendCalls[0].html.includes("/api/confirm-subscription"), "welcome email must not link to the confirmation endpoint");
+  assert.ok(resendCalls[0].html.includes(`/api/unsubscribe?token=${record.fields["Unsubscribe Token"]}`), "welcome email must include a working one-click unsubscribe URL");
+  assert.ok(resendCalls[0].text.includes(`/api/unsubscribe?token=${record.fields["Unsubscribe Token"]}`), "plain-text version must also include the unsubscribe URL");
+  assert.ok(resendCalls[0].html.includes("Browse Inventory"), "welcome email must include a Browse Inventory button");
 });
 
-await test("duplicate Active subscriber: no new record, no email, same neutral message", async () => {
-  store.push({ id: "rec1", fields: { Email: "active@example.com", Status: "Active" } });
+await test("duplicate Active subscriber: no new record, no repeated welcome email, same neutral message", async () => {
+  store.push({ id: "rec1", fields: { Email: "active@example.com", Status: "Active", "Unsubscribe Token": "z".repeat(64) } });
   const res = await subscribeHandler(subscribeRequest({ email: "active@example.com" }));
   assert.equal(res.status, 200);
   const body = await res.json();
   assert.equal(store.length, 1, "must not create a second record for an Active email");
-  assert.equal(resendCalls.length, 0, "must not send another email for an already-Active subscriber");
+  assert.equal(resendCalls.length, 0, "must not send another welcome email for an already-Active subscriber");
+
+  // Submitting the same Active email again — still no new record, no
+  // second email either time.
+  const res2 = await subscribeHandler(subscribeRequest({ email: "active@example.com" }));
+  assert.equal(res2.status, 200);
+  assert.equal(store.length, 1);
+  assert.equal(resendCalls.length, 0, "still no welcome email after a repeated duplicate submission");
 
   // Same public message as a brand-new signup — an attacker probing
   // whether an address is subscribed must not be able to tell from the
@@ -209,7 +225,7 @@ await test("duplicate Active subscriber: no new record, no email, same neutral m
   assert.equal(body.message, freshBody.message);
 });
 
-await test("existing Pending subscriber: confirmation token rotates and a new confirmation email sends, no duplicate record", async () => {
+await test("existing Pending record (from before single opt-in) becomes Active, Confirmation Token clears, welcome email sends", async () => {
   store.push({
     id: "rec1",
     fields: {
@@ -222,12 +238,14 @@ await test("existing Pending subscriber: confirmation token rotates and a new co
   const res = await subscribeHandler(subscribeRequest({ email: "pending@example.com" }));
   assert.equal(res.status, 200);
   assert.equal(store.length, 1);
-  assert.notEqual(store[0].fields["Confirmation Token"], "a".repeat(64), "confirmation token must rotate");
-  assert.equal(store[0].fields["Unsubscribe Token"], "b".repeat(64), "unsubscribe token is untouched on a Pending retry");
-  assert.equal(resendCalls.length, 1);
+  assert.equal(store[0].fields.Status, "Active");
+  assert.ok(store[0].fields["Confirmed At"]);
+  assert.equal(store[0].fields["Confirmation Token"], undefined, "Confirmation Token must be cleared");
+  assert.equal(store[0].fields["Unsubscribe Token"], "b".repeat(64), "the existing unsubscribe token is kept, not rotated");
+  assert.equal(resendCalls.length, 1, "a welcome email sends the first time this address becomes Active");
 });
 
-await test("resubscribing an Unsubscribed address: Pending again, both tokens rotate, Unsubscribed At clears, confirmation resends", async () => {
+await test("resubscribing an Unsubscribed address: Active again, unsubscribe token rotates, Unsubscribed At clears, welcome email resends", async () => {
   store.push({
     id: "rec1",
     fields: {
@@ -241,11 +259,13 @@ await test("resubscribing an Unsubscribed address: Pending again, both tokens ro
   const res = await subscribeHandler(subscribeRequest({ email: "back@example.com" }));
   assert.equal(res.status, 200);
   assert.equal(store.length, 1);
-  assert.equal(store[0].fields.Status, "Pending");
+  assert.equal(store[0].fields.Status, "Active");
   assert.equal(store[0].fields["Unsubscribed At"], undefined, "Unsubscribed At must be cleared");
-  assert.match(store[0].fields["Confirmation Token"], /^[a-f0-9]{64}$/);
-  assert.notEqual(store[0].fields["Unsubscribe Token"], "c".repeat(64), "unsubscribe token must also rotate on resubscribe");
-  assert.equal(resendCalls.length, 1);
+  assert.ok(store[0].fields["Confirmed At"]);
+  assert.equal(store[0].fields["Confirmation Token"], undefined);
+  assert.match(store[0].fields["Unsubscribe Token"], /^[a-f0-9]{64}$/);
+  assert.notEqual(store[0].fields["Unsubscribe Token"], "c".repeat(64), "unsubscribe token must rotate on resubscribe");
+  assert.equal(resendCalls.length, 1, "welcome email resends on reactivation");
 });
 
 await test("Airtable failure returns a generic 500 and never leaks the error body/token to the client", async () => {
@@ -267,11 +287,12 @@ await test("missing AIRTABLE_SUBSCRIBERS_TOKEN fails clearly (generic 500) and n
   assert.equal(store.length, 0, "no Airtable call should have been attempted without a token");
 });
 
-await test("Resend failure still returns 200 with the neutral message (record is created either way)", async () => {
+await test("Resend failure still returns 200 with the neutral message (Active record is created either way)", async () => {
   resendShouldFail = true;
   const res = await subscribeHandler(subscribeRequest({ email: "noemail@example.com" }));
   assert.equal(res.status, 200);
-  assert.equal(store.length, 1, "the Pending record is still created even if the confirmation email fails to send");
+  assert.equal(store.length, 1, "the Active record is still created even if the welcome email fails to send");
+  assert.equal(store[0].fields.Status, "Active");
 });
 
 await test("GET is rejected on /api/subscribe", async () => {
@@ -346,6 +367,35 @@ await test("repeated unsubscribe with the same token is idempotent and still suc
 await test("invalid/unknown unsubscribe token redirects to the invalid state", async () => {
   const res = await unsubscribeHandler(getRequest("/api/unsubscribe", { token: "2".repeat(64) }));
   assert.match(res.headers.get("location"), /\/unsubscribed\.html\?state=invalid$/);
+});
+
+await test("no secrets or complete tokens ever reach console output, across a real subscribe + a failure", async () => {
+  const originalError = console.error;
+  const originalWarn = console.warn;
+  const logged = [];
+  console.error = (...args) => logged.push(args.map(String).join(" "));
+  console.warn = (...args) => logged.push(args.map(String).join(" "));
+  try {
+    const res = await subscribeHandler(subscribeRequest({ email: "logcheck@example.com" }));
+    assert.equal(res.status, 200);
+    const unsubToken = store[0].fields["Unsubscribe Token"];
+
+    airtableShouldFail = true;
+    await subscribeHandler(subscribeRequest({ email: "logcheck2@example.com" }));
+    resendShouldFail = true;
+    airtableShouldFail = false;
+    await subscribeHandler(subscribeRequest({ email: "logcheck3@example.com" }));
+
+    const combined = logged.join("\n");
+    assert.ok(!combined.includes("test-subscribers-token"), "Airtable token must never be logged");
+    assert.ok(!combined.includes("re_test_key"), "Resend API key must never be logged");
+    assert.ok(!combined.includes("logcheck@example.com"), "subscriber email must never be logged");
+    assert.ok(!combined.includes(unsubToken), "a complete token must never be logged");
+    assert.ok(!/[a-f0-9]{64}/.test(combined), "no 64-hex-char token of any kind should appear in logs");
+  } finally {
+    console.error = originalError;
+    console.warn = originalWarn;
+  }
 });
 
 await test("rate limiting kicks in after repeated requests from the same IP", async () => {

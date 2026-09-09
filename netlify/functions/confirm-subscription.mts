@@ -2,12 +2,22 @@ import type { Context, Config } from "@netlify/functions";
 import { findSubscriberByField, updateSubscriber } from "./_shared/subscribers.mts";
 import { checkRateLimit, clientIp } from "./_shared/rate-limit.mts";
 
-// GET /api/confirm-subscription?token=... — the link a subscriber clicks
-// from the confirmation email sent by subscribe.mts. Turns a Pending
-// record Active. Invalid, expired (i.e. already-used — the token is
-// cleared on success, so reuse looks identical to "never existed"), or
-// malformed tokens all redirect to the same generic failure state; this
-// endpoint never reveals whether an email/token exists.
+// LEGACY — kept only for compatibility with confirmation emails sent
+// before Phase 1 was converted from double opt-in to single opt-in.
+// subscribe.mts no longer issues Confirmation Tokens or sends
+// confirmation emails, and nothing in the current site links here —
+// the homepage form and the welcome email both go straight to Active.
+// This still safely activates a valid legacy Pending record for anyone
+// who clicks an old confirmation link, and otherwise fails generically;
+// it is intentionally NOT removed rather than break those old links.
+// Delete this file (and subscribe-confirmed.html) once enough time has
+// passed that no legacy Pending records or old emails plausibly remain.
+//
+// GET /api/confirm-subscription?token=... — turns a Pending record
+// Active. Invalid, expired (i.e. already-used — the token is cleared on
+// success, so reuse looks identical to "never existed"), or malformed
+// tokens all redirect to the same generic failure state; this endpoint
+// never reveals whether an email/token exists.
 
 // Tokens are 64 lowercase hex chars (generateToken() — 32 random bytes).
 // Anything else is rejected before ever reaching Airtable.

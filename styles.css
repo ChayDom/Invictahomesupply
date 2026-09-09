@@ -2029,6 +2029,12 @@ footer.site-footer {
 .status-icon-success { background: var(--cream-dim); color: var(--charcoal); }
 .status-icon-invalid { background: var(--cream-dim); color: var(--amber-dark); }
 .status-card p { color: var(--text-muted); margin: 0 0 24px; }
+.status-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
 
 /* ---------- About page: compact spacing (shares .page-heading/.section/
    .optin with other pages, so overrides are scoped to body.about-page
