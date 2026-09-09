@@ -851,6 +851,9 @@ nav.primary-nav a.active {
   color: var(--text-muted);
   font-weight: 500;
 }
+.product-price .price-avail-qty {
+  margin-top: 2px;
+}
 /* Low-stock messaging ("Last box"/"Only 1 left") gets rust emphasis
    instead of the muted default, on cards and the Contractor View alike. */
 .low-stock-emph {
@@ -1437,6 +1440,23 @@ nav.primary-nav a.active {
 }
 .contractor-card-prices strong { font-family: 'Zilla Slab', Georgia, serif; }
 .contractor-card-avail { font-size: 0.8rem; margin-top: 4px; }
+/* Two-line "N.NN sq ft" / "N boxes available" quantity block — shared by
+   the desktop Contractor View table's Available column and the
+   Contractor mobile cards (both just interpolate flooringAvailabilityLabel()'s
+   returned markup, see inventory.js). The sq-ft line is nowrap so the
+   number and "sq ft" can never break across two lines. */
+.contractor-avail-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.contractor-avail-sqft {
+  font-weight: 700;
+  white-space: nowrap;
+}
+.contractor-avail-boxes {
+  font-weight: 400;
+}
 .contractor-card-cta { margin-top: 10px; }
 .contractor-card-cta .btn { width: 100%; text-align: center; }
 

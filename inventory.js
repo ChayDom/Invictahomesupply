@@ -620,7 +620,27 @@ function chipsAndRemainingHighlights(item, maxChips = 3) {
   return { chips: cardSpecChips(item).slice(0, maxChips), remainingHighlights: allHighlights };
 }
 
-// Boxes-available-aware low-stock messaging for Flooring's compact card.
+// "N box"/"N boxes available" — correct singular/plural wording, used
+// wherever a bare box count needs the "available" suffix (currently only
+// reachable here with boxes > 2, since 1 and 2 get their own low-stock
+// messages below, but kept genuinely singular/plural-correct rather than
+// hardcoded to the plural so it stays right if that ever changes).
+function boxAvailabilityText(boxes) {
+  return `${boxes} ${boxes === 1 ? "box" : "boxes"} available`;
+}
+
+// Boxes-available-aware low-stock messaging for Flooring's compact card,
+// the Contractor View table, and the Contractor mobile cards. When both
+// a sq-ft total and a box count are available (the common case), this
+// returns a two-line quantity block — bold sq-ft total on its own line,
+// normal-weight box count below it, e.g.:
+//   3,737.22 sq ft
+//   199 boxes available
+// (no parentheses around the box count — see contractor-avail-boxes).
+// The sq-ft line is kept on one line (never wrapping between the number
+// and "sq ft") via white-space: nowrap in CSS. Callers that only have a
+// bare string (no sq-ft figure) or a low-stock message get plain text
+// back, unchanged.
 function flooringAvailabilityLabel(item) {
   const boxes = boxesAvailable(item);
   if (boxes === null) {
@@ -629,7 +649,9 @@ function flooringAvailabilityLabel(item) {
   if (boxes === 1) return "Last box";
   if (boxes === 2) return "Only 2 boxes left";
   const sqftPart = typeof item.availableSqFt === "number" ? `${sqFtAvailable(item.availableSqFt)} sq ft` : null;
-  return sqftPart ? `${sqftPart} (${boxes} boxes)` : `${boxes} boxes`;
+  const boxText = boxAvailabilityText(boxes);
+  if (!sqftPart) return boxText;
+  return `<span class="contractor-avail-lines"><strong class="contractor-avail-sqft">${sqftPart}</strong><span class="contractor-avail-boxes">${boxText}</span></span>`;
 }
 
 // Shareable detail-page link for a card's photo/name — /product.html?id=
@@ -778,7 +800,9 @@ function boxPriceInfo(item) {
 // wrong by roughly an order of magnitude. A per-box price is still shown
 // as a secondary line, using the real Box Price field when present or
 // computing one (price/sqft x sqft/box) when it's not.
-//   Flooring     -> "$2.01 / sq ft" then "$42.11 / box · 1,026 sq ft (49 boxes)" (or "Last box"/"Only 2 boxes left" when low)
+//   Flooring     -> "$2.01 / sq ft" then "$42.11 / box · 1,026 sq ft / box" then its own
+//                    quantity line: bold "1,026 sq ft" / normal "49 boxes available"
+//                    (or "Last box"/"Only 2 boxes left" when low)
 //   each         -> "$649 each"     then "Retail $1,049 · 2 available"
 //   box (non-flooring) -> "$42.11 / box"  then "Retail $89.00 · 12 boxes available"
 //   roll         -> "$42.11 / roll" then "Retail $89.00 · 12 rolls available"
@@ -797,11 +821,16 @@ function priceBlock(item) {
     if (typeof item.sqFtPerUnit === "number" && item.sqFtPerUnit > 0) {
       subParts.push(`${sqFtAvailable(item.sqFtPerUnit)} sq ft / box`);
     }
+    // Available sq-ft + box count get their own line (same two-line
+    // bold/normal presentation as the Contractor View — see
+    // flooringAvailabilityLabel()) rather than being folded into the
+    // middot-joined box-price/coverage line above: that line is a
+    // single flowing sentence, and the sq-ft/box pair needs to stack.
     const availLabel = flooringAvailabilityLabel(item);
-    if (availLabel) subParts.push(availLabel);
     return `<div class="product-price product-price-flooring">
       <div class="price-line">${money2(item.price)} <span class="price-unit">/ sq ft</span></div>
       ${subParts.length ? `<div class="price-avail">${subParts.join(" &middot; ")}</div>` : ""}
+      ${availLabel ? `<div class="price-avail price-avail-qty">${availLabel}</div>` : ""}
     </div>`;
   }
 
