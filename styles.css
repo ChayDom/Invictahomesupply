@@ -1075,7 +1075,7 @@ nav.primary-nav a.active {
   align-items: center;
   justify-content: center;
   flex-wrap: wrap;
-  margin-bottom: 44px;
+  margin-bottom: 32px;
 }
 .filter-btn {
   display: inline-flex;
@@ -1534,6 +1534,12 @@ nav.primary-nav a.active {
 }
 .step p { color: var(--text-muted); font-size: 0.92rem; }
 
+#how-it-works { padding: 60px 32px; }
+#how-it-works .section-head { margin-bottom: 36px; }
+
+#fresh-inventory { padding: 64px 32px; }
+#fresh-inventory .section-head { margin-bottom: 36px; }
+
 /* ---------- About / two-col ---------- */
 .two-col {
   display: grid;
@@ -1604,7 +1610,7 @@ nav.primary-nav a.active {
 footer.site-footer {
   background: var(--charcoal);
   color: var(--cream-dim);
-  padding: 56px 32px 28px;
+  padding: 44px 32px 24px;
 }
 .footer-grid {
   display: grid;
@@ -1920,7 +1926,7 @@ footer.site-footer {
    body.contact-page so index.html/shop.html/about.html keep their own
    .section spacing. ---------- */
 .contact-page .page-heading { padding: 28px 32px 10px; }
-.contact-page .section { padding: 48px 32px 88px; }
+.contact-page .section { padding: 48px 32px 56px; }
 
 /* ---------- Recently reserved ticker ---------- */
 .ticker-wrap {
