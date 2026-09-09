@@ -76,21 +76,38 @@ document.addEventListener("DOMContentLoaded", () => {
   // combining the two requires re-rendering from the fetched item array
   // rather than just hiding/showing already-rendered cards.
 
-  bindSubscribeForm();
+  bindSubscribeForms();
 });
 
-// Homepage "Get new inventory by email" form (#optin-newsletter in
-// index.html) -> POST /api/subscribe (netlify/functions/subscribe.mts).
-// One neutral status message either way — the endpoint itself never
-// reveals whether an address was new, already pending, or already
-// active, so this doesn't either.
-function bindSubscribeForm() {
-  const form = document.getElementById("subscribe-form");
-  if (!form) return;
-  const emailInput = document.getElementById("subscribe-email");
-  const submitBtn = document.getElementById("subscribe-submit");
-  const statusEl = document.getElementById("subscribe-status");
-  const honeypot = document.getElementById("subscribe-company");
+// Every "get new inventory by email" form on the site — the full form on
+// the homepage (#inventory-updates) and the compact strip on the shop
+// page both share this one implementation, each independently -> POST
+// /api/subscribe (netlify/functions/subscribe.mts). One neutral status
+// message either way — the endpoint itself never reveals whether an
+// address was new, already pending, or already active, so this doesn't
+// either.
+//
+// Scoped entirely by class/structure (form.optin-form, and a
+// form.querySelector() for its own email/submit/status/honeypot
+// elements) rather than page-global IDs, so any number of these forms
+// can exist on one page safely: nothing here assumes there's only one,
+// and nothing breaks if two forms' inner elements happen to share
+// element IDs (they don't today, but this doesn't depend on that either).
+function bindSubscribeForms() {
+  document.querySelectorAll("form.optin-form").forEach(bindOneSubscribeForm);
+}
+
+function bindOneSubscribeForm(form) {
+  // Guards against ever double-binding the same form (e.g. if init code
+  // runs twice) rather than relying on it just not happening.
+  if (form.dataset.subscribeBound === "true") return;
+  form.dataset.subscribeBound = "true";
+
+  const emailInput = form.querySelector('input[type="email"]');
+  const submitBtn = form.querySelector('button[type="submit"]');
+  const statusEl = form.querySelector(".optin-status");
+  const honeypot = form.querySelector('input[name="company"]');
+  if (!emailInput || !submitBtn || !statusEl) return;
 
   const showStatus = (text, state) => {
     statusEl.textContent = text;

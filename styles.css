@@ -1934,7 +1934,7 @@ footer.site-footer {
    default (64->48) — scoped by ID so about.html's copy of this section
    is unaffected. Heading/paragraph/button stay centered via the base
    .optin rules above (text-align:center, and the p's own margin:0 auto). */
-#optin-newsletter { padding: 48px 32px; }
+#inventory-updates { padding: 48px 32px; }
 .optin h2 { color: var(--cream); }
 .optin p {
   color: var(--cream-dim);
@@ -1953,7 +1953,7 @@ footer.site-footer {
 }
 .optin .btn-outline:hover { background: var(--cream); color: var(--charcoal); }
 
-/* ---------- Homepage email subscribe form (#optin-newsletter) ---------- */
+/* ---------- Homepage email subscribe form (#inventory-updates) ---------- */
 .optin-form {
   max-width: 420px;
   margin: 0 auto;
@@ -2001,6 +2001,15 @@ footer.site-footer {
   max-width: 420px;
 }
 .optin-status[data-state="error"] { color: var(--gold); }
+
+/* Compact variant — the shop page's subscribe strip. Noticeably shorter
+   than both the shared .optin default (64px) and the homepage's already
+   -reduced #inventory-updates (48px): smaller heading, tighter
+   paragraph-to-form gap, no consent microcopy (it's already shown once
+   on the homepage form this reuses). */
+.optin-compact { padding: 28px 32px; }
+.optin-compact h2 { font-size: 1.2rem; margin-bottom: 0.3em; }
+.optin-compact p { margin-bottom: 16px; }
 
 /* ---------- Subscribe-confirmed / unsubscribed status pages ---------- */
 .status-page {
