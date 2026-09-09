@@ -612,7 +612,7 @@ function photoBlock(item) {
   const alt = escapeAttr(item.name);
   const thumbs = item.photos.length > 1
     ? `<div class="thumb-row">${item.photos.map((p, i) =>
-        `<img class="thumb${i === 0 ? " active" : ""}" src="${item.photoThumbs[i]}" data-full="${item.photos[i]}" alt="" loading="lazy" width="40" height="40">`).join("")}</div>`
+        `<img class="thumb${i === 0 ? " active" : ""}" src="${item.photoThumbs[i]}" data-full="${item.photos[i]}" alt="" loading="lazy" width="40" height="40" tabindex="0" role="button" aria-label="View photo ${i + 1} of ${item.photos.length}"${i === 0 ? ' aria-current="true"' : ""}>`).join("")}</div>`
     : "";
   return `<a class="product-photo main-photo" href="${href}">
     <img src="${item.photoCards[0]}" alt="${alt}" loading="lazy" width="600" height="600" data-main-photo>
@@ -673,9 +673,9 @@ function actionButtons(item) {
   }
   const smsHref = smsHrefForItem(item);
   if (item.webCategory !== "Flooring") {
-    return `<a href="${smsHref}" class="btn btn-dark btn-small btn-block">Text About This Item</a>`;
+    return `<a href="${smsHref}" class="btn btn-dark btn-small btn-block">Check Availability</a>`;
   }
-  return `<a href="${smsHref}" class="btn btn-dark btn-small">Text About This Item</a>
+  return `<a href="${smsHref}" class="btn btn-dark btn-small">Check Availability</a>
     <button type="button" class="btn btn-outline btn-small" data-quote-id="${item.id}">Get a Quote</button>`;
 }
 
@@ -792,11 +792,19 @@ function productCard(item) {
 function bindThumbClicks(container) {
   container.querySelectorAll(".product-card").forEach(card => {
     const main = card.querySelector("[data-main-photo]");
+    const selectThumb = thumb => {
+      card.querySelectorAll(".thumb").forEach(t => { t.classList.remove("active"); t.removeAttribute("aria-current"); });
+      thumb.classList.add("active");
+      thumb.setAttribute("aria-current", "true");
+      if (main) main.src = thumb.getAttribute("data-full");
+    };
     card.querySelectorAll(".thumb").forEach(thumb => {
-      thumb.addEventListener("click", () => {
-        card.querySelectorAll(".thumb").forEach(t => t.classList.remove("active"));
-        thumb.classList.add("active");
-        if (main) main.src = thumb.getAttribute("data-full");
+      thumb.addEventListener("click", () => selectThumb(thumb));
+      // tabindex="0" (see photoBlock()) makes these <img>s keyboard-
+      // focusable, but only a real <button>/<a> gets Enter/Space
+      // activation for free — wire it up the same way here.
+      thumb.addEventListener("keydown", e => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectThumb(thumb); }
       });
     });
   });
@@ -2174,7 +2182,7 @@ function productDetailPhotoBlock(item) {
   const alt = escapeAttr(item.name);
   const thumbs = item.photos.length > 1
     ? `<div class="thumb-row">${item.photos.map((p, i) =>
-        `<img class="thumb${i === 0 ? " active" : ""}" src="${item.photoThumbs[i]}" data-full="${item.photos[i]}" alt="" loading="lazy" width="40" height="40">`).join("")}</div>`
+        `<img class="thumb${i === 0 ? " active" : ""}" src="${item.photoThumbs[i]}" data-full="${item.photos[i]}" alt="" loading="lazy" width="40" height="40" tabindex="0" role="button" aria-label="View photo ${i + 1} of ${item.photos.length}"${i === 0 ? ' aria-current="true"' : ""}>`).join("")}</div>`
     : "";
   return `<div class="product-photo main-photo">
     <img src="${item.photos[0]}" alt="${alt}" width="800" height="800" data-main-photo>
@@ -2269,7 +2277,7 @@ function initProductDetail(items) {
         ${highlightLines.length ? `<ul class="product-details">${highlightLines.map(h => `<li>${h}</li>`).join("")}</ul>` : ""}
         <div class="product-detail-actions">
           ${isAvailable(item)
-            ? `<a href="${smsHrefForItem(item)}" class="btn btn-dark">Text about this item</a>`
+            ? `<a href="${smsHrefForItem(item)}" class="btn btn-dark">Check Availability</a>`
             : `<span class="btn btn-outline" style="opacity:.5; cursor:default;">${item.statusLabel}</span>`}
           <a href="tel:" data-tel-link class="btn btn-outline">Call</a>
           <a href="${backHref}" class="btn btn-outline">Back to inventory</a>
@@ -2283,12 +2291,20 @@ function initProductDetail(items) {
   const telLink = container.querySelector("[data-tel-link]");
   if (telLink && window.SITE_CONFIG) telLink.href = `tel:${window.SITE_CONFIG.phoneHref}`;
 
+  const selectThumb = thumb => {
+    container.querySelectorAll(".thumb").forEach(t => { t.classList.remove("active"); t.removeAttribute("aria-current"); });
+    thumb.classList.add("active");
+    thumb.setAttribute("aria-current", "true");
+    const main = container.querySelector("[data-main-photo]");
+    if (main) main.src = thumb.getAttribute("data-full");
+  };
   container.querySelectorAll(".thumb").forEach(thumb => {
-    thumb.addEventListener("click", () => {
-      container.querySelectorAll(".thumb").forEach(t => t.classList.remove("active"));
-      thumb.classList.add("active");
-      const main = container.querySelector("[data-main-photo]");
-      if (main) main.src = thumb.getAttribute("data-full");
+    thumb.addEventListener("click", () => selectThumb(thumb));
+    // tabindex="0" (see productDetailPhotoBlock()) makes these <img>s
+    // keyboard-focusable, but only a real <button>/<a> gets Enter/Space
+    // activation for free — wire it up the same way here.
+    thumb.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectThumb(thumb); }
     });
   });
 }

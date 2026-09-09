@@ -315,6 +315,20 @@ nav.primary-nav a.active {
   background-size: cover;
   background-position: right center;
 }
+/* Mobile crop only: the hero box here is much taller relative to its
+   width than desktop's, so "cover" scales the (very wide, short) photo
+   up a lot and "right center" — tuned for the desktop side-by-side
+   layout — shows a narrow slice off the image's right edge: mostly
+   window/fireplace, with the actual flooring reduced to a thin sliver.
+   38% keeps the same vertical crop (height-bound cover, so Y never
+   moves) but shifts the visible window left onto the open, clearly-lit
+   plank floor in the room's middle distance instead. Text still sits
+   over the same left-heavy scrim above, unchanged. */
+@media (max-width: 900px) {
+  .hero-photo {
+    background-position: 38% center;
+  }
+}
 
 
 .hero .eyebrow {
@@ -769,12 +783,21 @@ nav.primary-nav a.active {
 
 .product-info h4 {
   font-size: 1rem;
+  line-height: 1.6;
   margin: 0;
-  /* Max 2 lines — a long real product name (see the site's actual Name
+  /* Max 3 lines — a long real product name (see the site's actual Name
      field, never shortened/parsed) never pushes the card past its
-     target height. */
+     target height. min-height reserves that same 3-line block for every
+     card regardless of how many lines its own title actually needs, so
+     a 1-line title and a 3-line title still leave price/actions starting
+     at the same vertical offset within the card — needed because the
+     shop grid deliberately uses align-items:start, not stretch (see
+     .product-grid's own comment: stretching the grid falls apart the
+     moment one card's "More details" is expanded and its siblings
+     aren't), so equal row height can't come from the grid itself. */
+  min-height: 4.8em;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -1048,6 +1071,7 @@ nav.primary-nav a.active {
 }
 .search-input::-webkit-search-cancel-button { display: none; }
 .search-input:focus { outline: none; border-color: var(--charcoal); }
+.search-input:focus-visible { outline: 2px solid var(--charcoal); outline-offset: 2px; }
 .search-clear {
   position: absolute;
   right: 8px;
@@ -1774,7 +1798,7 @@ footer.site-footer {
   .product-card .product-more { display: none; }
   .product-card .product-info { grid-column: 2; grid-row: 1; padding: 0; }
   .product-card .product-actions { grid-column: 2; grid-row: 2; padding: 0; margin-top: 8px; }
-  /* One primary CTA on mobile ("Text About This Item") — Flooring's
+  /* One primary CTA on mobile ("Check Availability") — Flooring's
      second "Get a Quote" button belongs on the product detail page
      here too, same as the gallery/details above. Only reachable via a
      mixed-category grid (e.g. the "All" tab or New This Week); Flooring
@@ -1789,6 +1813,12 @@ footer.site-footer {
 
 @media (max-width: 480px) {
   .category-grid, .product-grid { grid-template-columns: 1fr; }
+  /* .product-grid is a single column here, so there's no sibling card
+     in the same row left to align with — the reserved 3-line title
+     height (see .product-info h4) only exists to keep prices/buttons
+     lined up across a row and just wastes space on a short title once
+     that row no longer exists. */
+  .product-info h4 { min-height: 0; }
   /* .brand has flex-shrink:0 (deliberately, so the desktop row never
      crushes the logo below its own content width — see .brand's own
      comment) — on narrow viewports that same protection means the
@@ -1835,6 +1865,11 @@ footer.site-footer {
   flex-shrink: 0;
 }
 .thumb.active, .thumb:hover { opacity: 1; border-color: var(--amber); }
+/* tabindex="0" (see photoBlock()/productDetailPhotoBlock() in
+   inventory.js) makes these keyboard-focusable; without this they'd
+   fall back on the browser's own (inconsistent, easy-to-miss-at-40px)
+   default image focus ring. */
+.thumb:focus-visible { outline: 2px solid var(--charcoal); outline-offset: 2px; }
 
 .product-desc {
   font-size: 0.85rem;
@@ -2133,10 +2168,13 @@ body.modal-open { overflow: hidden; }
 
 .modal-close {
   position: absolute;
-  top: 14px;
-  right: 14px;
-  width: 32px;
-  height: 32px;
+  top: 10px;
+  right: 10px;
+  /* Bumped from 32px toward the ~44px touch-target guideline — kept at
+     40px (not the full 44px) so it doesn't crowd the modal's own 32px
+     padding/corner radius any further. */
+  width: 40px;
+  height: 40px;
   border: none;
   background: none;
   font-size: 1.4rem;
@@ -2201,6 +2239,7 @@ body.modal-open { overflow: hidden; }
   color: var(--charcoal);
 }
 .form-field input:focus { outline: none; border-color: var(--charcoal); }
+.form-field input:focus-visible { outline: 2px solid var(--charcoal); outline-offset: 2px; }
 
 .form-field-checkbox {
   flex-direction: row;
@@ -2293,6 +2332,7 @@ body.modal-open { overflow: hidden; }
 }
 .calc-input-narrow { width: 52px; }
 .calc-input:focus { outline: none; border-color: var(--charcoal); }
+.calc-input:focus-visible { outline: 2px solid var(--charcoal); outline-offset: 2px; }
 .calc-unit {
   font-size: 0.78rem;
   color: var(--text-muted);
