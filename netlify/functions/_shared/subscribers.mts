@@ -1,7 +1,12 @@
 // Shared Airtable helpers for the "Inventory Subscribers" table — used by
-// subscribe.mts, confirm-subscription.mts, and unsubscribe.mts. Reuses the
-// same AIRTABLE_TOKEN/AIRTABLE_BASE_ID env vars and raw-fetch pattern as
-// netlify/functions/inventory.mts (no Airtable SDK, no new dependency).
+// subscribe.mts, confirm-subscription.mts, and unsubscribe.mts. Reuses
+// AIRTABLE_BASE_ID and the raw-fetch pattern from
+// netlify/functions/inventory.mts (no Airtable SDK, no new dependency),
+// but reads a dedicated AIRTABLE_SUBSCRIBERS_TOKEN rather than the
+// inventory function's AIRTABLE_TOKEN — the original token is scoped
+// read-only against Website Products and isn't authorized to write to
+// Inventory Subscribers (confirmed by a live 403). inventory.mts itself
+// is untouched and keeps using AIRTABLE_TOKEN.
 //
 // Table fields (already exist in Airtable, never created/renamed here):
 //   Email, Status (Pending/Active/Unsubscribed), Confirmation Token,
@@ -14,11 +19,20 @@ import { randomBytes } from "node:crypto";
 
 const DEFAULT_TABLE_NAME = "Inventory Subscribers";
 
+// Fails clearly (a descriptive thrown Error, never the token's value)
+// the moment a subscribe/confirm/unsubscribe request tries to touch
+// Airtable without AIRTABLE_SUBSCRIBERS_TOKEN configured, rather than
+// silently falling through to a confusing 403 from Airtable itself.
 function airtableConfig() {
-  const token = Netlify.env.get("AIRTABLE_TOKEN");
+  const token = Netlify.env.get("AIRTABLE_SUBSCRIBERS_TOKEN");
   const baseId = Netlify.env.get("AIRTABLE_BASE_ID");
+  if (!token) {
+    throw new Error("AIRTABLE_SUBSCRIBERS_TOKEN is not configured");
+  }
+  if (!baseId) {
+    throw new Error("AIRTABLE_BASE_ID is not configured");
+  }
   const tableName = Netlify.env.get("AIRTABLE_SUBSCRIBERS_TABLE_NAME") || DEFAULT_TABLE_NAME;
-  if (!token || !baseId) return null;
   return { token, baseId, tableName };
 }
 
@@ -55,8 +69,7 @@ function escapeFormulaValue(value: string): string {
 }
 
 async function airtableRequest(path: string, init: RequestInit) {
-  const cfg = airtableConfig();
-  if (!cfg) throw new Error("Airtable is not configured");
+  const cfg = airtableConfig(); // throws clearly if AIRTABLE_SUBSCRIBERS_TOKEN/AIRTABLE_BASE_ID are missing
   const url = `https://api.airtable.com/v0/${cfg.baseId}/${encodeURIComponent(cfg.tableName)}${path}`;
   const res = await fetch(url, {
     ...init,

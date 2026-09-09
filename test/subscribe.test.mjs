@@ -16,10 +16,17 @@
 // ===================================================================
 import assert from "node:assert/strict";
 
+// AIRTABLE_SUBSCRIBERS_TOKEN — a dedicated token for the Inventory
+// Subscribers table, distinct from AIRTABLE_TOKEN (which inventory.mts
+// uses, and which is not authorized to write subscriber records — see
+// _shared/subscribers.mts). Deliberately no AIRTABLE_TOKEN here: these
+// tests only exercise subscribe/confirm/unsubscribe, which must never
+// read it.
+let subscribersTokenValue = "test-subscribers-token";
 globalThis.Netlify = {
   env: {
     get: (key) => ({
-      AIRTABLE_TOKEN: "test-airtable-token",
+      AIRTABLE_SUBSCRIBERS_TOKEN: subscribersTokenValue,
       AIRTABLE_BASE_ID: "appTestBaseId0001",
       RESEND_API_KEY: "re_test_key",
     })[key],
@@ -46,6 +53,7 @@ function resetBackend() {
   resendCalls = [];
   airtableShouldFail = false;
   resendShouldFail = false;
+  subscribersTokenValue = "test-subscribers-token";
 }
 
 function cloneRecord(r) {
@@ -246,7 +254,17 @@ await test("Airtable failure returns a generic 500 and never leaks the error bod
   assert.equal(res.status, 500);
   const body = await res.json();
   assert.equal(body.error, "Something went wrong. Please try again in a moment.");
-  assert.ok(!JSON.stringify(body).includes("test-airtable-token"), "response must never contain the Airtable token");
+  assert.ok(!JSON.stringify(body).includes("test-subscribers-token"), "response must never contain the Airtable token");
+});
+
+await test("missing AIRTABLE_SUBSCRIBERS_TOKEN fails clearly (generic 500) and never falls back to AIRTABLE_TOKEN or leaks anything", async () => {
+  subscribersTokenValue = undefined;
+  const res = await subscribeHandler(subscribeRequest({ email: "no-token@example.com" }));
+  assert.equal(res.status, 500);
+  const body = await res.json();
+  assert.equal(body.error, "Something went wrong. Please try again in a moment.");
+  assert.ok(!JSON.stringify(body).toLowerCase().includes("token"), "the response body must never mention tokens at all");
+  assert.equal(store.length, 0, "no Airtable call should have been attempted without a token");
 });
 
 await test("Resend failure still returns 200 with the neutral message (record is created either way)", async () => {
@@ -344,6 +362,20 @@ await test("GET is required on /api/unsubscribe", async () => {
   const req = new Request("https://example.netlify.app/api/unsubscribe?token=" + "3".repeat(64), { method: "POST" });
   const res = await unsubscribeHandler(req);
   assert.equal(res.status, 405);
+});
+
+await test("confirm-subscription fails safely to the invalid state when AIRTABLE_SUBSCRIBERS_TOKEN is missing", async () => {
+  subscribersTokenValue = undefined;
+  const res = await confirmHandler(getRequest("/api/confirm-subscription", { token: "4".repeat(64) }));
+  assert.equal(res.status, 302);
+  assert.match(res.headers.get("location"), /state=invalid$/);
+});
+
+await test("unsubscribe fails safely to the invalid state when AIRTABLE_SUBSCRIBERS_TOKEN is missing", async () => {
+  subscribersTokenValue = undefined;
+  const res = await unsubscribeHandler(getRequest("/api/unsubscribe", { token: "5".repeat(64) }));
+  assert.equal(res.status, 302);
+  assert.match(res.headers.get("location"), /state=invalid$/);
 });
 
 if (failures > 0) {
