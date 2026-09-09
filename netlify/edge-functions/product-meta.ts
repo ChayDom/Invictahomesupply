@@ -13,8 +13,14 @@ import type { Context, Config } from "@netlify/edge-functions";
 // Always returns a real page — any failure below (missing config,
 // Airtable down, unexpected exception) falls back to the original,
 // untouched static response (with only the safety-net noindex meta
-// added), never an error response. See `onError: "continue"` below for
-// the outermost safety net on top of this function's own try/catch.
+// added), never an error response. See `onError: "bypass"` below for
+// the outermost safety net on top of this function's own try/catch:
+// if this function throws in a way its own try/catch doesn't cover,
+// Netlify skips it and serves the underlying page rather than an
+// error page ("fail", Netlify's default) or "continue" (not a real
+// onError value despite an earlier version of this file using it —
+// verified against Netlify's actual accepted values: "fail" (default),
+// "bypass", or a same-site path starting with "/").
 
 const PRODUCTION_ORIGIN = "https://invictahomesupply.com";
 const FALLBACK_IMAGE = `${PRODUCTION_ORIGIN}/assets/og/invicta-og-image.png`;
@@ -299,5 +305,5 @@ export default async (req: Request, context: Context) => {
 
 export const config: Config = {
   path: "/product.html",
-  onError: "continue",
+  onError: "bypass",
 };
