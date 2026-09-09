@@ -45,6 +45,7 @@ export interface SubscriberFields {
   "Consent Timestamp"?: string;
   "Confirmed At"?: string;
   "Unsubscribed At"?: string | null;
+  "Last Digest Sent At"?: string | null;
 }
 
 export interface SubscriberRecord {
@@ -120,4 +121,25 @@ export async function updateSubscriber(id: string, fields: SubscriberFields): Pr
     body: JSON.stringify({ records: [{ id, fields }] }),
   });
   return json.records[0];
+}
+
+// Every Active subscriber, paginated (Airtable caps a single response at
+// 100 records and hands back an `offset` token for the next page) — used
+// by the weekly digest, which has to walk the whole table rather than
+// look up one record. Server-side filtered to Status=Active only; the
+// digest's own eligibility check (valid email format, a present
+// Unsubscribe Token) still runs per-record afterward since those aren't
+// filterByFormula-friendly in the same single pass.
+export async function listActiveSubscribers(): Promise<SubscriberRecord[]> {
+  const formula = `{Status} = "Active"`;
+  const all: SubscriberRecord[] = [];
+  let offset: string | undefined;
+  do {
+    const params = new URLSearchParams({ filterByFormula: formula, pageSize: "100" });
+    if (offset) params.set("offset", offset);
+    const json = await airtableRequest(`?${params.toString()}`, { method: "GET" });
+    all.push(...(json.records || []));
+    offset = json.offset;
+  } while (offset);
+  return all;
 }

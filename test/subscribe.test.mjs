@@ -28,12 +28,14 @@ import assert from "node:assert/strict";
 // tests only exercise subscribe/confirm/unsubscribe, which must never
 // read it.
 let subscribersTokenValue = "test-subscribers-token";
+let mailingAddressValue = "123 Main St, McKinney, TX 75069";
 globalThis.Netlify = {
   env: {
     get: (key) => ({
       AIRTABLE_SUBSCRIBERS_TOKEN: subscribersTokenValue,
       AIRTABLE_BASE_ID: "appTestBaseId0001",
       RESEND_API_KEY: "re_test_key",
+      BUSINESS_MAILING_ADDRESS: mailingAddressValue,
     })[key],
   },
 };
@@ -59,6 +61,7 @@ function resetBackend() {
   airtableShouldFail = false;
   resendShouldFail = false;
   subscribersTokenValue = "test-subscribers-token";
+  mailingAddressValue = "123 Main St, McKinney, TX 75069";
 }
 
 function cloneRecord(r) {
@@ -200,6 +203,18 @@ await test("new subscription is Active immediately, no confirmation token, and s
   assert.ok(resendCalls[0].html.includes(`/api/unsubscribe?token=${record.fields["Unsubscribe Token"]}`), "welcome email must include a working one-click unsubscribe URL");
   assert.ok(resendCalls[0].text.includes(`/api/unsubscribe?token=${record.fields["Unsubscribe Token"]}`), "plain-text version must also include the unsubscribe URL");
   assert.ok(resendCalls[0].html.includes("Browse Inventory"), "welcome email must include a Browse Inventory button");
+  assert.ok(resendCalls[0].html.includes("123 Main St, McKinney, TX 75069"), "welcome email footer must include the configured mailing address");
+  assert.ok(resendCalls[0].text.includes("123 Main St, McKinney, TX 75069"));
+  assert.ok(resendCalls[0].html.includes("subscribed to weekly inventory updates from Invicta Home Supply"), "welcome email footer must include the subscription-context line");
+});
+
+await test("welcome email is never sent when BUSINESS_MAILING_ADDRESS is not configured (subscription itself still succeeds)", async () => {
+  mailingAddressValue = undefined;
+  const res = await subscribeHandler(subscribeRequest({ email: "noaddress@example.com" }));
+  assert.equal(res.status, 200);
+  assert.equal(store.length, 1, "the subscriber record is still created");
+  assert.equal(store[0].fields.Status, "Active");
+  assert.equal(resendCalls.length, 0, "no welcome email without a configured mailing address");
 });
 
 await test("duplicate Active subscriber: no new record, no repeated welcome email, same neutral message", async () => {

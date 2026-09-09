@@ -6,7 +6,7 @@ import {
   generateToken,
   type SubscriberFields,
 } from "./_shared/subscribers.mts";
-import { sendEmail, welcomeEmail } from "./_shared/resend.mts";
+import { sendEmail, welcomeEmail, getMailingAddress } from "./_shared/resend.mts";
 import { checkRateLimit, clientIp } from "./_shared/rate-limit.mts";
 
 // Phase 1 of weekly inventory email subscriptions — single opt-in: a
@@ -163,11 +163,20 @@ export default async (req: Request, context: Context): Promise<Response> => {
     }
 
     if (shouldSendWelcome && unsubscribeToken) {
-      const origin = new URL(req.url).origin;
-      const browseUrl = `${origin}/shop`;
-      const unsubscribeUrl = `${origin}/api/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`;
-      const emailContent = welcomeEmail(browseUrl, unsubscribeUrl);
-      await sendEmail({ to: email, ...emailContent });
+      // No welcome email — commercial or otherwise — without a real
+      // business mailing address configured. The subscription itself
+      // still succeeds (the record above is already Active); only the
+      // email is held back, and only until this is set.
+      const mailingAddress = getMailingAddress();
+      if (!mailingAddress) {
+        console.warn("Invicta subscribe: BUSINESS_MAILING_ADDRESS is not configured — welcome email not sent");
+      } else {
+        const origin = new URL(req.url).origin;
+        const browseUrl = `${origin}/shop`;
+        const unsubscribeUrl = `${origin}/api/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`;
+        const emailContent = welcomeEmail(browseUrl, unsubscribeUrl, origin, mailingAddress);
+        await sendEmail({ to: email, ...emailContent });
+      }
     }
 
     return jsonResponse(200, { message: NEUTRAL_SUCCESS_MESSAGE });
