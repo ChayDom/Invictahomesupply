@@ -94,10 +94,21 @@ const EMAIL_FOOTER_INNER_STYLE = "max-width:340px;margin:0 auto;";
 // mailingAddress, so the operating entity's name always renders with
 // consistent spacing/capitalization instead of however it happens to
 // be typed into the mailing-address config value.
+// The subscription-explanation line and the business/legal identity
+// block (name, operating entity, address, links) are two visually
+// distinct ideas sharing one footer — split into sibling divs, the
+// second offset by EMAIL_FOOTER_IDENTITY_GAP, so there's a clear
+// paragraph-style gap between them. The identity block itself is
+// unchanged: still one div, still joined by plain <br> at the same
+// compact line-height as before.
+const EMAIL_FOOTER_IDENTITY_GAP = "margin-top:14px;";
+
 function footerHtml(unsubscribeUrl: string, siteUrl: string, mailingAddress: string): string {
   return `<div style="${EMAIL_FOOTER_STYLE}">
       <div style="${EMAIL_FOOTER_INNER_STYLE}">
-        You&rsquo;re receiving this because you subscribed to weekly inventory updates from Invicta Home Supply.<br>
+        You&rsquo;re receiving this because you subscribed to weekly inventory updates from Invicta Home Supply.
+      </div>
+      <div style="${EMAIL_FOOTER_INNER_STYLE}${EMAIL_FOOTER_IDENTITY_GAP}">
         Invicta Home Supply<br>
         Operated by Flipfusion Apps LLC<br>
         ${escapeHtml(mailingAddress)}<br>
@@ -110,6 +121,7 @@ function footerHtml(unsubscribeUrl: string, siteUrl: string, mailingAddress: str
 function footerText(unsubscribeUrl: string, siteUrl: string, mailingAddress: string): string {
   return [
     "You're receiving this because you subscribed to weekly inventory updates from Invicta Home Supply.",
+    "",
     "Invicta Home Supply",
     "Operated by Flipfusion Apps LLC",
     mailingAddress,
