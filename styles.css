@@ -150,28 +150,12 @@ nav.primary-nav a.active {
   border-color: var(--amber);
 }
 
-.nav-cta {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  /* Never let this shrink below its content — the phone link and CTA
-     button both need white-space:nowrap to hold their width, and a
-     shrunk-but-not-actually-narrower box is what let this get clipped
-     past the container's right edge. (Do NOT also add margin-left:auto
-     here: .nav-row's justify-content:space-between already pins the
-     first/last flex children flush to the row's edges and splits the
-     leftover space evenly between all three items; an auto margin on
-     this item would swallow that entire leftover into its own margin,
-     collapsing the gap between .brand and .primary-nav to zero.) */
-  flex-shrink: 0;
-}
-
-.phone-icon { width: 17px; height: 17px; flex-shrink: 0; }
-
 /* Groups the Call/Text buttons and the hamburger as one right-aligned
-   unit. Without this, .nav-row's justify-content:space-between (see
-   .nav-cta's comment above) spread its 3-4 children evenly across the
-   row's leftover space — with the nav links hidden on mobile, that put
+   unit. Without this, .nav-row's justify-content:space-between (which
+   pins the first/last flex children flush to the row's edges and
+   splits the leftover space evenly between all three items) spread its
+   3-4 children evenly across the row's leftover space — with the nav
+   links hidden on mobile, that put
    equal gaps on both sides of .contact-cta, leaving it stranded nearer
    the middle of the row instead of flush against the hamburger. On
    desktop this wrapper is invisible: it holds .contact-cta (visible)
@@ -433,15 +417,6 @@ nav.primary-nav a.active {
   flex-wrap: wrap;
 }
 
-.hero-text-link {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--cream);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-.hero-text-link:hover { color: var(--gold); }
-
 .hero .btn-outline {
   color: var(--cream);
   border-color: var(--cream-dim);
@@ -509,15 +484,6 @@ nav.primary-nav a.active {
   .stat-strip { grid-template-columns: 1fr; }
   .stat-cell { border-left: none !important; border-bottom: 1px solid rgba(238,241,234,0.14); }
   .stat-cell:last-child { border-bottom: none; }
-}
-
-/* ---------- Category grid (icon cards, still used on About) ---------- */
-.category-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 24px;
-  max-width: var(--max-width);
-  margin: 0 auto;
 }
 
 /* ---------- Category tiles (homepage) — photo-style tiles standing in
@@ -654,33 +620,6 @@ nav.primary-nav a.active {
 }
 @media (max-width: 360px) {
   .category-tile-grid { grid-template-columns: 1fr; }
-}
-
-.category-card {
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-card);
-  padding: 40px 24px;
-  text-align: center;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-.category-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 14px 30px rgba(36,53,42,0.1);
-}
-.category-card .icon {
-  width: 46px;
-  height: 46px;
-  margin: 0 auto 20px;
-  color: var(--amber-dark);
-}
-.category-card h3 {
-  font-size: 1.05rem;
-  margin-bottom: 6px;
-}
-.category-card span {
-  font-size: 0.82rem;
-  color: var(--text-muted);
 }
 
 /* ---------- Product grid ---------- */
@@ -852,11 +791,10 @@ nav.primary-nav a.active {
   font-weight: 700;
 }
 
-/* Regular Card View only (.product-detail-price has its own separate
-   .price-unit rule, untouched) — charcoal instead of the muted gray so
-   the unit ("/ sq ft"/"each") reads as part of one bold price
-   expression with the number beside it, rather than a separate muted
-   fragment despite already sharing the same font-weight: 700. */
+/* Charcoal instead of the muted gray so the unit ("/ sq ft"/"each")
+   reads as part of one bold price expression with the number beside
+   it, rather than a separate muted fragment despite already sharing
+   the same font-weight: 700. */
 .product-price .price-unit {
   font-family: 'Inter', sans-serif;
   font-size: 0.85rem;
@@ -1892,7 +1830,7 @@ footer.site-footer {
 
 /* ---------- Responsive ---------- */
 @media (max-width: 900px) {
-  .category-grid, .product-grid { grid-template-columns: repeat(2, 1fr); }
+  .product-grid { grid-template-columns: repeat(2, 1fr); }
   .two-col, .contact-grid { grid-template-columns: 1fr; gap: 32px; }
   .steps, .audience-grid { grid-template-columns: 1fr; }
   /* 2 columns instead of stacking all 4 sections full-width — keeps the
@@ -2015,7 +1953,7 @@ footer.site-footer {
      above. Comes after .section's own mobile rule so it wins despite
      equal (single-class) specificity. */
   .category-section { padding-bottom: 40px; }
-  .category-grid, .product-grid { grid-template-columns: 1fr 1fr; gap: 14px; }
+  .product-grid { grid-template-columns: 1fr 1fr; gap: 14px; }
   .wrap { padding: 0 20px; }
 
   /* ---------- Shop mobile: compact category strip + toolbar so the
@@ -2100,7 +2038,7 @@ footer.site-footer {
 }
 
 @media (max-width: 480px) {
-  .category-grid, .product-grid { grid-template-columns: 1fr; }
+  .product-grid { grid-template-columns: 1fr; }
   /* .product-grid is a single column here, so there's no sibling card
      in the same row left to align with — the reserved 3-line title
      height (see .product-info h4) only exists to keep prices/buttons
@@ -2450,55 +2388,6 @@ footer.site-footer {
 }
 .icon-btn svg { width: 18px; height: 18px; }
 .icon-btn:hover { color: var(--charcoal); border-color: var(--charcoal); }
-
-/* ---------- Recently reserved ticker ---------- */
-.ticker-wrap {
-  background: var(--cream-dim);
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  padding: 18px 32px;
-  overflow-x: auto;
-}
-.ticker-row {
-  display: flex;
-  gap: 32px;
-  max-width: var(--max-width);
-  margin: 0 auto;
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-.ticker-item strong { color: var(--charcoal); }
-
-/* ---------- Trust badges ---------- */
-.trust-badges {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 12px;
-  max-width: var(--max-width);
-  margin: 0 auto;
-  padding: 48px 32px;
-  background: var(--cream);
-}
-.trust-badge {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 10px 20px;
-  font-size: 0.82rem;
-  color: var(--charcoal);
-  box-shadow: 0 10px 24px rgba(36,53,42,0.1);
-}
-.trust-badge svg {
-  width: 16px;
-  height: 16px;
-  color: var(--amber-dark);
-  flex-shrink: 0;
-}
 
 /* ---------- Audience grid ---------- */
 .audience-grid {
@@ -2877,27 +2766,6 @@ nav.primary-nav.open {
   margin: 0 0 12px;
 }
 .product-detail-info .spec-chips { margin-bottom: 16px; }
-.product-detail-price {
-  margin: 16px 0;
-  padding: 16px 0;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-}
-.product-detail-price .price-line {
-  font-family: 'Zilla Slab', Georgia, serif;
-  font-size: 1.7rem;
-  font-weight: 700;
-}
-.product-detail-price .price-unit {
-  font-size: 1rem;
-  color: var(--text-muted);
-  font-weight: 700;
-}
-.product-detail-price .price-avail {
-  font-size: 0.88rem;
-  color: var(--text-muted);
-  margin-top: 4px;
-}
 .product-detail-specs {
   margin: 16px 0;
 }

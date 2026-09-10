@@ -112,9 +112,20 @@ test("CSS: .product-price .price-unit keeps its existing font-size (0.85rem) and
   assert.match(body, /font-family:\s*'Inter', sans-serif/);
 });
 
-test("CSS: .product-detail-price .price-unit is untouched — still var(--text-muted)", () => {
-  const body = cssRuleBody(".product-detail-price .price-unit");
-  assert.match(body, /color:\s*var\(--text-muted\)/);
+// priceBlock() is the single shared rendering path for both Card View
+// (productCard()) and the product-detail page (initProductDetail()) —
+// there is no separate ".product-detail-price" class/path to keep in
+// sync; confirming .product-price wraps priceBlock()'s output for both
+// item shapes covers both call sites at once, and confirms styles.css
+// no longer needs (and does not have) a second product-detail-price
+// rule to keep its bold-weight contract consistent.
+test("priceBlock: output is wrapped in .product-price for both Flooring and non-Flooring items — the one class product-detail pages and Card View both rely on", () => {
+  assert.match(priceBlock(flooringItem()), /^<div class="product-price product-price-flooring">/);
+  assert.match(priceBlock(nonFlooringItem()), /^<div class="product-price">/);
+});
+
+test("CSS: .product-detail-price no longer exists — priceBlock()'s shared .product-price rule is the only price-weight rule left to keep in sync", () => {
+  assert.doesNotMatch(stylesSrc, /\.product-detail-price/);
 });
 
 test("CSS: .product-price .price-avail (quantity/availability text) is font-weight 500, not bold", () => {
