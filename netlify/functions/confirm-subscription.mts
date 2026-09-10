@@ -1,6 +1,7 @@
 import type { Context, Config } from "@netlify/functions";
 import { findSubscriberByField, updateSubscriber } from "./_shared/subscribers.mts";
 import { checkRateLimit, clientIp } from "./_shared/rate-limit.mts";
+import { resolveSiteOrigin } from "./_shared/site-origin.mts";
 
 // LEGACY — kept only for compatibility with confirmation emails sent
 // before Phase 1 was converted from double opt-in to single opt-in.
@@ -31,7 +32,10 @@ function redirectTo(origin: string, state: "success" | "invalid"): Response {
 }
 
 export default async (req: Request, context: Context): Promise<Response> => {
-  const origin = new URL(req.url).origin;
+  // Resolved via context.deploy.context (Netlify's trusted signal), not
+  // the request's Host header — a production redirect always lands on
+  // the branded domain; branch-preview testing is unaffected.
+  const origin = resolveSiteOrigin(req, context);
 
   if (req.method !== "GET") {
     return new Response("Method not allowed", { status: 405 });

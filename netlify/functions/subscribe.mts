@@ -8,6 +8,7 @@ import {
 } from "./_shared/subscribers.mts";
 import { sendEmail, welcomeEmail, getMailingAddress } from "./_shared/resend.mts";
 import { checkRateLimit, clientIp } from "./_shared/rate-limit.mts";
+import { resolveSiteOrigin } from "./_shared/site-origin.mts";
 
 // Phase 1 of weekly inventory email subscriptions — single opt-in: a
 // valid email is Active immediately, no confirmation step. (Originally
@@ -171,7 +172,11 @@ export default async (req: Request, context: Context): Promise<Response> => {
       if (!mailingAddress) {
         console.warn("Invicta subscribe: BUSINESS_MAILING_ADDRESS is not configured — welcome email not sent");
       } else {
-        const origin = new URL(req.url).origin;
+        // Resolved via context.deploy.context (Netlify's trusted signal),
+        // not the request's Host header — a production send always
+        // links back to the branded domain, whichever hostname the
+        // request itself arrived on; branch-preview testing is unaffected.
+        const origin = resolveSiteOrigin(req, context);
         const browseUrl = `${origin}/shop`;
         const unsubscribeUrl = `${origin}/api/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`;
         const emailContent = welcomeEmail(browseUrl, unsubscribeUrl, origin, mailingAddress);

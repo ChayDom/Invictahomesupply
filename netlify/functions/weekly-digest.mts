@@ -1,5 +1,6 @@
 import type { Context, Config } from "@netlify/functions";
 import { runWeeklyDigest } from "./_shared/digest.mts";
+import { resolveSiteOrigin } from "./_shared/site-origin.mts";
 
 // Phase 2: the scheduled weekly new-inventory digest. Production target
 // is Friday 10:00 AM America/Chicago. Netlify's scheduled-function cron
@@ -52,12 +53,14 @@ export default async (req: Request, context: Context): Promise<Response> => {
     return new Response("Digest sending is disabled.", { status: 200 });
   }
 
-  // Netlify sets this to the production site's own URL for scheduled
-  // functions on a published deploy (scheduled functions only run there
-  // in the first place — never on a branch preview), so req.url's
-  // origin is the correct base for building product-detail/unsubscribe
-  // links without a separate SITE_URL env var to keep in sync.
-  const origin = new URL(req.url).origin;
+  // Scheduled functions only ever run against the published production
+  // deploy in the first place — never a branch preview — but the
+  // request could still, in principle, have arrived via the site's own
+  // <sitename>.netlify.app alias rather than the custom domain. Resolve
+  // via context.deploy.context (Netlify's own trusted signal), not the
+  // request's Host header, so every link this run generates is always
+  // the branded production origin.
+  const origin = resolveSiteOrigin(req, context);
 
   try {
     const summary = await runWeeklyDigest({ origin, now });

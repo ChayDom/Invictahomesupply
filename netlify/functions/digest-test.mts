@@ -1,6 +1,7 @@
 import type { Context, Config } from "@netlify/functions";
 import { runWeeklyDigest } from "./_shared/digest.mts";
 import { checkRateLimit, clientIp } from "./_shared/rate-limit.mts";
+import { resolveSiteOrigin } from "./_shared/site-origin.mts";
 import { timingSafeEqual } from "node:crypto";
 
 // POST /api/digest-test — a safe, isolated preview of the weekly
@@ -69,7 +70,13 @@ export default async (req: Request, context: Context): Promise<Response> => {
   }
 
   try {
-    const origin = new URL(req.url).origin;
+    // Already refused above when context.deploy.context === "production"
+    // (see the check near the top of this handler), so resolveSiteOrigin
+    // can never actually apply the production-origin override here — this
+    // is always the request's own (branch-preview/deploy-preview/dev)
+    // origin, exactly as before. Routed through the shared helper anyway
+    // so origin resolution isn't duplicated ad hoc across functions.
+    const origin = resolveSiteOrigin(req, context);
     const summary = await runWeeklyDigest({ origin, testMode: true, testRecipient });
     // Sanitized: counts only. No email address (not even the test
     // recipient's, though the caller already knows it), no product

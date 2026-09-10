@@ -494,6 +494,27 @@ await test("personalized unsubscribe link: each subscriber's digest carries thei
   assert.ok(sentHtml.includes("SECRET-KEY-123"), "Product Key is still expected inside the detail-page href");
 });
 
+await test("real weekly digest send, given the resolved production origin: every product/browse/unsubscribe link is invictahomesupply.com, never a netlify.app hostname", async () => {
+  const { PRODUCTION_ORIGIN } = await import("../netlify/functions/_shared/site-origin.mts");
+  const s = subscriberRow({ "Unsubscribe Token": "z".repeat(64), "Confirmed At": "2026-01-01T00:00:00.000Z" });
+  subscribersStore.push(s);
+  productsStore.push(productRow({ "Date Added": "2026-06-01", "Product Key": "PROD-KEY-1" }));
+  const summary = await digest.runWeeklyDigest({ origin: PRODUCTION_ORIGIN, now: new Date("2026-06-08T16:00:00Z") });
+  assert.equal(summary.accepted, 1);
+  const html = resendCalls[0].html;
+  assert.ok(html.includes("https://invictahomesupply.com/product.html?id=PROD-KEY-1"), "product detail link must use the branded domain");
+  assert.ok(html.includes("https://invictahomesupply.com/shop"), "browse-all link must use the branded domain");
+  assert.ok(html.includes(`https://invictahomesupply.com/api/unsubscribe?token=${"z".repeat(64)}`), "unsubscribe link must use the branded domain");
+  assert.ok(!html.includes("netlify.app"), "no netlify.app hostname anywhere in a production-origin digest send");
+});
+
+await test("weekly-digest.mts resolves its origin via the shared resolveSiteOrigin() helper, not a raw new URL(req.url).origin", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("../netlify/functions/weekly-digest.mts", import.meta.url), "utf8");
+  assert.match(src, /import\s*\{\s*resolveSiteOrigin\s*\}\s*from\s*"\.\/_shared\/site-origin\.mts"/);
+  assert.match(src, /const origin = resolveSiteOrigin\(req, context\)/);
+});
+
 await test("HTML-escapes Airtable-controlled product name/category", async () => {
   const s = subscriberRow({ "Confirmed At": "2026-01-01T00:00:00.000Z" });
   subscribersStore.push(s);
@@ -640,6 +661,26 @@ await test("test endpoint refuses to run in the production deploy context, even 
   const res = await digestTestHandler(req, context);
   assert.equal(res.status, 403);
   assert.equal(resendCalls.length, 0);
+});
+
+await test("test endpoint on a branch deploy: View Item/browse/unsubscribe links keep the branch-preview hostname (the intended, unchanged behavior)", async () => {
+  productsStore.push(productRow({ "Date Added": new Date(Date.now() - 86400000).toISOString(), "Product Key": "PREVIEW-KEY-1" }));
+  const req = new Request("https://final-pre-production--invictahomesupply.netlify.app/api/digest-test", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${testTokenValue}` },
+  });
+  const res = await digestTestHandler(req, { deploy: { context: "branch-deploy" } });
+  assert.equal(res.status, 200);
+  assert.equal(resendCalls.length, 1);
+  const html = resendCalls[0].html;
+  assert.ok(html.includes("https://final-pre-production--invictahomesupply.netlify.app/product.html?id=PREVIEW-KEY-1"), "product link must point back at the branch under test, not the production domain");
+  assert.ok(html.includes("https://final-pre-production--invictahomesupply.netlify.app/shop"));
+  // The fixed "hello@invictahomesupply.com" contact mailto: link is the
+  // real business address and is expected in every email regardless of
+  // environment — this checks that no *link* (product/browse/
+  // unsubscribe href) points at the production domain instead of the
+  // branch under test.
+  assert.ok(!html.includes('href="https://invictahomesupply.com'), "no product/browse/unsubscribe link may point at production from a branch-preview test email");
 });
 
 await test("test endpoint sends only to DIGEST_TEST_RECIPIENT — a recipient in the request body is ignored", async () => {

@@ -141,6 +141,27 @@ function getRequest(path, params) {
   return new Request(url, { method: "GET" });
 }
 
+// --- Helpers for the production-origin-hardening tests below: same
+//     request shapes as subscribeRequest()/getRequest() above, but
+//     against an arbitrary host, so a test can prove the *response*
+//     always uses PRODUCTION_ORIGIN regardless of which hostname the
+//     request itself claims to have arrived on. -----------------------
+function subscribeRequestAt(host, bodyObj, overrideHeaders = {}) {
+  return new Request(`https://${host}/api/subscribe`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...overrideHeaders },
+    body: JSON.stringify(bodyObj),
+  });
+}
+
+function getRequestAt(host, path, params) {
+  const url = new URL(`https://${host}${path}`);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  return new Request(url, { method: "GET" });
+}
+
+const PRODUCTION_CONTEXT = { deploy: { context: "production" } };
+
 let failures = 0;
 async function test(name, fn) {
   resetBackend();
@@ -206,6 +227,45 @@ await test("new subscription is Active immediately, no confirmation token, and s
   assert.ok(resendCalls[0].html.includes("123 Main St, McKinney, TX 75069"), "welcome email footer must include the configured mailing address");
   assert.ok(resendCalls[0].text.includes("123 Main St, McKinney, TX 75069"));
   assert.ok(resendCalls[0].html.includes("subscribed to weekly inventory updates from Invicta Home Supply"), "welcome email footer must include the subscription-context line");
+});
+
+// --- Production-origin hardening: welcome email always uses the
+//     branded domain, confirmation/unsubscribe redirects always use the
+//     branded domain, regardless of which hostname the request itself
+//     arrived on — driven only by Netlify's trusted deploy context. -----
+
+await test("production context: welcome email's browse/unsubscribe links use invictahomesupply.com even though the request's own host is a branch preview", async () => {
+  const res = await subscribeHandler(
+    subscribeRequestAt("some-branch--invictahomesupply.netlify.app", { email: "prod-welcome@example.com" }),
+    PRODUCTION_CONTEXT
+  );
+  assert.equal(res.status, 200);
+  assert.equal(resendCalls.length, 1);
+  assert.ok(resendCalls[0].html.includes("https://invictahomesupply.com/shop"), "Browse Inventory button must point at the branded domain");
+  assert.ok(resendCalls[0].html.includes("https://invictahomesupply.com/api/unsubscribe?token="), "unsubscribe link must point at the branded domain");
+  assert.ok(!resendCalls[0].html.includes("netlify.app"), "no preview/alias hostname anywhere in a production-generated welcome email");
+  assert.ok(!resendCalls[0].text.includes("netlify.app"), "same for the plain-text version");
+});
+
+await test("production context via the site's own invictahomesupply.netlify.app alias: welcome email still uses invictahomesupply.com, not that alias", async () => {
+  const res = await subscribeHandler(
+    subscribeRequestAt("invictahomesupply.netlify.app", { email: "prod-alias@example.com" }),
+    PRODUCTION_CONTEXT
+  );
+  assert.equal(res.status, 200);
+  assert.equal(resendCalls.length, 1);
+  assert.ok(resendCalls[0].html.includes("https://invictahomesupply.com/shop"));
+  assert.ok(!resendCalls[0].html.includes("invictahomesupply.netlify.app"), "the site's own default alias must not leak into a production email either");
+});
+
+await test("non-production context (unchanged prior behavior): welcome email still links back to the branch preview it was actually sent from", async () => {
+  const res = await subscribeHandler(
+    subscribeRequestAt("final-pre-production--invictahomesupply.netlify.app", { email: "preview-welcome@example.com" }),
+    { deploy: { context: "branch-deploy" } }
+  );
+  assert.equal(res.status, 200);
+  assert.equal(resendCalls.length, 1);
+  assert.ok(resendCalls[0].html.includes("https://final-pre-production--invictahomesupply.netlify.app/shop"), "branch-preview testing must be unaffected by the production-origin hardening");
 });
 
 await test("welcome email is never sent when BUSINESS_MAILING_ADDRESS is not configured (subscription itself still succeeds)", async () => {
@@ -354,6 +414,35 @@ await test("reused confirmation token (already Active, token already cleared) fa
   assert.equal(store[0].fields.Status, "Active", "status must remain Active, not be reprocessed");
 });
 
+await test("production context: confirmation redirect uses invictahomesupply.com even though the request's own host is a branch preview", async () => {
+  const token = "9".repeat(64);
+  store.push({ id: "rec1", fields: { Email: "prod-confirm@example.com", Status: "Pending", "Confirmation Token": token } });
+  const res = await confirmHandler(
+    getRequestAt("some-branch--invictahomesupply.netlify.app", "/api/confirm-subscription", { token }),
+    PRODUCTION_CONTEXT
+  );
+  assert.equal(res.status, 302);
+  assert.equal(res.headers.get("location"), "https://invictahomesupply.com/subscribe-confirmed.html?state=success");
+});
+
+await test("production context via invictahomesupply.netlify.app alias: confirmation redirect still uses invictahomesupply.com", async () => {
+  const token = "8".repeat(64);
+  store.push({ id: "rec1", fields: { Email: "prod-confirm-alias@example.com", Status: "Pending", "Confirmation Token": token } });
+  const res = await confirmHandler(
+    getRequestAt("invictahomesupply.netlify.app", "/api/confirm-subscription", { token }),
+    PRODUCTION_CONTEXT
+  );
+  assert.equal(res.headers.get("location"), "https://invictahomesupply.com/subscribe-confirmed.html?state=success");
+});
+
+await test("non-production context: confirmation redirect still targets the branch preview it was actually requested from", async () => {
+  const res = await confirmHandler(
+    getRequestAt("final-pre-production--invictahomesupply.netlify.app", "/api/confirm-subscription", { token: "not-a-real-token" }),
+    { deploy: { context: "branch-deploy" } }
+  );
+  assert.equal(res.headers.get("location"), "https://final-pre-production--invictahomesupply.netlify.app/subscribe-confirmed.html?state=invalid");
+});
+
 // ---------------------------------------------------------------------
 // unsubscribe
 // ---------------------------------------------------------------------
@@ -382,6 +471,35 @@ await test("repeated unsubscribe with the same token is idempotent and still suc
 await test("invalid/unknown unsubscribe token redirects to the invalid state", async () => {
   const res = await unsubscribeHandler(getRequest("/api/unsubscribe", { token: "2".repeat(64) }));
   assert.match(res.headers.get("location"), /\/unsubscribed\.html\?state=invalid$/);
+});
+
+await test("production context: unsubscribe redirect uses invictahomesupply.com even though the request's own host is a branch preview", async () => {
+  const token = "7".repeat(64);
+  store.push({ id: "rec1", fields: { Email: "prod-unsub@example.com", Status: "Active", "Unsubscribe Token": token } });
+  const res = await unsubscribeHandler(
+    getRequestAt("some-branch--invictahomesupply.netlify.app", "/api/unsubscribe", { token }),
+    PRODUCTION_CONTEXT
+  );
+  assert.equal(res.status, 302);
+  assert.equal(res.headers.get("location"), "https://invictahomesupply.com/unsubscribed.html?state=success");
+});
+
+await test("production context via invictahomesupply.netlify.app alias: unsubscribe redirect still uses invictahomesupply.com", async () => {
+  const token = "6".repeat(64);
+  store.push({ id: "rec1", fields: { Email: "prod-unsub-alias@example.com", Status: "Active", "Unsubscribe Token": token } });
+  const res = await unsubscribeHandler(
+    getRequestAt("invictahomesupply.netlify.app", "/api/unsubscribe", { token }),
+    PRODUCTION_CONTEXT
+  );
+  assert.equal(res.headers.get("location"), "https://invictahomesupply.com/unsubscribed.html?state=success");
+});
+
+await test("non-production context: unsubscribe redirect still targets the branch preview it was actually requested from", async () => {
+  const res = await unsubscribeHandler(
+    getRequestAt("final-pre-production--invictahomesupply.netlify.app", "/api/unsubscribe", { token: "3".repeat(64) }),
+    { deploy: { context: "branch-deploy" } }
+  );
+  assert.equal(res.headers.get("location"), "https://final-pre-production--invictahomesupply.netlify.app/unsubscribed.html?state=invalid");
 });
 
 await test("no secrets or complete tokens ever reach console output, across a real subscribe + a failure", async () => {
