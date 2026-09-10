@@ -799,13 +799,6 @@ nav.primary-nav a.active {
 }
 .product-more ul { padding-left: 18px; }
 .product-more li { margin-bottom: 2px; }
-.product-ref-link {
-  display: inline-block;
-  margin-top: 8px;
-  color: var(--amber-dark);
-  text-decoration: underline;
-  font-weight: 600;
-}
 
 .product-info {
   padding: 20px;
@@ -2668,13 +2661,6 @@ body.modal-open { overflow: hidden; }
 .form-field textarea { resize: vertical; min-height: 72px; }
 .form-field input:focus, .form-field textarea:focus { outline: none; border-color: var(--charcoal); }
 .form-field input:focus-visible, .form-field textarea:focus-visible { outline: 2px solid var(--charcoal); outline-offset: 2px; }
-
-.form-field-checkbox {
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-}
-.form-field-checkbox input { width: 16px; height: 16px; }
 
 .quote-form-error {
   font-size: 0.82rem;
