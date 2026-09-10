@@ -35,8 +35,16 @@ document.addEventListener("DOMContentLoaded", () => {
     el.href = `sms:${cfg.phoneHref}?&body=${encodeURIComponent(body)}`;
   });
   document.querySelectorAll("a[data-mail-link]").forEach(el => el.href = `mailto:${cfg.email}`);
-  document.querySelectorAll("a[data-fb-link]").forEach(el => el.href = cfg.facebookUrl);
-  document.querySelectorAll("a[data-ig-link]").forEach(el => el.href = cfg.instagramUrl);
+  document.querySelectorAll("a[data-fb-link]").forEach(el => {
+    el.href = cfg.facebookUrl;
+    el.setAttribute("target", "_blank");
+    el.setAttribute("rel", "noopener noreferrer");
+  });
+  document.querySelectorAll("a[data-ig-link]").forEach(el => {
+    el.href = cfg.instagramUrl;
+    el.setAttribute("target", "_blank");
+    el.setAttribute("rel", "noopener noreferrer");
+  });
 
   // Copyright year, generated so it never goes stale.
   document.querySelectorAll("[data-year]").forEach(el => el.textContent = new Date().getFullYear());
