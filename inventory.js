@@ -2664,7 +2664,7 @@ function initProductDetail(items) {
                 : `<button type="button" class="btn btn-dark" data-availability-id="${item.id}">Check Availability</button>`)
             : `<span class="btn btn-outline" style="opacity:.5; cursor:default;">${item.statusLabel}</span>`}
           ${isAvailable(item) ? `<a href="${smsHrefForItem(item)}" class="btn btn-outline text-us-secondary">Text Us</a>` : ""}
-          <a href="tel:" data-tel-link class="btn btn-outline">Call</a>
+          <a href="tel:" data-tel-link class="btn btn-outline product-detail-call">Call</a>
           <a href="${backHref}" class="btn btn-outline">Back to inventory</a>
         </div>
       </div>

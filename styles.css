@@ -1695,6 +1695,18 @@ nav.primary-nav a.active {
 @media (min-width: 881px) {
   .btn.text-us-secondary { display: none; }
   .btn.contractor-text-us { display: none; }
+  /* Product-detail's own Call action (tel:, .product-detail-call) is
+     mobile/tablet-only for the same reason the header's own phone
+     number display goes plain-text (non-tel:) at this exact
+     breakpoint, further down this file — a desktop visitor tapping
+     "Call" gets an unwanted OS tel: app-picker prompt. display:none
+     (not visibility/opacity) so it drops out of layout AND the tab
+     order/hit-testing entirely, same guarantee as .text-us-secondary
+     above. The remaining actions'
+     full-width desktop layout (once Call is gone) is set later in this
+     file, right after .product-detail-actions .btn's own base rule —
+     see the comment there for why it can't live in this earlier block. */
+  .btn.product-detail-call { display: none; }
 }
 /* Forces the secondary link onto its own line directly below the
    primary button, regardless of the primary's own flex-basis or how
@@ -2918,6 +2930,18 @@ nav.primary-nav.open {
   margin-top: 24px;
 }
 .product-detail-actions .btn { flex: 1 1 160px; text-align: center; }
+/* At 881px+, .product-detail-call (see above) is display:none, leaving
+   just the primary Check Availability/Get a Quote button and Back to
+   inventory — each gets the full row instead of sharing it at the
+   160px basis above. Placed after that base rule (same specificity,
+   .product-detail-actions .btn either way) so it wins on source order
+   regardless of where in the file the 881px breakpoint is otherwise
+   grouped — the earlier @media (min-width: 881px) block that hides
+   .product-detail-call can't win this tie were the override put there
+   instead, since this unconditional rule follows it. */
+@media (min-width: 881px) {
+  .product-detail-actions .btn { flex: 1 1 100%; }
+}
 .product-detail-notfound {
   max-width: 640px;
   margin: 0 auto;
