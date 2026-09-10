@@ -1549,12 +1549,35 @@ nav.primary-nav a.active {
     color: var(--text-muted);
     padding: 4px;
   }
+  /* .shop-sidebar's own 16px padding (desktop rule above) previously
+     left the native scrollbar with zero reserved space of its own — it
+     rendered flush against .sidebar-scroll's unpadded right edge,
+     overlapping whatever filter content (select borders/arrows, the
+     "Clear all" link, headings) also extended to that same edge. Fixed
+     by extending .sidebar-scroll past the parent's right padding (the
+     negative margin) so the scrollbar itself sits at the drawer's true
+     far-right edge, then restoring a dedicated ~10px gutter via
+     padding-right — between the scrollbar and the content, not instead
+     of it. Left padding/alignment is untouched. padding-bottom gives
+     the same breathing room below the last filter group, so it's never
+     flush against the sticky Clear All/Show Results footer below (a
+     real flex sibling, not an overlay, so it already can't cover
+     content — this is spacing polish, not a reachability fix). */
   .sidebar-scroll {
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
+    overflow-x: hidden;
     padding-top: 16px;
+    padding-bottom: 8px;
+    margin-right: -16px;
+    padding-right: 10px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
   }
+  .sidebar-scroll::-webkit-scrollbar { width: 6px; }
+  .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+  .sidebar-scroll::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
   .sidebar-mobile-actions {
     display: flex;
     gap: 10px;
