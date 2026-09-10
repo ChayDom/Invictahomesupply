@@ -1358,22 +1358,28 @@ function updateFacetFilterOptions(categoryItems, narrowedItems) {
 // place both Card View and Contractor View report how much is currently
 // in view, replacing the old Contractor-only hero eyebrow.
 //
-// #results-count-category additionally carries "<Category> · " ahead of
-// the count once a specific category is selected ("all" leaves it
-// empty) — see .results-count-category in styles.css for why that only
-// ever renders at mobile/tablet widths (where it also stands in for the
-// category context otherwise hidden inside the closed Filters drawer).
-// Desktop and the "all" case both still read as the exact pre-existing
-// count-only text.
+// #results-count-category additionally carries the bare category name
+// once a specific category is selected ("all" leaves it empty), with
+// the "· " separator kept in #results-count-value instead so it reads
+// at regular weight next to the bold category name, never bold itself.
+// #results-count also gets a "has-category" marker class in that same
+// case — see .results-count-category/.has-category in styles.css for
+// why both only ever render/apply at mobile/tablet widths (where the
+// category name also stands in for the context otherwise hidden inside
+// the closed Filters drawer, styled as a static pill matching "All
+// Products"). Desktop and the "all" case both still read as the exact
+// pre-existing plain count-only text.
 function updateResultsCount(count) {
   const el = document.getElementById("results-count");
   if (!el) return;
   const countText = `${count} item${count === 1 ? "" : "s"}`;
+  const hasCategory = currentCategory !== "all";
   const valueEl = document.getElementById("results-count-value");
-  if (valueEl) valueEl.textContent = countText;
+  if (valueEl) valueEl.textContent = hasCategory ? `· ${countText}` : countText;
   else el.textContent = countText;
   const categoryEl = document.getElementById("results-count-category");
-  if (categoryEl) categoryEl.textContent = currentCategory === "all" ? "" : `${currentCategory} · `;
+  if (categoryEl) categoryEl.textContent = hasCategory ? currentCategory : "";
+  el.classList.toggle("has-category", hasCategory);
 }
 
 function underlaymentChipLabel(value) {

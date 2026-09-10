@@ -1033,14 +1033,16 @@ nav.primary-nav a.active {
   white-space: nowrap;
 }
 /* Desktop/count-only default — the mobile/tablet Filters-drawer
-   breakpoint below (max-width: 880px) is the only place this renders,
-   prefixing the count with "<Category> · " (see updateResultsCount() in
+   breakpoint below (max-width: 880px) is the only place this renders
+   (as a pill, via .has-category there), the bare category name ahead
+   of "· N items" in #results-count-value (see updateResultsCount() in
    inventory.js). "All Products" leaves it empty at every width. */
 .results-count-category {
   display: none;
   font-weight: 700;
   color: var(--charcoal);
 }
+.results-count-value { font-weight: 400; }
 .results-toolbar .sort-control { margin-left: auto; }
 
 .active-filter-chips {
@@ -1576,13 +1578,44 @@ nav.primary-nav a.active {
   /* Selected-category visibility beside the Filters button — mobile/
      tablet only (the Filters drawer hides the selected category from
      view once closed, unlike desktop's always-visible sidebar). "All
-     Products" leaves #results-count-category empty (see
-     updateResultsCount() in inventory.js), so it renders nothing extra
-     there. white-space reverts to normal (from the desktop nowrap
-     above) so a long name like "Health & Personal Care" wraps within
-     the toolbar instead of overflowing it. */
+     Products" leaves #results-count-category empty and .has-category
+     unset (see updateResultsCount() in inventory.js), so #results-count
+     stays exactly its plain pre-existing count-only text there — no
+     "All Products" pill is ever shown, since the All Products control
+     itself already communicates that state. white-space reverts to
+     normal (from the desktop nowrap above) so a long name like
+     "Electrical & Lighting" wraps within the toolbar/pill instead of
+     overflowing it. */
   .results-count-category { display: inline; }
   .results-count { white-space: normal; }
+  /* Once a category is selected, the label becomes a static, non-
+     interactive pill in the same dark-green (--charcoal) used for
+     .filter-btn.active/:hover ("All Products" selected/pressed), so the
+     active category reads clearly rather than blending into the white
+     toolbar controls around it — but deliberately without any of
+     .filter-btn's hover/cursor/button semantics: this is a status
+     readout, not a control (no :hover/:focus rule exists for it at
+     all). Category name is bold pure white; the "· N items" half (kept
+     in #results-count-value, see updateResultsCount() in inventory.js)
+     is --cream-dim, a visibly softer off-white, so the two read as
+     distinct weights/tones against the dark fill. flex-wrap on the pill
+     itself (not just the outer toolbar) is what lets a long category
+     name wrap onto a second line inside the pill at 320px rather than
+     overflow it, while single-line categories still render as one
+     compact capsule. */
+  .results-count.has-category {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 4px;
+    max-width: 100%;
+    background: var(--charcoal);
+    border: 1px solid var(--charcoal);
+    border-radius: 999px;
+    padding: 6px 14px;
+  }
+  .results-count.has-category .results-count-category { color: #fff; }
+  .results-count.has-category .results-count-value { color: var(--cream-dim); }
   /* The drawer is filters only — the quick-calc card stays desktop-only
      (see .sidebar-calc-card above) so the drawer always opens straight
      onto the "Filters" heading, never onto the calculator card that

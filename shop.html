@@ -237,15 +237,18 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
           Filters
         </button>
-        <!-- Mobile/tablet only (see .results-count-category in styles.css):
-             prefixes the count with "<Category> · " once a specific
-             category is selected, so the drawer-hidden category state (see
-             the Filters drawer above) still reads at a glance beside the
-             Filters button. "All Products" leaves this span empty, so
-             desktop and the All-Products count both stay exactly the
-             existing count-only text. Populated by updateResultsCount() in
-             inventory.js. -->
-        <div class="results-count" id="results-count" aria-live="polite"><span class="results-count-category" id="results-count-category"></span><span id="results-count-value"></span></div>
+        <!-- Mobile/tablet only (see .results-count-category/.has-category in
+             styles.css): shows "<Category>" (bold) then "· N items"
+             (regular, in #results-count-value) once a specific category is
+             selected, so the drawer-hidden category state (see the Filters
+             drawer above) still reads at a glance beside the Filters
+             button — as a static, non-interactive pill matching
+             "All Products"/.filter-btn's visual language once a category is
+             set. "All Products" leaves this span empty and #results-count
+             un-pilled, so desktop and the All-Products count both stay
+             exactly the existing count-only text. Populated by
+             updateResultsCount() in inventory.js. -->
+        <div class="results-count" id="results-count" aria-live="polite"><span class="results-count-category" id="results-count-category"></span><span class="results-count-value" id="results-count-value"></span></div>
         <div class="sort-control">
           <label for="sort-select">Sort by</label>
           <select id="sort-select">
