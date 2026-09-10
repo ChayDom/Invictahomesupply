@@ -34,9 +34,17 @@ let totalFail = 0;
 let filesFailed = 0;
 const failedFiles = [];
 
+// Some tests import .ts/.mts Netlify Functions/Edge Functions source
+// directly (e.g. `import("../netlify/edge-functions/preview-noindex.ts")`)
+// to test the real deployed code. Node has no built-in TypeScript
+// support on the Node 20 baseline this project targets, so every child
+// process is launched with tsx's ESM loader registered — it strips types
+// transparently and is a no-op for plain .mjs files.
+const TSX_ESM_LOADER = fileURLToPath(import.meta.resolve("tsx/esm"));
+
 for (const file of files) {
   const fullPath = path.join(__dirname, file);
-  const result = spawnSync(process.execPath, [fullPath], { encoding: "utf8" });
+  const result = spawnSync(process.execPath, ["--import", TSX_ESM_LOADER, fullPath], { encoding: "utf8" });
   const out = (result.stdout || "") + (result.stderr || "");
   const pass = (out.match(/^ok - /gm) || []).length;
   const fail = (out.match(/^NOT OK - /gm) || []).length;

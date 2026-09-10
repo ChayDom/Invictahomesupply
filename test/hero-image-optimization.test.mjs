@@ -24,7 +24,6 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { execFileSync } from "node:child_process";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");
@@ -52,6 +51,55 @@ function test(name, fn) {
 function pngDimensions(file) {
   const buf = fs.readFileSync(file);
   return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+}
+
+// WebP simple lossy bitstream ("VP8 "): 3-byte frame tag, 3-byte start
+// code (0x9d012a), then two little-endian 16-bit fields whose low 14
+// bits are width/height.
+function webpDimensions(file) {
+  const buf = fs.readFileSync(file);
+  assert.equal(buf.subarray(12, 16).toString("ascii"), "VP8 ", "expected a simple lossy VP8 WebP chunk");
+  const payload = buf.subarray(20);
+  return { width: payload.readUInt16LE(6) & 0x3fff, height: payload.readUInt16LE(8) & 0x3fff };
+}
+
+// Minimal ISOBMFF box walker, just enough to reach an AVIF's `ispe`
+// (Image Spatial Extents) property under meta/iprp/ipco and read its
+// stored width/height — avoids depending on Python/Pillow in CI.
+function readBoxes(buf, start, end) {
+  const boxes = [];
+  let off = start;
+  while (off + 8 <= end) {
+    let size = buf.readUInt32BE(off);
+    const type = buf.subarray(off + 4, off + 8).toString("ascii");
+    let headerSize = 8;
+    if (size === 1) {
+      size = Number(buf.readBigUInt64BE(off + 8));
+      headerSize = 16;
+    } else if (size === 0) {
+      size = end - off;
+    }
+    boxes.push({ type, start: off, headerSize, end: off + size });
+    off += size;
+  }
+  return boxes;
+}
+
+function avifDimensions(file) {
+  const buf = fs.readFileSync(file);
+  const top = readBoxes(buf, 0, buf.length);
+  const meta = top.find((b) => b.type === "meta");
+  assert.ok(meta, "expected a meta box");
+  // meta is a FullBox: 4 bytes version+flags follow the box header.
+  const iprp = readBoxes(buf, meta.start + meta.headerSize + 4, meta.end).find((b) => b.type === "iprp");
+  assert.ok(iprp, "expected an iprp box");
+  const ipco = readBoxes(buf, iprp.start + iprp.headerSize, iprp.end).find((b) => b.type === "ipco");
+  assert.ok(ipco, "expected an ipco box");
+  const ispe = readBoxes(buf, ipco.start + ipco.headerSize, ipco.end).find((b) => b.type === "ispe");
+  assert.ok(ispe, "expected an ispe box");
+  // ispe is a FullBox: 4 bytes version+flags, then width(4) + height(4), big-endian.
+  const dataStart = ispe.start + ispe.headerSize + 4;
+  return { width: buf.readUInt32BE(dataStart), height: buf.readUInt32BE(dataStart + 4) };
 }
 
 // ---------------------------------------------------------------------
@@ -96,14 +144,11 @@ test("AVIF is substantially smaller than the PNG (at least 90% smaller)", () => 
   assert.ok(avifSize < pngSize * 0.1, `expected AVIF (${avifSize}B) to be under 10% of PNG size (${pngSize}B)`);
 });
 
-test("AVIF and WebP report the same pixel dimensions as the PNG (2007x783) via Python/Pillow", () => {
-  const out = execFileSync("python3", ["-c", `
-from PIL import Image
-for f in ["${PNG}", "${WEBP}", "${AVIF}"]:
-    img = Image.open(f)
-    print(f"{img.size[0]}x{img.size[1]}")
-`]).toString().trim().split("\n");
-  assert.deepEqual(out, ["2007x783", "2007x783", "2007x783"]);
+test("AVIF and WebP report the same pixel dimensions as the PNG (2007x783)", () => {
+  const webp = webpDimensions(WEBP);
+  const avif = avifDimensions(AVIF);
+  assert.deepEqual(webp, { width: 2007, height: 783 });
+  assert.deepEqual(avif, { width: 2007, height: 783 });
 });
 
 // ---------------------------------------------------------------------
