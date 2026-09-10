@@ -2622,6 +2622,13 @@ body.modal-open { overflow: hidden; }
   gap: 8px;
 }
 .form-field-label-row label { font-weight: 600; color: var(--charcoal); }
+/* Subtle supporting copy under an input (e.g. the quote form's Approx.
+   Sq Ft Needed helper) — smaller than the field label and in the same
+   muted tone used elsewhere for secondary text, never styled like the
+   error/warning copy below. .form-field's own flex gap already spaces
+   it from the input above, so its own margin is zeroed rather than
+   stacking a second gap on top. */
+.form-field-help { margin: 0; font-size: 0.72rem; font-weight: 400; color: var(--text-muted); }
 .calc-link {
   background: none;
   border: none;

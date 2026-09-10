@@ -373,7 +373,8 @@
             <label for="quote-sqft-input">Approx. Sq Ft Needed <em>*</em></label>
             <button type="button" class="calc-link" id="quote-calc-link">Calculate Sq Ft</button>
           </div>
-          <input type="number" name="sqft-needed" id="quote-sqft-input" min="1" step="any" required>
+          <input type="number" name="sqft-needed" id="quote-sqft-input" min="1" step="any" required aria-describedby="quote-sqft-help">
+          <p class="form-field-help" id="quote-sqft-help">An approximate square footage is enough for us to provide a price estimate.</p>
         </div>
         <label class="form-field">
           <span>Name <em>*</em></span>

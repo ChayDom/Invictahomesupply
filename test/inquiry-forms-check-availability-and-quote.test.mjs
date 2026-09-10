@@ -433,6 +433,26 @@ for (const [html, label] of [[shopSrc, "shop.html"], [indexSrc, "index.html"], [
     assert.match(html, /Something went wrong\. Please try again or call us\./);
   });
 
+  test(`${label}: quote modal's Approx. Sq Ft Needed field has the exact helper copy, associated via aria-describedby with no duplicate ids, and submitted fields are unchanged`, () => {
+    const form = extractById(html, "quote-form");
+    // Helper copy sits immediately after the sqft input, inside the same
+    // .form-field wrapper — not merely present anywhere in the form.
+    assert.match(form, /<input type="number" name="sqft-needed" id="quote-sqft-input"[^>]*aria-describedby="([a-zA-Z0-9_-]+)"[^>]*>\s*<p class="form-field-help" id="\1">An approximate square footage is enough for us to provide a price estimate\.<\/p>/);
+    const idMatch = form.match(/id="(quote-sqft-help[a-zA-Z0-9_-]*)"/);
+    assert.ok(idMatch, "expected a quote-sqft-help id on the helper <p>");
+    const helpId = idMatch[1];
+    const idOccurrences = html.match(new RegExp(`id="${helpId}"`, "g")) || [];
+    assert.equal(idOccurrences.length, 1, `helper-text id "${helpId}" must not be duplicated anywhere on ${label}`);
+    // The helper text must never leak into the general availability form.
+    const availabilityForm = extractById(html, "availability-form");
+    assert.doesNotMatch(availabilityForm, /An approximate square footage is enough for us to provide a price estimate\./);
+    // Submitted (non-hidden-context) form fields are unchanged by this
+    // copy addition — same required set, same names, as already pinned
+    // above; this just re-confirms none of them were touched here.
+    const submittedFieldNames = [...form.matchAll(/<(?:input|textarea)[^>]*\sname="([a-z-]+)"/g)].map(m => m[1]);
+    assert.deepEqual(submittedFieldNames, ["form-name", "product-name", "product-key", "price-per-sqft", "box-price", "submitted-at", "bot-field", "sqft-needed", "name", "phone", "notes"]);
+  });
+
   test(`${label}: quote modal is an accessible dialog with unique ids and matching aria-labelledby`, () => {
     const overlayBlock = html.match(/<div class="modal-overlay" id="quote-modal-overlay"[\s\S]*?<div class="modal"[^>]*>/)[0];
     assert.match(overlayBlock, /role="dialog"/);
