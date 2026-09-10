@@ -95,11 +95,70 @@ on the live site, treat it as a regression and check recent changes to
 
 ## Test suite failing locally but the site works fine
 
-Each test file in `test/` runs against the real `inventory.js`/`styles.css`/
-HTML source via `vm.runInThisContext` or regex-based extraction — a failure
-usually means source text the test depends on (an id, a class name, a CSS
-breakpoint value) changed. Read the specific assertion message; these tests
-are written to name exactly what they expected versus what they found.
+Each `test/*.test.mjs` unit file runs against the real `inventory.js`/
+`styles.css`/HTML source via `vm.runInThisContext` or regex-based extraction
+— a failure usually means source text the test depends on (an id, a class
+name, a CSS breakpoint value) changed. Read the specific assertion message;
+these tests are written to name exactly what they expected versus what they
+found.
+
+## Playwright E2E: "browserType.launch: executable doesn't exist"
+
+`playwright.config.mjs` points Chromium at `PLAYWRIGHT_CHROMIUM_PATH` (or the
+common sandbox default `/opt/pw-browsers/chromium`) instead of Playwright's
+own downloaded browser, since most environments this repo runs in come with
+Chromium pre-installed. If that path doesn't exist on your machine, either:
+
+- set `PLAYWRIGHT_CHROMIUM_PATH` to wherever your Chromium binary actually
+  is, or
+- run `npx playwright install chromium` to let Playwright download and
+  manage its own copy, then unset `PLAYWRIGHT_CHROMIUM_PATH`.
+
+## Playwright E2E: "Timed out waiting ... for the WebServer to be available"
+
+`playwright.config.mjs`'s `webServer` starts `python3 -m http.server` on
+port 8099 (override with `E2E_PORT`) and reuses an already-running server on
+that port outside CI (`reuseExistingServer: !process.env.CI`). If you already
+have something else bound to that port — including a leftover manual
+`python3 -m http.server` from debugging — Playwright will either fail to
+bind its own server or, worse, silently reuse the wrong one. Check
+`lsof -i :8099` (or your `E2E_PORT`) and kill anything unrelated before
+re-running, and never manually stop a process on that port while a
+Playwright run you care about is still using it — doing so pulls the static
+server out from under every test still in flight and produces a wave of
+unrelated-looking failures.
+
+## Playwright E2E: a wide batch of unrelated tests fail at once
+
+This is almost always infrastructure, not the app: the local static server
+died or never came up (see above), or the run was interrupted mid-flight.
+Re-run the suite cleanly (`npm run test:e2e`) before treating any of those
+failures as real regressions — a genuine app defect fails the same specific
+test(s) consistently across a clean run, not dozens of unrelated ones at
+once.
+
+## CI: Playwright browser install step fails or times out
+
+`.github/workflows/test.yml` runs `npx playwright install --with-deps
+chromium`, which also installs Chromium's OS-level dependencies via `apt`.
+This can fail if GitHub's `ubuntu-latest` image changes its available
+package set — check the step's log for the specific missing package/apt
+error and pin a Playwright version compatible with the current runner if
+needed (`package.json`'s `@playwright/test` version).
+
+## Deployment smoke test refuses to run / fails
+
+- **"SMOKE_BASE_URL is not set"**: expected — this test never assumes a
+  target. Set it explicitly to the deployment you want to check.
+- **"Refusing to run against a non-HTTPS target"**: expected outside a local
+  override. Set `SMOKE_ALLOW_HTTP=1` only for a genuinely local/non-TLS
+  target (e.g. `netlify dev`'s own local URL).
+- **`/api/inventory` check fails**: confirm the target is a real Netlify
+  deploy (Functions aren't served by a plain static file server) and that
+  the site's Airtable-backed environment variables are configured for that
+  deploy context.
+- **X-Robots-Tag mismatch with `SMOKE_EXPECT_CONTEXT`**: see "Preview/branch
+  deploy showing up in Google search results" above — same root cause.
 
 ## General diagnostic checklist
 
