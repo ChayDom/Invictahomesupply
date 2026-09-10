@@ -69,6 +69,12 @@ window.AIRTABLE_CONFIG = {
 // <img> tags until it expired on its own.
 const CACHE_KEY = "invicta_inventory_cache_v6";
 const INVENTORY_ENDPOINT = "/api/inventory";
+// fetchInventory() previously had no bounded timeout at all — a hung
+// Airtable/Netlify Function request left the shop page's loading state
+// on screen indefinitely instead of falling back to cache or an honest
+// error. 10s is generous for a same-origin serverless proxy call while
+// still resolving well within a visitor's patience.
+const INVENTORY_FETCH_TIMEOUT_MS = 10000;
 
 // ===================================================================
 // CANONICAL WEBSITE CATEGORY CONFIGURATION — single source of truth for
@@ -380,7 +386,13 @@ function normalizeBrand(raw) {
 // full `url` if `thumbnails` is ever missing (e.g. a non-image
 // attachment, or an older/odd API response) — never a broken image.
 function airtablePhotoVariants(photoField) {
-  return (photoField || [])
+  // Array.isArray, not just truthiness — a malformed Photos field (a
+  // stray string/object instead of Airtable's normal attachment array)
+  // used to throw here and crash mapAirtableRecord() for that one
+  // record, which in turn aborted fetchInventory()'s whole
+  // records.map() and took the entire catalog down over a single bad
+  // field on a single item.
+  return (Array.isArray(photoField) ? photoField : [])
     .filter(p => p && p.url)
     .map(p => ({
       full: p.url,
@@ -497,14 +509,34 @@ async function fetchInventory() {
   }
 
   try {
-    const res = await fetch(INVENTORY_ENDPOINT);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), INVENTORY_FETCH_TIMEOUT_MS);
+    let res;
+    try {
+      res = await fetch(INVENTORY_ENDPOINT, { signal: controller.signal });
+    } finally {
+      clearTimeout(timeoutId);
+    }
     if (!res.ok) throw new Error(`Inventory request failed: ${res.status}`);
     const json = await res.json();
     const records = json.records || [];
-    // .filter(Boolean) is defensive only — mapAirtableRecord() no longer
-    // returns null for any real record (every Category resolves to a
-    // canonical category, "Other" included — see resolveWebCategory).
-    const items = records.map(r => mapAirtableRecord(r.id, r.fields || {})).filter(Boolean);
+    // .filter(Boolean) covers both mapAirtableRecord() genuinely
+    // returning a falsy value (it no longer does — every Category
+    // resolves to a canonical category, "Other" included, see
+    // resolveWebCategory) and the catch below: one record with a
+    // malformed field (e.g. a non-array Photos value from a bad Airtable
+    // edit) must never crash every other item's mapping — skip just
+    // that record (logged, not silent) instead of letting the whole
+    // records.map() throw and taking the entire catalog down over one
+    // bad field on one item.
+    const items = records.map(r => {
+      try {
+        return mapAirtableRecord(r.id, r.fields || {});
+      } catch (err) {
+        console.warn(`Invicta: skipping record ${r.id} — malformed field data`, err);
+        return null;
+      }
+    }).filter(Boolean);
 
     localStorage.setItem(CACHE_KEY, JSON.stringify({ data: items, ts: Date.now() }));
     return { items, error: null };
