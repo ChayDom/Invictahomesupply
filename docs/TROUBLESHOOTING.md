@@ -104,15 +104,18 @@ found.
 
 ## Playwright E2E: "browserType.launch: executable doesn't exist"
 
-`playwright.config.mjs` points Chromium at `PLAYWRIGHT_CHROMIUM_PATH` (or the
-common sandbox default `/opt/pw-browsers/chromium`) instead of Playwright's
-own downloaded browser, since most environments this repo runs in come with
-Chromium pre-installed. If that path doesn't exist on your machine, either:
+By default `playwright.config.mjs` uses Playwright's own managed Chromium —
+the fix on a fresh checkout is almost always:
 
-- set `PLAYWRIGHT_CHROMIUM_PATH` to wherever your Chromium binary actually
-  is, or
-- run `npx playwright install chromium` to let Playwright download and
-  manage its own copy, then unset `PLAYWRIGHT_CHROMIUM_PATH`.
+```
+npx playwright install chromium
+```
+
+If you've set `PLAYWRIGHT_CHROMIUM_PATH` (a local-only override some
+sandboxes use to point at a pre-installed Chromium instead of installing a
+second copy — see `docs/LOCAL_DEVELOPMENT.md`) and it's now failing, either
+correct that path or unset the variable to fall back to Playwright's own
+managed browser.
 
 ## Playwright E2E: "Timed out waiting ... for the WebServer to be available"
 

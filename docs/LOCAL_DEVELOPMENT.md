@@ -64,18 +64,31 @@ does **not** install browser binaries; see the next section.
 
 ### Playwright's browser
 
-The E2E suite (`npm run test:e2e`) requires a Chromium binary. Most sandboxes
-this project is developed in come with one pre-installed and set
-`PLAYWRIGHT_BROWSERS_PATH`/`PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD`, so **you
-usually do not need to run `playwright install` at all** — `playwright.config.mjs`
-already points at `PLAYWRIGHT_CHROMIUM_PATH` (or the common
-`/opt/pw-browsers/chromium` path) by default.
-
-If your machine has no such pre-installed browser, install one normally:
+The E2E suite (`npm run test:e2e`) requires a Chromium binary, and by default
+uses whichever one Playwright itself manages — the same one CI installs:
 
 ```
 npx playwright install chromium
 ```
+
+(On a fresh checkout with no cached browser, `npm run test:e2e`/`npm test`
+will fail with a clear "executable doesn't exist" error until you run this
+once — see `docs/TROUBLESHOOTING.md`.)
+
+Some sandboxes this project is developed in come with a Chromium
+pre-installed at a fixed path instead (and set
+`PLAYWRIGHT_BROWSERS_PATH`/`PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` so
+`playwright install` is unnecessary/blocked there). To reuse that browser
+instead of installing a second copy, point `playwright.config.mjs` at it
+explicitly:
+
+```
+export PLAYWRIGHT_CHROMIUM_PATH=/opt/pw-browsers/chromium
+```
+
+This is a **local convenience override only** — CI never sets it, and the
+config's default (no `executablePath` override) is what a fresh checkout and
+CI both actually use.
 
 Firefox and WebKit are configured as optional, non-default projects
 (`npm run test:e2e:firefox` / `npm run test:e2e:webkit`) for the rare case you

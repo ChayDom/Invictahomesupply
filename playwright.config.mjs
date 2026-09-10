@@ -1,12 +1,14 @@
 // ===================================================================
 // Playwright config for the local, network-mocked E2E suite.
 //
-// Chromium is the release-blocking browser and uses the sandbox/CI's
-// pre-installed executable directly (PLAYWRIGHT_CHROMIUM_PATH, falling
-// back to the common pre-installed path) rather than depending on
-// Playwright's own browser download — see docs/LOCAL_DEVELOPMENT.md for
-// why (`playwright install` is unnecessary and, in some sandboxes,
-// blocked/unneeded entirely).
+// Chromium is the release-blocking browser. By default this uses
+// whatever Chromium Playwright itself manages (installed via
+// `npx playwright install --with-deps chromium`, as CI does) — no
+// executablePath is set unless PLAYWRIGHT_CHROMIUM_PATH is explicitly
+// provided. Some local sandboxes come with a pre-installed Chromium at a
+// fixed path and set that env var to reuse it instead of downloading a
+// second copy — that's a local convenience override, never something CI
+// or a fresh checkout depends on. See docs/LOCAL_DEVELOPMENT.md.
 //
 // Firefox and WebKit are configured as optional projects, NOT part of
 // the default `npm run test:e2e` run — they require their own browser
@@ -17,7 +19,7 @@
 // ===================================================================
 import { defineConfig, devices } from "@playwright/test";
 
-const CHROMIUM_PATH = process.env.PLAYWRIGHT_CHROMIUM_PATH || "/opt/pw-browsers/chromium";
+const CHROMIUM_PATH = process.env.PLAYWRIGHT_CHROMIUM_PATH || "";
 const PORT = Number(process.env.E2E_PORT || 8099);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 
@@ -51,7 +53,11 @@ export default defineConfig({
       name: "chromium",
       use: {
         ...devices["Desktop Chrome"],
-        launchOptions: { executablePath: CHROMIUM_PATH },
+        // Only override the browser binary when explicitly asked to —
+        // otherwise Playwright resolves its own managed Chromium, which is
+        // what a fresh `npm ci && npx playwright install chromium` checkout
+        // (and CI) actually has.
+        ...(CHROMIUM_PATH ? { launchOptions: { executablePath: CHROMIUM_PATH } } : {}),
       },
     },
     // Optional, not run by default — see header comment.
