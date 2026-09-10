@@ -1032,6 +1032,15 @@ nav.primary-nav a.active {
   color: var(--text-muted);
   white-space: nowrap;
 }
+/* Desktop/count-only default — the mobile/tablet Filters-drawer
+   breakpoint below (max-width: 880px) is the only place this renders,
+   prefixing the count with "<Category> · " (see updateResultsCount() in
+   inventory.js). "All Products" leaves it empty at every width. */
+.results-count-category {
+  display: none;
+  font-weight: 700;
+  color: var(--charcoal);
+}
 .results-toolbar .sort-control { margin-left: auto; }
 
 .active-filter-chips {
@@ -1564,6 +1573,16 @@ nav.primary-nav a.active {
   .mobile-filters-btn { display: inline-flex; }
   .mobile-calc-btn { display: inline-flex; }
   .results-toolbar .sort-control { margin-left: 0; }
+  /* Selected-category visibility beside the Filters button — mobile/
+     tablet only (the Filters drawer hides the selected category from
+     view once closed, unlike desktop's always-visible sidebar). "All
+     Products" leaves #results-count-category empty (see
+     updateResultsCount() in inventory.js), so it renders nothing extra
+     there. white-space reverts to normal (from the desktop nowrap
+     above) so a long name like "Health & Personal Care" wraps within
+     the toolbar instead of overflowing it. */
+  .results-count-category { display: inline; }
+  .results-count { white-space: normal; }
   /* The drawer is filters only — the quick-calc card stays desktop-only
      (see .sidebar-calc-card above) so the drawer always opens straight
      onto the "Filters" heading, never onto the calculator card that

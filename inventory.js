@@ -1357,10 +1357,23 @@ function updateFacetFilterOptions(categoryItems, narrowedItems) {
 // Live "N items" (or "N item") count in the results toolbar — the one
 // place both Card View and Contractor View report how much is currently
 // in view, replacing the old Contractor-only hero eyebrow.
+//
+// #results-count-category additionally carries "<Category> · " ahead of
+// the count once a specific category is selected ("all" leaves it
+// empty) — see .results-count-category in styles.css for why that only
+// ever renders at mobile/tablet widths (where it also stands in for the
+// category context otherwise hidden inside the closed Filters drawer).
+// Desktop and the "all" case both still read as the exact pre-existing
+// count-only text.
 function updateResultsCount(count) {
   const el = document.getElementById("results-count");
   if (!el) return;
-  el.textContent = `${count} item${count === 1 ? "" : "s"}`;
+  const countText = `${count} item${count === 1 ? "" : "s"}`;
+  const valueEl = document.getElementById("results-count-value");
+  if (valueEl) valueEl.textContent = countText;
+  else el.textContent = countText;
+  const categoryEl = document.getElementById("results-count-category");
+  if (categoryEl) categoryEl.textContent = currentCategory === "all" ? "" : `${currentCategory} · `;
 }
 
 function underlaymentChipLabel(value) {
@@ -1766,6 +1779,19 @@ function initShopControls(items) {
   updateCategoryTabCounts();
   applyCategoryFromUrl();
   syncShopUrl(true);
+
+  // syncShopUrl() only ever pushes/replaces history entries — nothing
+  // previously listened for the browser's own Back/Forward moving
+  // between those entries, so currentCategory (and everything derived
+  // from it, including the new mobile category+count label above) never
+  // followed it. categoryFromUrl() returning null (no ?cat=, no legacy
+  // #hash) means "all", same fallback selectCategory()/applyCategoryFromUrl()
+  // already use elsewhere.
+  window.addEventListener("popstate", () => {
+    currentCategory = categoryFromUrl() || "all";
+    setActiveCategoryTab(currentCategory);
+    renderShopCatalog();
+  });
 
   // The primary bar's real category buttons (excludes "Browse
   // Categories", which has no data-filter — it opens the panel below).
