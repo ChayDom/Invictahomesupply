@@ -2348,12 +2348,20 @@ function productDetailPhotoBlock(item) {
 // parsed or invented. Flooring gets its 4 structured fields plus
 // coverage-per-box; every other category gets Quantity Available instead
 // (Flooring's "available" story is sq ft/boxes, not a unit count).
+//
+// Retailer (item.retailer, still fetched/mapped by mapAirtableRecord and
+// still used server-side-adjacent for search matching — see
+// searchMatches()) is deliberately never added here: it's internal
+// sourcing data (where Invicta acquired the item), not a customer-facing
+// spec, and must never reveal where a product came from. Never confuse
+// this with Brand, which stays shown as-is even when it happens to read
+// like a retailer-branded line (e.g. Home Decorators Collection) —
+// Brand is a real product attribute, Retailer is not.
 function productDetailSpecRows(item) {
   const rows = [];
   const add = (label, value) => { if (value !== undefined && value !== null && value !== "") rows.push([label, value]); };
   add("Brand", item.brand);
   add("Model", item.model);
-  add("Retailer", item.retailer);
   if (item.webCategory === "Flooring") {
     add("Subcategory", item.webSubcategory);
     // Same priority order as flooringStructuredChips(): Wear Layer,
