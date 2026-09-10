@@ -315,24 +315,65 @@
           <input type="tel" name="phone" required autocomplete="tel">
         </label>
         <label class="form-field">
-          <span>ZIP Code</span>
-          <input type="text" name="zip" inputmode="numeric" autocomplete="postal-code">
-        </label>
-        <label class="form-field form-field-checkbox">
-          <input type="checkbox" name="installation-needed" value="Yes">
-          <span>I also need installation</span>
+          <span>Email</span>
+          <input type="email" name="email" autocomplete="email">
         </label>
 
-        <div class="quote-form-error" id="quote-form-error" hidden>Something went wrong sending your request — please try again, or text us instead.</div>
+        <div class="quote-form-error" id="quote-form-error" hidden>Something went wrong sending your request — please try again.</div>
 
         <button type="submit" class="btn btn-dark btn-block" id="quote-submit-btn">Request Quote</button>
-        <a href="sms:" data-sms-link class="btn btn-outline btn-block" id="quote-text-us-link">Text Us</a>
       </form>
     </div>
 
     <div id="quote-modal-success-view" hidden>
       <p class="quote-success-message">Thank you! We received your quote request and will contact you shortly.</p>
       <button type="button" class="btn btn-dark" id="quote-modal-done">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Check Availability modal — see the matching copy/comment on
+     shop.html for the full rationale. Markup (including field
+     names/ids) must match all three pages exactly. -->
+<div class="modal-overlay" id="availability-modal-overlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="availability-product-name">
+    <button type="button" class="modal-close" id="availability-modal-close" aria-label="Close">&times;</button>
+
+    <div id="availability-modal-form-view">
+      <div class="eyebrow">Check Availability</div>
+      <h3 class="quote-product-name" id="availability-product-name"></h3>
+
+      <form id="availability-form" class="quote-form">
+        <input type="hidden" name="form-name" value="availability-request">
+        <input type="hidden" name="product-name" id="availability-field-product-name">
+        <input type="hidden" name="product-key" id="availability-field-product-key">
+        <input type="hidden" name="submitted-at" id="availability-field-submitted-at">
+        <p class="hp-field" aria-hidden="true">
+          <label>Leave this field blank<input type="text" name="bot-field" tabindex="-1" autocomplete="off"></label>
+        </p>
+
+        <label class="form-field">
+          <span>Name <em>*</em></span>
+          <input type="text" name="name" required autocomplete="name">
+        </label>
+        <label class="form-field">
+          <span>Phone <em>*</em></span>
+          <input type="tel" name="phone" required autocomplete="tel">
+        </label>
+        <label class="form-field">
+          <span>Email</span>
+          <input type="email" name="email" autocomplete="email">
+        </label>
+
+        <div class="quote-form-error" id="availability-form-error" hidden>Something went wrong sending your request — please try again.</div>
+
+        <button type="submit" class="btn btn-dark btn-block" id="availability-submit-btn">Send Request</button>
+      </form>
+    </div>
+
+    <div id="availability-modal-success-view" hidden>
+      <p class="quote-success-message">Thanks! We'll contact you shortly to confirm availability.</p>
+      <button type="button" class="btn btn-dark" id="availability-modal-done">Close</button>
     </div>
   </div>
 </div>

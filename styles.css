@@ -1410,7 +1410,11 @@ nav.primary-nav a.active {
 .contractor-product-name { display: block; font-weight: 600; }
 .contractor-product-name:hover { color: var(--amber-dark); }
 .contractor-product-sub { font-size: 0.78rem; color: var(--text-muted); }
-.contractor-actions-cell { text-align: right; white-space: nowrap; }
+/* Stacks vertically (not side-by-side) so the secondary "Text Us" link
+   — visible only up to 880px, see .contractor-text-us below — never
+   forces this cell wider than the primary button alone; desktop
+   (≥881px) only ever has the one primary button here regardless. */
+.contractor-actions-cell { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .contractor-low-stock { color: var(--amber-dark); font-weight: 700; white-space: nowrap; }
 .contractor-table .table-empty {
   text-align: center;
@@ -1473,7 +1477,10 @@ nav.primary-nav a.active {
 .contractor-avail-boxes {
   font-weight: 400;
 }
-.contractor-card-cta { margin-top: 10px; }
+/* Stacks the primary button and the secondary "Text Us" link (shown up
+   to 880px — see .contractor-text-us) with a consistent gap, rather than
+   relying on plain block flow + margins between two full-width .btns. */
+.contractor-card-cta { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
 .contractor-card-cta .btn { width: 100%; text-align: center; }
 
 @media (max-width: 700px) {
@@ -1647,6 +1654,29 @@ nav.primary-nav a.active {
      modal (openCalculatorModal() in inventory.js) — this doesn't touch
      that button, the modal, or any calculation. */
   .sidebar-calc-card { display: none !important; }
+}
+
+/* Desktop-only inquiry-CTA swap — the exact complement of the 880px
+   Filters-drawer breakpoint above, so mobile/tablet (≤880px) keeps
+   every existing pixel/behavior untouched: the legacy sms: "Check
+   Availability" link (.card-check-availability-sms, product cards +
+   product-detail actions row) and Contractor View's secondary
+   "Text Us" link (.contractor-text-us) both still render exactly as
+   before there. At 881px and up, those give way to an on-site form:
+   .card-check-availability-btn (opens the availability-request modal —
+   see openAvailabilityModal() in inventory.js) replaces the sms: link,
+   and Contractor View's primary Get a Quote/Check Availability button
+   (already the only thing rendered on both sides of this breakpoint)
+   stands alone once its Text Us sibling is hidden. Neither modal ever
+   contains a Text Us/SMS/Call option — this only ever hides the
+   already-separate secondary link, never something inside a modal. */
+@media (min-width: 881px) {
+  .card-check-availability-sms { display: none; }
+  .contractor-text-us { display: none; }
+}
+.card-check-availability-btn { display: none; }
+@media (min-width: 881px) {
+  .card-check-availability-btn { display: inline-block; }
 }
 
 /* ---------- Strip / banner ---------- */
