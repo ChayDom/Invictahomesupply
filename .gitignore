@@ -8,3 +8,11 @@ node_modules
 .DS_Store
 .vscode/
 .idea/
+
+# Playwright E2E run artifacts (screenshots/traces/HTML report) — only
+# ever written on failure and always regenerable, never something to commit.
+test/e2e/test-results/
+test/e2e/report/
+blob-report/
+playwright-report/
+.cache/

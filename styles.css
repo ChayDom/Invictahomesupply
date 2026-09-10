@@ -441,8 +441,12 @@ nav.primary-nav a.active {
   border-color: var(--cream-dim);
 }
 .hero .btn-outline:hover { background: var(--cream); color: var(--charcoal); }
-.hero .btn-dark { background: var(--amber); border-color: var(--amber); color: var(--cream); }
-.hero .btn-dark:hover { background: var(--amber-dark); border-color: var(--amber-dark); color: var(--cream); }
+/* --amber against --cream text is only 4.3:1 (fails WCAG AA's 4.5:1 for
+   normal text, confirmed by axe on the hero's "Shop flooring" CTA) —
+   --amber-dark clears it at ~6:1 while staying on-brand; same fix as
+   .optin .btn-dark above. */
+.hero .btn-dark { background: var(--amber-dark); border-color: var(--amber-dark); color: var(--cream); }
+.hero .btn-dark:hover { background: var(--amber); border-color: var(--amber); color: var(--cream); }
 
 /* ---------- Section headings ---------- */
 .section {
@@ -2190,11 +2194,13 @@ footer.site-footer {
   margin: 0 auto 28px;
 }
 .optin .btn-dark {
-  background: var(--amber);
-  border-color: var(--amber);
+  /* --amber against --cream text is only 4.3:1 (fails WCAG AA's 4.5:1 for
+     normal text) — --amber-dark clears it at ~6:1 while staying on-brand. */
+  background: var(--amber-dark);
+  border-color: var(--amber-dark);
   color: var(--cream);
 }
-.optin .btn-dark:hover { background: var(--amber-dark); border-color: var(--amber-dark); color: var(--cream); }
+.optin .btn-dark:hover { background: var(--amber); border-color: var(--amber); color: var(--cream); }
 .optin .btn-outline {
   color: var(--cream);
   border-color: var(--cream-dim);
@@ -2367,7 +2373,9 @@ footer.site-footer {
   text-transform: uppercase;
   letter-spacing: 0.16em;
   font-size: 0.68rem;
-  color: var(--amber);
+  /* --amber on --charcoal is only 2.64:1 (axe: fails WCAG AA's 4.5:1) —
+     --cream clears it at >11:1 on this same dark banner background. */
+  color: var(--cream);
   margin-bottom: 10px;
   display: block;
 }
@@ -2940,6 +2948,10 @@ nav.primary-nav.open {
 .about-split-more { background: var(--charcoal); }
 .about-split-more .about-split-text h2 { color: var(--cream); }
 .about-split-more .about-split-text p { color: var(--cream-dim); }
+/* .about-split-text .eyebrow's base --amber-dark reads fine on the light
+   split sections, but only 1.87:1 on this dark panel's --charcoal
+   background (axe: fails WCAG AA's 4.5:1) — --cream clears it at >11:1. */
+.about-split-more .about-split-text .eyebrow { color: var(--cream); }
 
 @media (max-width: 900px) {
   .about-split-inner { grid-template-columns: 1fr; padding: 40px 32px; gap: 24px; }

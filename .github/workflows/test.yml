@@ -1,0 +1,55 @@
+name: Test
+
+# Runs the fully offline, dependency-free-fixture test suite (unit +
+# mocked Playwright E2E) on every PR/push touching the two branches this
+# repo actually develops/releases on. No production secrets are needed —
+# every network call the tests make is intercepted (see
+# test/e2e/fixtures/mock-inventory.mjs) — and this workflow never runs
+# the live deployment smoke test (test/smoke/run-smoke-test.mjs), which
+# only makes sense pointed at a real deployed URL a human chooses.
+on:
+  push:
+    branches: [main, final-pre-production]
+  pull_request:
+    branches: [main, final-pre-production]
+
+# Least-privilege: this workflow only reads the repo and runs tests — it
+# never pushes, comments, or deploys.
+permissions:
+  contents: read
+
+# A new push to the same PR/branch cancels the previous run instead of
+# queuing both to completion.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright's Chromium + OS dependencies
+        run: npx playwright install --with-deps chromium
+
+      - name: Run unit and E2E tests
+        run: npm test
+
+      - name: Upload Playwright traces/screenshots (only on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            test/e2e/report/
+            test/e2e/test-results/
+          retention-days: 7

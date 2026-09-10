@@ -1,0 +1,22 @@
+{
+  "name": "invictahomesupply-site",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Invicta Home Supply — static site, Netlify Functions/Edge Functions, and its automated test suite.",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "type": "module",
+  "scripts": {
+    "test:unit": "node test/run-unit-tests.mjs",
+    "test:e2e": "playwright test --project=chromium",
+    "test:e2e:firefox": "playwright test --project=firefox",
+    "test:e2e:webkit": "playwright test --project=webkit",
+    "test:smoke": "node test/smoke/run-smoke-test.mjs",
+    "test": "npm run test:unit && npm run test:e2e"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.1",
+    "@playwright/test": "^1.55.1"
+  }
+}
