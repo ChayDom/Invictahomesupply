@@ -1564,6 +1564,14 @@ nav.primary-nav a.active {
   .mobile-filters-btn { display: inline-flex; }
   .mobile-calc-btn { display: inline-flex; }
   .results-toolbar .sort-control { margin-left: 0; }
+  /* The drawer is filters only — the quick-calc card stays desktop-only
+     (see .sidebar-calc-card above) so the drawer always opens straight
+     onto the "Filters" heading, never onto the calculator card that
+     otherwise sits first in .sidebar-scroll. #mobile-calc-btn above is
+     the drawer's replacement entry point into the same full calculator
+     modal (openCalculatorModal() in inventory.js) — this doesn't touch
+     that button, the modal, or any calculation. */
+  .sidebar-calc-card { display: none !important; }
 }
 
 /* ---------- Strip / banner ---------- */
