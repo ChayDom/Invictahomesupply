@@ -1677,28 +1677,32 @@ nav.primary-nav a.active {
   .sidebar-calc-card { display: none !important; }
 }
 
-/* Desktop-only inquiry-CTA swap — the exact complement of the 880px
-   Filters-drawer breakpoint above, so mobile/tablet (≤880px) keeps
-   every existing pixel/behavior untouched: the legacy sms: "Check
-   Availability" link (.card-check-availability-sms, product cards +
-   product-detail actions row) and Contractor View's secondary
-   "Text Us" link (.contractor-text-us) both still render exactly as
-   before there. At 881px and up, those give way to an on-site form:
-   .card-check-availability-btn (opens the availability-request modal —
-   see openAvailabilityModal() in inventory.js) replaces the sms: link,
-   and Contractor View's primary Get a Quote/Check Availability button
-   (already the only thing rendered on both sides of this breakpoint)
-   stands alone once its Text Us sibling is hidden. Neither modal ever
-   contains a Text Us/SMS/Call option — this only ever hides the
-   already-separate secondary link, never something inside a modal. */
+/* Secondary "Text Us" link — Card View (.text-us-secondary: product
+   cards, product-detail actions row) and Contractor View
+   (.contractor-text-us) alike. The primary form-opening button (Get a
+   Quote / Check Availability) is the same markup at every width and is
+   never toggled here; only this secondary sms: link is — visible up to
+   880px, hidden at 881px and up, the exact complement of the Filters-
+   drawer breakpoint above. Neither modal ever contains a Text Us/SMS/
+   Call option; this only ever hides the already-separate secondary
+   link.
+   Selector is ".btn.text-us-secondary" (not the bare class) so its
+   specificity (0,0,2,0) beats .btn-block's plain "display: block"
+   (0,0,1,0, declared later in this file for the card version of this
+   link) regardless of source order — a bare ".text-us-secondary { display: none }"
+   here lost that tie by source order and silently stayed visible on
+   desktop. */
 @media (min-width: 881px) {
-  .card-check-availability-sms { display: none; }
-  .contractor-text-us { display: none; }
+  .btn.text-us-secondary { display: none; }
+  .btn.contractor-text-us { display: none; }
 }
-.card-check-availability-btn { display: none; }
-@media (min-width: 881px) {
-  .card-check-availability-btn { display: inline-block; }
-}
+/* Forces the secondary link onto its own line directly below the
+   primary button, regardless of the primary's own flex-basis or how
+   much row width is available — same specificity as (and placed after)
+   .product-actions .btn/.product-detail-actions .btn, so this wins
+   without having to change either row's general button sizing (e.g.
+   product-detail's Call/Back to inventory buttons are untouched). */
+.btn.text-us-secondary { flex: 1 1 100%; }
 
 /* ---------- Strip / banner ---------- */
 .strip {
@@ -2083,12 +2087,6 @@ footer.site-footer {
   .product-card .product-more { display: none; }
   .product-card .product-info { grid-column: 2; grid-row: 1; padding: 0; }
   .product-card .product-actions { grid-column: 2; grid-row: 2; padding: 0; margin-top: 8px; }
-  /* One primary CTA on mobile ("Check Availability") — Flooring's
-     second "Get a Quote" button belongs on the product detail page
-     here too, same as the gallery/details above. Only reachable via a
-     mixed-category grid (e.g. the "All" tab or New This Week); Flooring
-     alone never shows this card at all below this breakpoint. */
-  .product-card .product-actions [data-quote-id] { display: none; }
   .product-card .product-actions .btn { flex: 1 1 100%; }
   /* .badge's normal 10px/5px-12px positioning is sized for a full-width
      square photo — inside this card's 72px thumbnail it overflowed the
@@ -2639,7 +2637,8 @@ body.modal-open { overflow: hidden; }
 .calc-link:hover { color: var(--amber); }
 .form-field input[type="text"],
 .form-field input[type="tel"],
-.form-field input[type="number"] {
+.form-field input[type="number"],
+.form-field textarea {
   padding: 11px 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -2647,8 +2646,9 @@ body.modal-open { overflow: hidden; }
   font-size: 0.9rem;
   color: var(--charcoal);
 }
-.form-field input:focus { outline: none; border-color: var(--charcoal); }
-.form-field input:focus-visible { outline: 2px solid var(--charcoal); outline-offset: 2px; }
+.form-field textarea { resize: vertical; min-height: 72px; }
+.form-field input:focus, .form-field textarea:focus { outline: none; border-color: var(--charcoal); }
+.form-field input:focus-visible, .form-field textarea:focus-visible { outline: 2px solid var(--charcoal); outline-offset: 2px; }
 
 .form-field-checkbox {
   flex-direction: row;

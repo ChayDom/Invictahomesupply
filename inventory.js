@@ -748,38 +748,30 @@ function smsHrefForItem(item) {
   return `sms:${phoneHref}?&body=${encodeURIComponent(smsMessageForItem(item))}`;
 }
 
-// One CTA per card for most categories. Quote-eligible Flooring cards
-// get a second "Get a Quote" button (the sq-ft-needed quote modal) —
-// see isQuoteEligibleFlooring() for exactly which Flooring rows qualify
+// One primary CTA per card, at every width, plus a secondary "Text Us"
+// link visible only at 880px and below (see .text-us-secondary in
+// styles.css — hidden ≥881px, never inside either modal). Quote-eligible
+// Flooring gets "Get a Quote" (opens the quote-request modal) — see
+// isQuoteEligibleFlooring() for exactly which Flooring rows qualify
 // (Category alone is too broad: it also covers underlayment/tools/trim,
-// which must never show this button). The Contractor View table (see
-// contractorRowCta()) has its own equivalent CTA logic. Out-of-stock
-// items keep the card visible but swap the CTA(s) for a disabled pill.
-//
-// Desktop (≥881px, see styles.css) vs. mobile/tablet (≤880px, unchanged
-// from before this pass) intentionally differ here without any JS
-// device detection: both the legacy SMS "Check Availability" link and
-// its replacement on-site-form button are always rendered; CSS shows
-// exactly one of the two per breakpoint (.card-check-availability-sms
-// hidden ≥881px, .card-check-availability-btn hidden below that). This
-// keeps every existing mobile pixel/behavior — including the ≤700px
-// override that hides the Get a Quote button entirely on the compact
-// list card — completely untouched; only ≥881px changes. On desktop,
-// quote-eligible Flooring shows only "Get a Quote" (its SMS sibling is
-// hidden there); every other item shows only the new "Check
-// Availability" button, which opens the availability-request modal
-// instead of navigating to sms:.
+// which must never show this button). Everything else gets "Check
+// Availability" (opens the availability-request modal). The Contractor
+// View table (see contractorRowCta()) has its own equivalent CTA logic.
+// Out-of-stock items keep the card visible but swap the CTA(s) for a
+// disabled pill. No JS device detection anywhere here — the primary
+// button is identical markup at every width; only the secondary Text
+// Us link's visibility is breakpoint-dependent, via CSS.
 function actionButtons(item) {
   if (!isAvailable(item)) {
     return `<span class="btn btn-outline btn-small btn-block" style="opacity:.5; cursor:default;">${item.statusLabel}</span>`;
   }
-  const smsHref = smsHrefForItem(item);
+  const textUs = `<a href="${smsHrefForItem(item)}" class="btn btn-outline btn-small btn-block text-us-secondary">Text Us</a>`;
   if (!isQuoteEligibleFlooring(item)) {
-    return `<a href="${smsHref}" class="btn btn-dark btn-small btn-block card-check-availability-sms">Check Availability</a>
-    <button type="button" class="btn btn-dark btn-small btn-block card-check-availability-btn" data-availability-id="${item.id}">Check Availability</button>`;
+    return `<button type="button" class="btn btn-dark btn-small btn-block" data-availability-id="${item.id}">Check Availability</button>
+    ${textUs}`;
   }
-  return `<a href="${smsHref}" class="btn btn-dark btn-small card-check-availability-sms">Check Availability</a>
-    <button type="button" class="btn btn-outline btn-small" data-quote-id="${item.id}">Get a Quote</button>`;
+  return `<button type="button" class="btn btn-dark btn-small btn-block" data-quote-id="${item.id}">Get a Quote</button>
+    ${textUs}`;
 }
 
 // Single source of truth for a flooring row's per-box price, shared by
@@ -1761,9 +1753,9 @@ function initQuoteModal(items) {
   quoteModalInitialized = true;
   document.addEventListener("click", (e) => {
     const quoteBtn = e.target.closest("[data-quote-id]");
-    if (quoteBtn) { openQuoteModal(itemsById[quoteBtn.getAttribute("data-quote-id")]); return; }
+    if (quoteBtn) { openQuoteModal(itemsById[quoteBtn.getAttribute("data-quote-id")], quoteBtn); return; }
     const availabilityBtn = e.target.closest("[data-availability-id]");
-    if (availabilityBtn) openAvailabilityModal(itemsById[availabilityBtn.getAttribute("data-availability-id")]);
+    if (availabilityBtn) openAvailabilityModal(itemsById[availabilityBtn.getAttribute("data-availability-id")], availabilityBtn);
   });
   bindQuoteModal();
   bindAvailabilityModal();
@@ -1940,11 +1932,42 @@ function initShopControls(items) {
 }
 
 // ---------------------------------------------------------------------
-// Get a Quote modal — opened from the "Get a Quote" button on Flooring
-// cards (see actionButtons), where a sq-ft-needed quote makes sense.
-// Submits to the "quote-request" Netlify Form via fetch, so the page
-// never navigates away. See the static hidden form in shop.html for the
-// field list Netlify expects.
+// Shared modal a11y helpers — used by both the Get a Quote and Check
+// Availability modals: focus the given element as soon as the overlay
+// is unhidden, trap Tab/Shift+Tab inside the overlay's own focusable
+// elements while open, and restore focus to whichever button actually
+// opened the modal once it closes (never just "the last thing
+// document.activeElement happened to be").
+// ---------------------------------------------------------------------
+function getFocusableIn(overlay) {
+  const selector = 'button:not([disabled]), [href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  return Array.from(overlay.querySelectorAll(selector)).filter(el => el.offsetParent !== null);
+}
+
+function trapModalTab(overlay, e) {
+  if (e.key !== "Tab") return;
+  const focusable = getFocusableIn(overlay);
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
+}
+
+// ---------------------------------------------------------------------
+// Get a Quote modal — opened from the "Get a Quote" button on
+// quote-eligible Flooring items (see actionButtons()/contractorRowCta()/
+// initProductDetail()), where a sq-ft-needed quote makes sense. Submits
+// to the "quote-request" Netlify Form via fetch, so the page never
+// navigates away. See the static hidden form in shop.html for the field
+// list Netlify expects. Never offers a Text Us/SMS/Call/mailto option
+// inside this modal — Text Us, where it exists, is its own separate
+// control outside any modal, never auto-triggered by submission here.
 // ---------------------------------------------------------------------
 function quotePriceText(item) {
   if (item.webCategory === "Flooring" && typeof item.price === "number") {
@@ -1953,11 +1976,14 @@ function quotePriceText(item) {
   return money(item.price);
 }
 
-function openQuoteModal(item) {
+let quoteModalTrigger = null;
+
+function openQuoteModal(item, triggerEl) {
   if (!item) return;
   const overlay = document.getElementById("quote-modal-overlay");
   const form = document.getElementById("quote-form");
   if (!overlay || !form) return;
+  quoteModalTrigger = triggerEl || document.activeElement;
 
   const nameEl = document.getElementById("quote-product-name");
   const priceEl = document.getElementById("quote-product-price");
@@ -1973,6 +1999,8 @@ function openQuoteModal(item) {
   document.getElementById("quote-modal-form-view").hidden = false;
   document.getElementById("quote-modal-success-view").hidden = true;
   document.getElementById("quote-form-error").hidden = true;
+  const submitBtn = document.getElementById("quote-submit-btn");
+  if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Request Quote"; }
 
   overlay.hidden = false;
   document.body.classList.add("modal-open");
@@ -1983,6 +2011,8 @@ function closeQuoteModal() {
   const overlay = document.getElementById("quote-modal-overlay");
   if (overlay) overlay.hidden = true;
   document.body.classList.remove("modal-open");
+  quoteModalTrigger?.focus();
+  quoteModalTrigger = null;
 }
 
 function encodeFormData(data) {
@@ -1997,7 +2027,11 @@ function bindQuoteModal() {
   document.getElementById("quote-modal-close")?.addEventListener("click", closeQuoteModal);
   document.getElementById("quote-modal-done")?.addEventListener("click", closeQuoteModal);
   overlay.addEventListener("click", (e) => { if (e.target === overlay) closeQuoteModal(); });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !overlay.hidden) closeQuoteModal(); });
+  document.addEventListener("keydown", (e) => {
+    if (overlay.hidden) return;
+    if (e.key === "Escape") { closeQuoteModal(); return; }
+    trapModalTab(overlay, e);
+  });
 
   document.getElementById("quote-calc-link")?.addEventListener("click", () => {
     // The Flooring Calculator modal only exists on shop.html — guard so
@@ -2017,6 +2051,9 @@ function bindQuoteModal() {
     }
 
     const submitBtn = document.getElementById("quote-submit-btn");
+    // Guards against a second submit firing (double-click, or Enter held
+    // down) while the first request is still in flight.
+    if (submitBtn?.disabled) return;
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Sending..."; }
     document.getElementById("quote-form-error").hidden = true;
 
@@ -2034,10 +2071,10 @@ function bindQuoteModal() {
       if (!res.ok) throw new Error(`Submission failed: ${res.status}`);
       document.getElementById("quote-modal-form-view").hidden = true;
       document.getElementById("quote-modal-success-view").hidden = false;
+      if (submitBtn) submitBtn.disabled = false;
     } catch (err) {
       console.warn("Invicta: quote submission failed —", err);
       document.getElementById("quote-form-error").hidden = false;
-    } finally {
       if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Request Quote"; }
     }
   });
@@ -2055,22 +2092,30 @@ function bindQuoteModal() {
 // lives as its own separate control outside any modal (see actionButtons()/
 // contractorRowCta()), never auto-triggered by either modal's submission.
 // ---------------------------------------------------------------------
-function openAvailabilityModal(item) {
+let availabilityModalTrigger = null;
+
+function openAvailabilityModal(item, triggerEl) {
   if (!item) return;
   const overlay = document.getElementById("availability-modal-overlay");
   const form = document.getElementById("availability-form");
   if (!overlay || !form) return;
+  availabilityModalTrigger = triggerEl || document.activeElement;
 
   const nameEl = document.getElementById("availability-product-name");
+  const priceEl = document.getElementById("availability-product-price");
   if (nameEl) nameEl.textContent = item.name;
+  if (priceEl) priceEl.textContent = typeof item.price === "number" ? quotePriceText(item) : "";
 
   form.reset();
   document.getElementById("availability-field-product-name").value = item.name;
   document.getElementById("availability-field-product-key").value = item.productKey || item.id;
+  document.getElementById("availability-field-price").value = typeof item.price === "number" ? money2(item.price) : "";
 
   document.getElementById("availability-modal-form-view").hidden = false;
   document.getElementById("availability-modal-success-view").hidden = true;
   document.getElementById("availability-form-error").hidden = true;
+  const submitBtn = document.getElementById("availability-submit-btn");
+  if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Send Request"; }
 
   overlay.hidden = false;
   document.body.classList.add("modal-open");
@@ -2081,6 +2126,8 @@ function closeAvailabilityModal() {
   const overlay = document.getElementById("availability-modal-overlay");
   if (overlay) overlay.hidden = true;
   document.body.classList.remove("modal-open");
+  availabilityModalTrigger?.focus();
+  availabilityModalTrigger = null;
 }
 
 function bindAvailabilityModal() {
@@ -2091,7 +2138,11 @@ function bindAvailabilityModal() {
   document.getElementById("availability-modal-close")?.addEventListener("click", closeAvailabilityModal);
   document.getElementById("availability-modal-done")?.addEventListener("click", closeAvailabilityModal);
   overlay.addEventListener("click", (e) => { if (e.target === overlay) closeAvailabilityModal(); });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !overlay.hidden) closeAvailabilityModal(); });
+  document.addEventListener("keydown", (e) => {
+    if (overlay.hidden) return;
+    if (e.key === "Escape") { closeAvailabilityModal(); return; }
+    trapModalTab(overlay, e);
+  });
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -2101,6 +2152,7 @@ function bindAvailabilityModal() {
     }
 
     const submitBtn = document.getElementById("availability-submit-btn");
+    if (submitBtn?.disabled) return;
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Sending..."; }
     document.getElementById("availability-form-error").hidden = true;
 
@@ -2118,10 +2170,10 @@ function bindAvailabilityModal() {
       if (!res.ok) throw new Error(`Submission failed: ${res.status}`);
       document.getElementById("availability-modal-form-view").hidden = true;
       document.getElementById("availability-modal-success-view").hidden = false;
+      if (submitBtn) submitBtn.disabled = false;
     } catch (err) {
       console.warn("Invicta: availability submission failed —", err);
       document.getElementById("availability-form-error").hidden = false;
-    } finally {
       if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Send Request"; }
     }
   });
@@ -2602,17 +2654,16 @@ function initProductDetail(items) {
         <h1>${item.name}</h1>
         ${statusBadge(item)}
         ${priceBlock(item)}
-        ${isQuoteEligibleFlooring(item)
-          ? `<button type="button" class="btn btn-outline btn-small" data-quote-id="${item.id}">Get a Quote</button>`
-          : ""}
         ${specRows.length ? `<div class="product-detail-specs"><table>${specRows.map(([l, v]) => `<tr><td>${l}</td><td>${v}</td></tr>`).join("")}</table></div>` : ""}
         ${item.details ? `<p class="product-detail-desc">${item.details}</p>` : ""}
         ${highlightLines.length ? `<ul class="product-details">${highlightLines.map(h => `<li>${h}</li>`).join("")}</ul>` : ""}
         <div class="product-detail-actions">
           ${isAvailable(item)
-            ? `<a href="${smsHrefForItem(item)}" class="btn btn-dark card-check-availability-sms">Check Availability</a>
-            ${isQuoteEligibleFlooring(item) ? "" : `<button type="button" class="btn btn-dark card-check-availability-btn" data-availability-id="${item.id}">Check Availability</button>`}`
+            ? (isQuoteEligibleFlooring(item)
+                ? `<button type="button" class="btn btn-dark" data-quote-id="${item.id}">Get a Quote</button>`
+                : `<button type="button" class="btn btn-dark" data-availability-id="${item.id}">Check Availability</button>`)
             : `<span class="btn btn-outline" style="opacity:.5; cursor:default;">${item.statusLabel}</span>`}
+          ${isAvailable(item) ? `<a href="${smsHrefForItem(item)}" class="btn btn-outline text-us-secondary">Text Us</a>` : ""}
           <a href="tel:" data-tel-link class="btn btn-outline">Call</a>
           <a href="${backHref}" class="btn btn-outline">Back to inventory</a>
         </div>

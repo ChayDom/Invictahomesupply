@@ -143,11 +143,11 @@
           <input type="tel" name="phone" required autocomplete="tel">
         </label>
         <label class="form-field">
-          <span>Email</span>
-          <input type="email" name="email" autocomplete="email">
+          <span>Questions or notes (optional)</span>
+          <textarea name="notes" rows="3" placeholder="Add any questions or details about your project"></textarea>
         </label>
 
-        <div class="quote-form-error" id="quote-form-error" hidden>Something went wrong sending your request — please try again.</div>
+        <div class="quote-form-error" id="quote-form-error" role="alert" hidden>Something went wrong. Please try again or call us.</div>
 
         <button type="submit" class="btn btn-dark btn-block" id="quote-submit-btn">Request Quote</button>
       </form>
@@ -170,11 +170,13 @@
     <div id="availability-modal-form-view">
       <div class="eyebrow">Check Availability</div>
       <h3 class="quote-product-name" id="availability-product-name"></h3>
+      <div class="quote-product-price" id="availability-product-price"></div>
 
       <form id="availability-form" class="quote-form">
         <input type="hidden" name="form-name" value="availability-request">
         <input type="hidden" name="product-name" id="availability-field-product-name">
         <input type="hidden" name="product-key" id="availability-field-product-key">
+        <input type="hidden" name="price" id="availability-field-price">
         <input type="hidden" name="submitted-at" id="availability-field-submitted-at">
         <p class="hp-field" aria-hidden="true">
           <label>Leave this field blank<input type="text" name="bot-field" tabindex="-1" autocomplete="off"></label>
@@ -189,11 +191,11 @@
           <input type="tel" name="phone" required autocomplete="tel">
         </label>
         <label class="form-field">
-          <span>Email</span>
-          <input type="email" name="email" autocomplete="email">
+          <span>Message or quantity needed (optional)</span>
+          <textarea name="message" rows="3" placeholder="For example: quantity needed or any questions"></textarea>
         </label>
 
-        <div class="quote-form-error" id="availability-form-error" hidden>Something went wrong sending your request — please try again.</div>
+        <div class="quote-form-error" id="availability-form-error" role="alert" hidden>Something went wrong. Please try again or call us.</div>
 
         <button type="submit" class="btn btn-dark btn-block" id="availability-submit-btn">Send Request</button>
       </form>

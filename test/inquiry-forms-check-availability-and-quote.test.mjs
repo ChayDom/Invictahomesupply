@@ -1,39 +1,48 @@
 #!/usr/bin/env node
 // ===================================================================
-// Regression test for the desktop "Check Availability" → on-site
-// availability-request form redesign, the simplified quote-request
-// form, and Contractor View's matching Get a Quote/Check Availability
-// treatment.
+// Regression test for the "Check Availability" / "Get a Quote" inquiry
+// flow: exactly one primary form-opening button per item at every
+// width, plus a secondary "Text Us" sms: link visible only at 880px
+// and below (CSS-only — no JS device detection), the on-site
+// "availability-request" and "quote-request" Netlify Forms, and their
+// accessible-modal behavior (focus management, Escape/overlay close,
+// Tab trapping, duplicate-submission prevention).
 //
-// Background/behavior being pinned:
-//  - Non-Flooring items (and Flooring items isQuoteEligibleFlooring()
-//    excludes) get a "Check Availability" primary action that opens a
-//    NEW on-site "availability-request" modal/form (name/phone
-//    required, email optional, "Send Request" button, its own success
-//    message) — never sms:/tel:/mailto inside that modal.
-//  - Quote-eligible Flooring keeps "Get a Quote" as its one primary
-//    action; the existing "quote-request" form is simplified (no ZIP,
-//    no installation checkbox, email added) and no longer offers a
-//    Text Us link inside the modal.
-//  - Both changes are desktop-only via CSS breakpoints, not JS device
-//    detection: actionButtons()/initProductDetail() always render BOTH
-//    the legacy sms: link (.card-check-availability-sms) and the new
-//    button (.card-check-availability-btn); styles.css hides exactly
-//    one per breakpoint (881px+), so ≤880px is byte-for-byte the same
-//    markup/behavior as before this change.
-//  - Contractor View (Flooring-only) gets the same primary-action rule
-//    (Get a Quote vs. Check Availability, same eligibility check, same
-//    modals) at every width, plus a secondary "Text Us" link
-//    (.contractor-text-us) that is visible only ≤880px and never lives
-//    inside either modal. "Text to Hold" wording is retired.
-//  - isQuoteEligibleFlooring()/QUOTE_ELIGIBLE_FLOORING_SUBCATEGORIES
-//    are untouched — Contractor View must never broaden eligibility.
+// Current design (post duplicate-button fix):
+//  - actionButtons()/contractorRowCta()/initProductDetail() each render
+//    ONE primary dark button (always visible, identical markup at every
+//    width — never toggled by CSS or JS): "Get a Quote" for
+//    isQuoteEligibleFlooring() items (opens the quote-request modal),
+//    "Check Availability" for everything else (opens the
+//    availability-request modal). A single secondary outlined "Text Us"
+//    link (.text-us-secondary on cards/product-detail,
+//    .contractor-text-us in Contractor View) uses the existing
+//    product-specific sms: link and is hidden only at 881px+ via CSS
+//    (styles.css's @media (min-width: 881px) block) — the exact
+//    complement of the Filters-drawer breakpoint, and independent of
+//    the header nav's own 1150/1151px breakpoint.
+//  - Neither modal ever contains a Text Us/sms:/tel:/mailto: option.
+//  - isQuoteEligibleFlooring()/QUOTE_ELIGIBLE_FLOORING_SUBCATEGORIES are
+//    untouched — Contractor View must never broaden eligibility.
+//  - The availability-request form: Name + Phone required, optional
+//    "Message or quantity needed (optional)" textarea, no email/zip/
+//    installation, "Send Request" submit button.
+//  - The quote-request form: Approx. Sq Ft Needed + Name + Phone
+//    required, optional "Questions or notes (optional)" textarea, no
+//    email/zip/installation, "Request Quote" submit button.
+//  - Both modals: unique IDs/aria-labelledby, role="dialog"
+//    aria-modal="true", focus the first customer input on open, Escape
+//    and overlay-click close, Tab is trapped within the modal, closing
+//    restores focus to the exact button that opened it, a pending
+//    submission disables the submit button so a second click/Enter
+//    can't double-submit, and reopening for a different product resets
+//    any prior success/error state.
 //
 // Exercises the real inventory.js via vm.runInThisContext (same
-// technique as test/quote-eligibility.test.mjs), plus regex assertions
-// against the real shop.html/index.html/product.html/styles.css source
-// for the modal markup, static Netlify Forms declarations, and CSS
-// breakpoint rules — no reimplementation of any of it here.
+// technique as test/quote-eligibility.test.mjs and
+// test/header-desktop-phone-text.test.mjs), plus regex/computed-cascade
+// assertions against the real shop.html/index.html/product.html/
+// styles.css source — no reimplementation of any of it here.
 //
 // Run with: node test/inquiry-forms-check-availability-and-quote.test.mjs
 // ===================================================================
@@ -62,10 +71,22 @@ function test(name, fn) {
     console.error(`  ${err.stack || err.message}`);
   }
 }
+async function testAsync(name, fn) {
+  try {
+    await fn();
+    console.log(`ok - ${name}`);
+  } catch (err) {
+    failures++;
+    console.error(`NOT OK - ${name}`);
+    console.error(`  ${err.stack || err.message}`);
+  }
+}
 
 // ---------------------------------------------------------------------
-// Part 1: JS render-function assertions (actionButtons/contractorRowCta/
-// initProductDetail), against the real inventory.js.
+// Load the real inventory.js into a fake-DOM sandbox (same pattern as
+// test/header-desktop-phone-text.test.mjs / the prior version of this
+// file) so actionButtons()/contractorRowCta()/initProductDetail()/the
+// modal functions all run for real.
 // ---------------------------------------------------------------------
 globalThis.window = { AIRTABLE_CONFIG: {}, SITE_CONFIG: { phoneHref: "+12145522145" }, location: { search: "?id=LEG-HD-001157", hash: "", pathname: "/product.html", href: "https://invictahomesupply.com/product.html?id=LEG-HD-001157" } };
 globalThis.localStorage = { getItem: () => null, setItem: () => {} };
@@ -100,6 +121,7 @@ function freshDocumentState() {
   let metaRobotsEl = null;
   const doc = {
     title: "",
+    activeElement: null,
     getElementById: (id) => (id === "product-detail-root" ? container : null),
     querySelector: (sel) => (sel === 'meta[name="robots"]' ? metaRobotsEl : (elements[sel] || null)),
     querySelectorAll: () => [],
@@ -115,6 +137,10 @@ globalThis.document = new Proxy({}, {
   get: (_t, prop) => currentDoc[prop],
   set: (_t, prop, value) => { currentDoc[prop] = value; return true; },
 });
+globalThis.FormData = class {
+  constructor(form) { this._entries = Object.entries((form && form._values) || {}); }
+  forEach(cb) { this._entries.forEach(([k, v]) => cb(v, k)); }
+};
 
 vm.runInThisContext(inventorySrc, { filename: "inventory.js" });
 
@@ -126,6 +152,7 @@ function flooringItem(overrides) {
     webCategory: "Flooring",
     webSubcategory: "Luxury Vinyl Plank",
     price: 2.49,
+    boxPrice: 42.11,
     sqFtPerUnit: 24,
     availableSqFt: 480,
     statusLabel: "In Stock",
@@ -133,37 +160,148 @@ function flooringItem(overrides) {
     ...overrides,
   };
 }
+function nonEligibleItem(overrides) {
+  return flooringItem({ webCategory: "Appliances", webSubcategory: "Refrigerator", price: 649, boxPrice: undefined, sqFtPerUnit: undefined, ...overrides });
+}
 
-// --- actionButtons() (Card View + homepage) --------------------------
-test("actionButtons(): quote-eligible Flooring renders the legacy sms link AND Get a Quote — no availability button at all", () => {
-  const html = actionButtons(flooringItem());
-  assert.match(html, /class="[^"]*card-check-availability-sms[^"]*"[^>]*>Check Availability<\/a>/);
-  assert.match(html, /data-quote-id="recTEST0000000001"/);
-  assert.doesNotMatch(html, /data-availability-id/);
-});
+// ---------------------------------------------------------------------
+// Tiny cascade evaluator (same technique as
+// test/header-desktop-phone-text.test.mjs) for computed visibility of
+// .text-us-secondary / .contractor-text-us across real widths — proves
+// the ACTUAL rendered/hidden state a browser would compute, not just
+// that the CSS text exists somewhere.
+// ---------------------------------------------------------------------
+function declaredDisplay(selector, blockSrc) {
+  const re = new RegExp(selector.replace(/[.#]/g, "\\$&") + "\\s*\\{([^}]*)\\}");
+  const m = blockSrc.match(re);
+  if (!m) return null;
+  const d = m[1].match(/display:\s*([a-z-]+)/);
+  return d ? d[1] : null;
+}
+function computedDisplay(selector, width) {
+  const baseMatch = stylesSrc.match(new RegExp(`\\n${selector.replace(/[.#]/g, "\\$&")}\\s*\\{([^}]*)\\}`));
+  let value = baseMatch ? declaredDisplay(selector, `${selector} {${baseMatch[1]}}`) : "block";
+  const re = /@media \(min-width:\s*(\d+)px\)\s*\{([\s\S]*?)\n\}\n/g;
+  let m;
+  while ((m = re.exec(stylesSrc))) {
+    const minWidth = Number(m[1]);
+    if (width < minWidth) continue;
+    const d = declaredDisplay(selector, m[0]);
+    if (d) value = d;
+  }
+  return value;
+}
+function isVisible(selector, width) { return computedDisplay(selector, width) !== "none"; }
 
-test("actionButtons(): non-eligible items render BOTH the legacy sms link and the new desktop availability button", () => {
-  const html = actionButtons(flooringItem({ webCategory: "Appliances", webSubcategory: "Refrigerator" }));
-  assert.match(html, /class="[^"]*card-check-availability-sms[^"]*"[^>]*>Check Availability<\/a>/);
-  assert.match(html, /class="[^"]*card-check-availability-btn[^"]*"[^>]*data-availability-id="recTEST0000000001"[^>]*>Check Availability<\/button>/);
-  assert.doesNotMatch(html, /data-quote-id/);
-});
+// ---------------------------------------------------------------------
+// Group 1/2/3: regular product / eligible Flooring / non-eligible
+// Flooring, at 390px and 1024px, via actionButtons() — the function
+// shared by the homepage "New This Week" cards and Shop Card View.
+// ---------------------------------------------------------------------
+for (const width of [390, 1024]) {
+  const mobile = width <= 880;
 
-test("actionButtons(): a non-eligible Flooring subcategory (e.g. Underlayment) gets the availability button, not Get a Quote", () => {
+  test(`actionButtons() @ ${width}px: regular (non-eligible) product — exactly one primary "Check Availability" button, opens the availability modal, never labeled on the sms link`, () => {
+    const html = actionButtons(nonEligibleItem());
+    const primaryMatches = html.match(/data-availability-id="recTEST0000000001"/g) || [];
+    assert.equal(primaryMatches.length, 1, "expected exactly one Check Availability button");
+    assert.doesNotMatch(html, /data-quote-id/);
+    assert.match(html, /<button[^>]*data-availability-id="recTEST0000000001"[^>]*>Check Availability<\/button>/);
+    assert.ok(isVisible(".btn-dark", width) !== false, "primary btn-dark is never CSS-hidden");
+    // The primary button carries no text-us-secondary/contractor-text-us
+    // class, so it is never subject to the ≥881px hide rule.
+    const primaryTag = html.match(/<button[^>]*data-availability-id[^>]*>/)[0];
+    assert.doesNotMatch(primaryTag, /text-us-secondary|contractor-text-us/);
+    const smsTag = html.match(/<a[^>]*text-us-secondary[^>]*>Text Us<\/a>/);
+    assert.ok(smsTag, "expected a secondary Text Us sms link");
+    assert.doesNotMatch(smsTag[0], />Check Availability</, 'the sms link must never be labeled "Check Availability"');
+    const smsVisible = isVisible(".text-us-secondary", width);
+    assert.equal(smsVisible, mobile, `Text Us should be ${mobile ? "visible" : "hidden"} at ${width}px`);
+  });
+
+  test(`actionButtons() @ ${width}px: quote-eligible Flooring — exactly one primary "Get a Quote" button, opens the quote modal, no Check Availability`, () => {
+    const html = actionButtons(flooringItem());
+    const primaryMatches = html.match(/data-quote-id="recTEST0000000001"/g) || [];
+    assert.equal(primaryMatches.length, 1, "expected exactly one Get a Quote button");
+    assert.doesNotMatch(html, /data-availability-id/);
+    assert.doesNotMatch(html, />Check Availability</);
+    assert.match(html, /<button[^>]*data-quote-id="recTEST0000000001"[^>]*>Get a Quote<\/button>/);
+    const smsVisible = isVisible(".text-us-secondary", width);
+    assert.equal(smsVisible, mobile, `Text Us should be ${mobile ? "visible" : "hidden"} at ${width}px`);
+  });
+}
+
+test("actionButtons(): a non-eligible Flooring subcategory (e.g. Underlayment) gets Check Availability, not Get a Quote", () => {
   const html = actionButtons(flooringItem({ webSubcategory: "Underlayment" }));
   assert.match(html, /data-availability-id/);
   assert.doesNotMatch(html, /data-quote-id/);
 });
 
-// --- Contractor View --------------------------------------------------
-test("contractorRowCta(): quote-eligible Flooring gets a Get a Quote primary button plus a secondary Text Us link — never 'Text to Hold'", () => {
+test("actionButtons(): out-of-stock items render only the disabled status pill — no primary button, no Text Us", () => {
+  const html = actionButtons(flooringItem({ statusLabel: "Sold Out" }));
+  assert.match(html, />Sold Out</);
+  assert.doesNotMatch(html, /data-quote-id|data-availability-id|text-us-secondary/);
+});
+
+// ---------------------------------------------------------------------
+// Group 4: per-view repeats — homepage / Shop Card View share
+// actionButtons() via productCard(), already covered above. Product-
+// detail, Contractor desktop, and Contractor mobile get their own
+// render functions and are checked here.
+// ---------------------------------------------------------------------
+test("productCard() (homepage 'New This Week' + Shop Card View): renders actionButtons() output with no duplicate CTA", () => {
+  const html = productCard(nonEligibleItem({ photoCards: ["https://example.com/card.jpg"], photoThumbs: ["https://example.com/thumb.jpg"] }));
+  const checkAvailMatches = html.match(/>Check Availability</g) || [];
+  assert.equal(checkAvailMatches.length, 1, "expected exactly one 'Check Availability' label on the card");
+});
+
+test("initProductDetail(): non-eligible item's actions row has exactly one primary Check Availability button and a secondary Text Us link, no duplicate labels", () => {
+  const { doc, container } = freshDocumentState();
+  currentDoc = doc;
+  initProductDetail([nonEligibleItem()]);
+  const html = container.innerHTML;
+  assert.equal((html.match(/>Check Availability</g) || []).length, 1);
+  assert.match(html, /data-availability-id="recTEST0000000001"/);
+  assert.doesNotMatch(html, /data-quote-id/);
+  assert.match(html, /class="[^"]*text-us-secondary[^"]*"[^>]*>Text Us<\/a>/);
+  const smsTag = html.match(/class="[^"]*text-us-secondary[^"]*"[^>]*>[^<]*<\/a>/)[0];
+  assert.doesNotMatch(smsTag, />Check Availability</, 'the sms link must never be labeled "Check Availability"');
+});
+
+test("initProductDetail(): quote-eligible Flooring's actions row has exactly one primary Get a Quote button and a secondary Text Us link, no Check Availability anywhere", () => {
+  const { doc, container } = freshDocumentState();
+  currentDoc = doc;
+  initProductDetail([flooringItem()]);
+  const html = container.innerHTML;
+  assert.equal((html.match(/>Get a Quote</g) || []).length, 1);
+  assert.doesNotMatch(html, />Check Availability</);
+  assert.match(html, /class="[^"]*text-us-secondary[^"]*"[^>]*>Text Us<\/a>/);
+});
+
+test("initProductDetail(): out-of-stock item shows only the disabled status pill, no primary button, no Text Us, still has Call/Back links", () => {
+  const { doc, container } = freshDocumentState();
+  currentDoc = doc;
+  initProductDetail([flooringItem({ statusLabel: "Sold Out" })]);
+  const html = container.innerHTML;
+  assert.doesNotMatch(html, /data-quote-id|data-availability-id|text-us-secondary/);
+  assert.match(html, />Sold Out</);
+  assert.match(html, /data-tel-link/);
+  assert.match(html, />Back to inventory</);
+});
+
+// --- Contractor View (desktop row + the same markup doubles as the
+// mobile-card CTA source in this codebase — see contractorRowCta()) ---
+test("contractorRowCta(): quote-eligible Flooring — desktop shows Get a Quote only (Text Us CSS-hidden ≥881px); mobile shows Get a Quote + Text Us — never 'Text to Hold'", () => {
   const html = contractorRowCta(flooringItem());
   assert.match(html, /data-quote-id="recTEST0000000001"[^>]*>Get a Quote<\/button>/);
   assert.match(html, /class="[^"]*contractor-text-us[^"]*"[^>]*>Text Us<\/a>/);
+  assert.doesNotMatch(html, /data-availability-id/);
   assert.doesNotMatch(html, /Text to Hold/);
+  assert.equal(isVisible(".contractor-text-us", 1024), false, "Text Us must be hidden on Contractor desktop (≥881px)");
+  assert.equal(isVisible(".contractor-text-us", 390), true, "Text Us must be visible on Contractor mobile (≤880px)");
 });
 
-test("contractorRowCta(): a non-eligible Flooring item gets a Check Availability primary button plus the same secondary Text Us link", () => {
+test("contractorRowCta(): non-eligible item — desktop shows Check Availability only; mobile shows Check Availability + Text Us", () => {
   const html = contractorRowCta(flooringItem({ webSubcategory: "Underlayment" }));
   assert.match(html, /data-availability-id="recTEST0000000001"[^>]*>Check Availability<\/button>/);
   assert.match(html, /class="[^"]*contractor-text-us[^"]*"[^>]*>Text Us<\/a>/);
@@ -176,7 +314,7 @@ test("contractorRowCta(): out-of-stock items still get the disabled status pill,
   assert.doesNotMatch(html, /data-quote-id|data-availability-id|contractor-text-us/);
 });
 
-test("Contractor View never broadens quote eligibility — isQuoteEligibleFlooring() agrees with contractorRowCta()'s choice of primary button, same as actionButtons()", () => {
+test("Contractor View never broadens quote eligibility — isQuoteEligibleFlooring() agrees with contractorRowCta()'s and actionButtons()' choice of primary button", () => {
   const cases = [
     flooringItem({ webSubcategory: "Luxury Vinyl Plank" }),
     flooringItem({ webSubcategory: "Underlayment" }),
@@ -185,82 +323,11 @@ test("Contractor View never broadens quote eligibility — isQuoteEligibleFloori
   ];
   for (const item of cases) {
     const eligible = isQuoteEligibleFlooring(item);
-    const html = contractorRowCta(item);
-    assert.equal(html.includes("data-quote-id"), eligible, `contractorRowCta disagreed with isQuoteEligibleFlooring for ${item.webSubcategory}`);
-    assert.equal(html.includes("data-availability-id"), !eligible);
-  }
-});
-
-// --- Product-detail page ----------------------------------------------
-test("initProductDetail(): quote-eligible Flooring's actions row has the legacy sms link only — no desktop availability button (Get a Quote above already covers desktop)", () => {
-  const { doc, container } = freshDocumentState();
-  currentDoc = doc;
-  initProductDetail([flooringItem()]);
-  assert.match(container.innerHTML, /card-check-availability-sms/);
-  assert.doesNotMatch(container.innerHTML, /card-check-availability-btn/);
-  assert.match(container.innerHTML, /data-quote-id/);
-});
-
-test("initProductDetail(): a non-eligible item's actions row has both the legacy sms link and the new desktop availability button", () => {
-  const { doc, container } = freshDocumentState();
-  currentDoc = doc;
-  initProductDetail([flooringItem({ webCategory: "Appliances", webSubcategory: "Refrigerator" })]);
-  assert.match(container.innerHTML, /card-check-availability-sms/);
-  assert.match(container.innerHTML, /card-check-availability-btn/);
-  assert.match(container.innerHTML, /data-availability-id/);
-  assert.doesNotMatch(container.innerHTML, /data-quote-id/);
-});
-
-// ---------------------------------------------------------------------
-// Part 2: static-markup assertions on all three pages.
-// ---------------------------------------------------------------------
-function assertQuoteFormSimplified(html, pageLabel) {
-  assert.doesNotMatch(html, /name="zip"/, `${pageLabel}: quote form must not have a ZIP field`);
-  assert.doesNotMatch(html, /name="installation-needed"/, `${pageLabel}: quote form must not have the installation checkbox`);
-  assert.doesNotMatch(html, /id="quote-text-us-link"/, `${pageLabel}: quote form must not have a Text Us link`);
-  assert.match(html, /<form id="quote-form"[\s\S]*?name="email"[\s\S]*?<\/form>/, `${pageLabel}: quote form must have an email field`);
-}
-function assertAvailabilityFormPresent(html, pageLabel) {
-  assert.match(html, /id="availability-modal-overlay"/, `${pageLabel}: missing the availability modal`);
-  const formBlock = html.match(/<form id="availability-form"[\s\S]*?<\/form>/)[0];
-  assert.match(formBlock, /name="form-name" value="availability-request"/, `${pageLabel}: availability form must submit as availability-request`);
-  assert.match(formBlock, /name="name"[^>]*required/, `${pageLabel}: availability form name must be required`);
-  assert.match(formBlock, /name="phone"[^>]*required/, `${pageLabel}: availability form phone must be required`);
-  assert.match(formBlock, /name="email"/, `${pageLabel}: availability form must have an optional email field`);
-  assert.match(formBlock, />Send Request<\/button>/, `${pageLabel}: availability form submit button must read "Send Request"`);
-  assert.doesNotMatch(formBlock, /sms:|tel:|mailto:/, `${pageLabel}: availability form must never contain sms:/tel:/mailto: links`);
-  assert.match(html, /Thanks! We'll contact you shortly to confirm availability\./, `${pageLabel}: missing the availability success message`);
-}
-
-for (const [html, label] of [[shopSrc, "shop.html"], [indexSrc, "index.html"], [productSrc, "product.html"]]) {
-  test(`${label}: quote-request form is simplified (no ZIP/installation/Text Us, has email)`, () => {
-    assertQuoteFormSimplified(html, label);
-  });
-  test(`${label}: availability-request modal/form exists with the right fields, button, and success copy`, () => {
-    assertAvailabilityFormPresent(html, label);
-  });
-  test(`${label}: the quote-request form never contains a Text Us/sms:/tel:/mailto: option`, () => {
-    const formBlock = html.match(/<form id="quote-form"[\s\S]*?<\/form>/)[0];
-    assert.doesNotMatch(formBlock, /sms:|tel:|mailto:/);
-  });
-}
-
-// --- Static Netlify Forms declarations (shop.html only) --------------
-test("shop.html: the static quote-request declaration matches the live form's fields exactly (no zip/installation, has email)", () => {
-  const staticBlock = shopSrc.match(/<form name="quote-request" data-netlify="true"[\s\S]*?<\/form>/)[0];
-  assert.doesNotMatch(staticBlock, /name="zip"/);
-  assert.doesNotMatch(staticBlock, /name="installation-needed"/);
-  assert.match(staticBlock, /name="email"/);
-  for (const field of ["product-name", "product-key", "price-per-sqft", "box-price", "submitted-at", "sqft-needed", "name", "phone", "bot-field"]) {
-    assert.match(staticBlock, new RegExp(`name="${field}"`), `static quote-request declaration missing ${field}`);
-  }
-});
-
-test("shop.html: a new static availability-request declaration exists, matching the live availability form's fields", () => {
-  const staticBlock = shopSrc.match(/<form name="availability-request" data-netlify="true"[\s\S]*?<\/form>/);
-  assert.ok(staticBlock, "expected a static availability-request form declaration");
-  for (const field of ["product-name", "product-key", "submitted-at", "name", "phone", "email", "bot-field"]) {
-    assert.match(staticBlock[0], new RegExp(`name="${field}"`), `static availability-request declaration missing ${field}`);
+    const rowHtml = contractorRowCta(item);
+    const cardHtml = actionButtons(item);
+    assert.equal(rowHtml.includes("data-quote-id"), eligible, `contractorRowCta disagreed with isQuoteEligibleFlooring for ${item.webSubcategory}`);
+    assert.equal(rowHtml.includes("data-availability-id"), !eligible);
+    assert.equal(cardHtml.includes("data-quote-id"), eligible, `actionButtons disagreed with isQuoteEligibleFlooring for ${item.webSubcategory}`);
   }
 });
 
@@ -268,92 +335,433 @@ test("no page's rendered markup uses the retired 'Text to Hold' wording anywhere
   for (const [html, label] of [[shopSrc, "shop.html"], [indexSrc, "index.html"], [productSrc, "product.html"]]) {
     assert.doesNotMatch(html, /Text to Hold/, `${label} still contains "Text to Hold"`);
   }
-  // Checked against actual rendered CTA output (not inventory.js's own
-  // source comments, which may still reference the retired wording by
-  // name when explaining what changed).
   assert.doesNotMatch(contractorRowCta(flooringItem()), /Text to Hold/);
   assert.doesNotMatch(contractorRowCta(flooringItem({ webSubcategory: "Underlayment" })), /Text to Hold/);
 });
 
 // ---------------------------------------------------------------------
-// Part 3: CSS breakpoint assertions — desktop-only swap, Text Us
-// mobile/tablet-only, both anchored to the existing 880px breakpoint.
+// CSS: the .text-us-secondary/.contractor-text-us breakpoint, computed
+// across the full required matrix, and the old per-button toggle
+// classes are gone for good (they'd reintroduce the duplicate-button
+// bug if resurrected).
 // ---------------------------------------------------------------------
-test("styles.css: .card-check-availability-sms and .contractor-text-us are hidden only at 881px and above (mobile/tablet keeps them)", () => {
-  const re = /@media \(min-width:\s*881px\)\s*\{([\s\S]*?)\n\}\n/;
-  const m = stylesSrc.match(re);
-  assert.ok(m, "expected an @media (min-width: 881px) block");
-  assert.match(m[1], /\.card-check-availability-sms\s*\{[^}]*display:\s*none/);
-  assert.match(m[1], /\.contractor-text-us\s*\{[^}]*display:\s*none/);
+const VISIBILITY_MATRIX = [
+  [320, true], [390, true], [430, true], [768, true], [880, true],
+  [881, false], [1024, false], [1440, false],
+];
+for (const [width, expectedVisible] of VISIBILITY_MATRIX) {
+  test(`computed cascade at ${width}px: .text-us-secondary and .contractor-text-us are ${expectedVisible ? "visible" : "hidden"}`, () => {
+    assert.equal(isVisible(".text-us-secondary", width), expectedVisible);
+    assert.equal(isVisible(".contractor-text-us", width), expectedVisible);
+  });
+}
+
+test("styles.css: the retired .card-check-availability-sms/.card-check-availability-btn toggle classes do not exist anywhere", () => {
+  assert.doesNotMatch(stylesSrc, /card-check-availability/);
+  assert.doesNotMatch(inventorySrc, /card-check-availability/);
 });
 
-test("styles.css: .card-check-availability-btn is hidden by default and only shown at 881px and above", () => {
-  const baseMatch = stylesSrc.match(/\n\.card-check-availability-btn\s*\{([^}]*)\}/);
-  assert.ok(baseMatch, "expected a base .card-check-availability-btn rule");
-  assert.match(baseMatch[1], /display:\s*none/);
-  const re = /@media \(min-width:\s*881px\)\s*\{([\s\S]*?)\n\}\n/g;
-  let shown = false;
-  let m;
-  while ((m = re.exec(stylesSrc))) {
-    if (/\.card-check-availability-btn\s*\{[^}]*display:\s*inline-block/.test(m[1])) shown = true;
+test("styles.css: no leftover rule hides the primary Get a Quote/Check Availability button at any width (it must be visible at every width)", () => {
+  assert.doesNotMatch(stylesSrc, /\[data-quote-id\]\s*\{[^}]*display:\s*none/);
+  assert.doesNotMatch(stylesSrc, /\.product-card \.product-actions \[data-quote-id\]/);
+});
+
+// ---------------------------------------------------------------------
+// Group: static Netlify Forms declarations (shop.html only) — exact
+// field sets per spec, with email/zip/installation-needed absent.
+// ---------------------------------------------------------------------
+test("shop.html: static quote-request declaration has exactly the required fields, no email/zip/installation", () => {
+  const staticBlock = shopSrc.match(/<form name="quote-request" data-netlify="true"[\s\S]*?<\/form>/)[0];
+  const required = ["product-name", "product-key", "price-per-sqft", "box-price", "submitted-at", "sqft-needed", "name", "phone", "notes", "bot-field"];
+  for (const field of required) {
+    assert.match(staticBlock, new RegExp(`name="${field}"`), `static quote-request declaration missing ${field}`);
   }
-  assert.ok(shown, "expected .card-check-availability-btn to be shown (display: inline-block) inside a min-width: 881px block");
+  const names = [...staticBlock.matchAll(/<input[^>]*\sname="([a-z-]+)"/g)].map(m => m[1]);
+  assert.deepEqual([...new Set(names)].sort(), [...required].sort(), "quote-request static field set must match exactly");
+  assert.doesNotMatch(staticBlock, /name="email"|name="zip"|name="installation-needed"/);
+});
+
+test("shop.html: static availability-request declaration has exactly the required fields, no email/zip/installation", () => {
+  const staticBlock = shopSrc.match(/<form name="availability-request" data-netlify="true"[\s\S]*?<\/form>/)[0];
+  const required = ["product-name", "product-key", "price", "submitted-at", "name", "phone", "message", "bot-field"];
+  for (const field of required) {
+    assert.match(staticBlock, new RegExp(`name="${field}"`), `static availability-request declaration missing ${field}`);
+  }
+  const names = [...staticBlock.matchAll(/<input[^>]*\sname="([a-z-]+)"/g)].map(m => m[1]);
+  assert.deepEqual([...new Set(names)].sort(), [...required].sort(), "availability-request static field set must match exactly");
+  assert.doesNotMatch(staticBlock, /name="email"|name="zip"|name="installation-needed"/);
+});
+
+test("index.html and product.html do not duplicate the static Netlify form declarations (only shop.html carries them)", () => {
+  for (const [html, label] of [[indexSrc, "index.html"], [productSrc, "product.html"]]) {
+    assert.doesNotMatch(html, /<form name="quote-request" data-netlify/, `${label} must not duplicate the static quote-request declaration`);
+    assert.doesNotMatch(html, /<form name="availability-request" data-netlify/, `${label} must not duplicate the static availability-request declaration`);
+  }
 });
 
 // ---------------------------------------------------------------------
-// Part 4: modal submit behavior — availability-request submission,
-// success view, and no auto-opened SMS/other side effects.
+// Group: live modal markup on all three pages — product context,
+// required fields, exact labels/placeholders, exact submit-button text,
+// exact success/error copy, no email/zip/installation/Text Us/tel/sms
+// inside either modal, accessibility attributes.
 // ---------------------------------------------------------------------
-function makeFormLikeElement({ id, fields = {} } = {}) {
-  const listeners = {};
-  const values = { ...fields };
-  return {
+function extractById(html, id) {
+  // Grabs the full <div id="..."> ... its matching closing </div> block
+  // for the two known modal wrapper ids used below is unnecessary here —
+  // callers only need the <form id="..."> ... </form> block, which is
+  // never nested inside another <form>.
+  const m = html.match(new RegExp(`<form id="${id}"[\\s\\S]*?<\\/form>`));
+  assert.ok(m, `expected a <form id="${id}"> block`);
+  return m[0];
+}
+
+for (const [html, label] of [[shopSrc, "shop.html"], [indexSrc, "index.html"], [productSrc, "product.html"]]) {
+  test(`${label}: quote modal has product-name/price context, required Sq Ft/Name/Phone, the exact Notes textarea, Request Quote button, no email/zip/installation/Text Us/sms/tel/mailto`, () => {
+    assert.match(html, /id="quote-modal-overlay"/);
+    assert.match(html, /id="quote-product-name"/);
+    assert.match(html, /id="quote-product-price"/);
+    const form = extractById(html, "quote-form");
+    assert.match(form, /name="sqft-needed"[^>]*required/);
+    assert.match(form, /name="name"[^>]*required/);
+    assert.match(form, /name="phone"[^>]*required/);
+    assert.match(form, /<span>Questions or notes \(optional\)<\/span>\s*<textarea name="notes"[^>]*placeholder="Add any questions or details about your project">/);
+    assert.match(form, />Request Quote<\/button>/);
+    assert.match(form, /name="bot-field"/);
+    assert.doesNotMatch(form, /name="email"|name="zip"|name="installation-needed"/);
+    assert.doesNotMatch(form, /sms:|tel:|mailto:/);
+    assert.doesNotMatch(html, /id="quote-text-us-link"/);
+    assert.match(html, /Something went wrong\. Please try again or call us\./);
+  });
+
+  test(`${label}: quote modal is an accessible dialog with unique ids and matching aria-labelledby`, () => {
+    const overlayBlock = html.match(/<div class="modal-overlay" id="quote-modal-overlay"[\s\S]*?<div class="modal"[^>]*>/)[0];
+    assert.match(overlayBlock, /role="dialog"/);
+    assert.match(overlayBlock, /aria-modal="true"/);
+    assert.match(overlayBlock, /aria-labelledby="quote-product-name"/);
+  });
+
+  test(`${label}: availability modal has product-name/price context, required Name/Phone, the exact Message textarea, Send Request button, no email/zip/installation/tel/sms/mailto`, () => {
+    assert.match(html, /id="availability-modal-overlay"/);
+    assert.match(html, /id="availability-product-name"/);
+    assert.match(html, /id="availability-product-price"/);
+    const form = extractById(html, "availability-form");
+    assert.match(form, /name="name"[^>]*required/);
+    assert.match(form, /name="phone"[^>]*required/);
+    assert.match(form, /<span>Message or quantity needed \(optional\)<\/span>\s*<textarea name="message"[^>]*placeholder="For example: quantity needed or any questions">/);
+    assert.match(form, />Send Request<\/button>/);
+    assert.match(form, /name="bot-field"/);
+    assert.doesNotMatch(form, /name="email"|name="zip"|name="installation-needed"|name="sqft-needed"/);
+    assert.doesNotMatch(form, /sms:|tel:|mailto:/);
+    assert.match(html, /Thanks! We&#39;ll contact you shortly to confirm availability\.|Thanks! We'll contact you shortly to confirm availability\./);
+  });
+
+  test(`${label}: availability modal is an accessible dialog with unique ids and matching aria-labelledby, distinct from the quote modal's ids`, () => {
+    const overlayBlock = html.match(/<div class="modal-overlay" id="availability-modal-overlay"[\s\S]*?<div class="modal"[^>]*>/)[0];
+    assert.match(overlayBlock, /role="dialog"/);
+    assert.match(overlayBlock, /aria-modal="true"/);
+    assert.match(overlayBlock, /aria-labelledby="availability-product-name"/);
+    // No id collisions between the two modals' hidden/product fields.
+    assert.doesNotMatch(html, /id="quote-field-product-name"[\s\S]*id="quote-field-product-name"/);
+  });
+
+  test(`${label}: neither modal ever contains a Text Us/sms:/tel:/mailto option`, () => {
+    const quoteForm = extractById(html, "quote-form");
+    const availabilityForm = extractById(html, "availability-form");
+    for (const form of [quoteForm, availabilityForm]) {
+      assert.doesNotMatch(form, /Text Us/);
+      assert.doesNotMatch(form, /sms:|tel:|mailto:/);
+    }
+  });
+}
+
+// ---------------------------------------------------------------------
+// Modal behavior: focus management, Escape/overlay close, Tab trap,
+// duplicate-submission prevention, and correct reset/repopulation on
+// reopen — exercised against the real openQuoteModal/closeQuoteModal/
+// bindQuoteModal and their availability-modal counterparts.
+// ---------------------------------------------------------------------
+function makeFocusable(id, extra = {}) {
+  const el = {
     id,
-    hidden: true,
+    hidden: false,
     disabled: false,
     textContent: "",
+    value: "",
+    offsetParent: {},
+    _listeners: {},
+    addEventListener(type, cb) { (this._listeners[type] = this._listeners[type] || []).push(cb); },
+    dispatchEvent(type, evt) { (this._listeners[type] || []).forEach(cb => cb(evt)); },
+    setAttribute() {}, getAttribute() { return null; },
+    focus() { currentDoc.activeElement = this; },
+    ...extra,
+  };
+  return el;
+}
+
+// Builds a full fake registry for one modal ("quote" or "availability"),
+// wired the same way the real DOM is: overlay.querySelectorAll(...)
+// returns the modal's real focus order (close button -> form controls ->
+// submit button), and document-level keydown/click listeners are
+// captured so Escape/overlay-click/Tab can be exercised exactly as a
+// browser would deliver them.
+function makeModalHarness(kind) {
+  const isQuote = kind === "quote";
+  const registry = {};
+  const bodyClasses = new Set();
+  const docListeners = {};
+
+  const closeBtn = makeFocusable(`${kind}-modal-close`);
+  const nameInput = makeFocusable("name-input", { value: "" });
+  const phoneInput = makeFocusable("phone-input", { value: "" });
+  const notesInput = makeFocusable("notes-input", { value: "" });
+  const submitBtn = makeFocusable(`${kind}-submit-btn`);
+  const focusOrder = [closeBtn, nameInput, phoneInput, notesInput, submitBtn];
+
+  const formValues = isQuote
+    ? { "form-name": "quote-request", "sqft-needed": "120", name: "Jane Doe", phone: "2145551212", notes: "" }
+    : { "form-name": "availability-request", name: "Jane Doe", phone: "2145551212", message: "" };
+
+  const form = {
+    id: `${kind}-form`,
     reset() {},
     checkValidity: () => true,
     reportValidity: () => {},
-    querySelector: () => null,
-    addEventListener(type, cb) { (listeners[type] = listeners[type] || []).push(cb); },
-    dispatch(type, evt) { (listeners[type] || []).forEach((cb) => cb(evt)); },
-    // Minimal FormData-compatible surface: `new FormData(form)` isn't
-    // real here, so we exercise submit-path side effects (hidden toggles,
-    // fetch call) directly instead of via a literal FormData instance.
-    _values: values,
+    querySelector: (sel) => {
+      if (sel === '[name="sqft-needed"]') return makeFocusable("sqft-input");
+      if (sel === '[name="name"]') return nameInput;
+      return null;
+    },
+    _listeners: {},
+    addEventListener(type, cb) { (this._listeners[type] = this._listeners[type] || []).push(cb); },
+    dispatch(type, evt) { return Promise.all((this._listeners[type] || []).map(cb => cb(evt))); },
+    _values: formValues,
   };
-}
 
-test("openAvailabilityModal()/closeAvailabilityModal(): populate hidden product fields and toggle overlay visibility without any SMS/tel/mailto side effect", () => {
-  const registry = {};
-  const el = (id, extra = {}) => (registry[id] = { id, value: "", hidden: true, textContent: "", ...extra, setAttribute() {}, getAttribute() { return null; }, focus() {}, reset() {} });
-  el("availability-modal-overlay", { hidden: true });
-  el("availability-form", { reset() {}, querySelector: () => ({ focus() {} }) });
-  el("availability-product-name");
-  el("availability-field-product-name");
-  el("availability-field-product-key");
-  el("availability-modal-form-view", { hidden: true });
-  el("availability-modal-success-view", { hidden: true });
-  el("availability-form-error", { hidden: true });
+  const overlay = {
+    id: `${kind}-modal-overlay`,
+    hidden: true,
+    addEventListener(type, cb) { (this._listeners = this._listeners || {}), (this._listeners[type] = this._listeners[type] || []).push(cb); },
+    dispatch(type, evt) { ((this._listeners && this._listeners[type]) || []).forEach(cb => cb(evt)); },
+    querySelectorAll: () => focusOrder,
+  };
 
-  const bodyClasses = new Set();
-  currentDoc = {
+  Object.assign(registry, {
+    [`${kind}-modal-overlay`]: overlay,
+    [`${kind}-form`]: form,
+    [`${kind}-modal-close`]: closeBtn,
+    [`${kind}-modal-done`]: makeFocusable(`${kind}-modal-done`),
+    [`${kind}-modal-form-view`]: makeFocusable(`${kind}-modal-form-view`, { hidden: false }),
+    [`${kind}-modal-success-view`]: makeFocusable(`${kind}-modal-success-view`, { hidden: true }),
+    [`${kind}-form-error`]: makeFocusable(`${kind}-form-error`, { hidden: true }),
+    [`${kind}-submit-btn`]: submitBtn,
+    [`${kind}-field-product-name`]: makeFocusable(`${kind}-field-product-name`),
+    [`${kind}-field-product-key`]: makeFocusable(`${kind}-field-product-key`),
+    [`${kind}-field-submitted-at`]: makeFocusable(`${kind}-field-submitted-at`),
+    [`${isQuote ? "quote" : "availability"}-product-name`]: makeFocusable("product-name-display"),
+    [`${isQuote ? "quote" : "availability"}-product-price`]: makeFocusable("product-price-display"),
+  });
+  if (isQuote) {
+    registry["quote-field-price-per-sqft"] = makeFocusable("quote-field-price-per-sqft");
+    registry["quote-field-box-price"] = makeFocusable("quote-field-box-price");
+  } else {
+    registry["availability-field-price"] = makeFocusable("availability-field-price");
+  }
+
+  const doc = {
+    activeElement: null,
     getElementById: (id) => registry[id] || null,
     body: { classList: { add: (c) => bodyClasses.add(c), remove: (c) => bodyClasses.delete(c), toggle() {} } },
+    addEventListener(type, cb) { (docListeners[type] = docListeners[type] || []).push(cb); },
+    dispatchKeydown(evt) { (docListeners.keydown || []).forEach(cb => cb(evt)); },
   };
 
-  openAvailabilityModal(flooringItem({ webCategory: "Appliances", name: "Test Fridge", productKey: "APP-001" }));
+  return { doc, registry, bodyClasses, overlay, form, submitBtn, focusOrder, closeBtn, nameInput };
+}
 
-  assert.equal(registry["availability-product-name"].textContent, "Test Fridge");
-  assert.equal(registry["availability-field-product-name"].value, "Test Fridge");
-  assert.equal(registry["availability-field-product-key"].value, "APP-001");
-  assert.equal(registry["availability-modal-overlay"].hidden, false);
-  assert.equal(bodyClasses.has("modal-open"), true);
+for (const kind of ["quote", "availability"]) {
+  const isQuote = kind === "quote";
+  const openModal = isQuote ? openQuoteModal : openAvailabilityModal;
+  const closeModal = isQuote ? closeQuoteModal : closeAvailabilityModal;
+  const bindModal = isQuote ? bindQuoteModal : bindAvailabilityModal;
+  const item = isQuote ? flooringItem() : nonEligibleItem();
 
-  closeAvailabilityModal();
-  assert.equal(registry["availability-modal-overlay"].hidden, true);
-  assert.equal(bodyClasses.has("modal-open"), false);
+  test(`open${isQuote ? "Quote" : "Availability"}Modal(): populates product name/price and hidden fields, focuses the first customer input, shows the modal, restores focus to the trigger on close`, () => {
+    const h = makeModalHarness(kind);
+    currentDoc = h.doc;
+    const trigger = makeFocusable("trigger-btn");
+
+    openModal(item, trigger);
+
+    assert.equal(h.registry[`${kind}-modal-overlay`].hidden, false);
+    assert.equal(h.bodyClasses.has("modal-open"), true);
+    assert.equal(h.registry[`${isQuote ? "quote" : "availability"}-product-name`].textContent, item.name);
+    assert.equal(h.registry[`${kind}-field-product-name`].value, item.name);
+    assert.equal(h.registry[`${kind}-field-product-key`].value, item.productKey);
+    if (isQuote) {
+      assert.equal(h.registry["quote-field-price-per-sqft"].value, "$2.49");
+      assert.equal(h.registry["quote-field-box-price"].value, "$42.11");
+    } else {
+      assert.equal(h.registry["availability-field-price"].value, "$649.00");
+    }
+    // Modal opens with the form view showing and any stale success/error
+    // state reset — this matters for reopening on a second product.
+    assert.equal(h.registry[`${kind}-modal-form-view`].hidden, false);
+    assert.equal(h.registry[`${kind}-modal-success-view`].hidden, true);
+    assert.equal(h.registry[`${kind}-form-error`].hidden, true);
+    assert.equal(h.registry[`${kind}-submit-btn`].disabled, false);
+
+    closeModal();
+    assert.equal(h.registry[`${kind}-modal-overlay`].hidden, true);
+    assert.equal(h.bodyClasses.has("modal-open"), false);
+    assert.equal(currentDoc.activeElement, trigger, "closing must restore focus to the exact element that opened the modal");
+  });
+
+  test(`open${isQuote ? "Quote" : "Availability"}Modal(): reopening for a different product resets success/error state and repopulates fresh product data every time`, () => {
+    const h = makeModalHarness(kind);
+    currentDoc = h.doc;
+    h.registry[`${kind}-modal-form-view`].hidden = true;
+    h.registry[`${kind}-modal-success-view`].hidden = false;
+    h.registry[`${kind}-form-error`].hidden = false;
+    h.registry[`${kind}-submit-btn`].disabled = true;
+    h.registry[`${kind}-submit-btn`].textContent = "Sending...";
+
+    const otherItem = isQuote ? flooringItem({ id: "recOTHER", name: "Other Flooring", productKey: "OTH-001", price: 3.99, boxPrice: 79.99 })
+      : nonEligibleItem({ id: "recOTHER", name: "Other Appliance", productKey: "OTH-001", price: 199 });
+    openModal(otherItem, makeFocusable("other-trigger"));
+
+    assert.equal(h.registry[`${kind}-modal-form-view`].hidden, false);
+    assert.equal(h.registry[`${kind}-modal-success-view`].hidden, true);
+    assert.equal(h.registry[`${kind}-form-error`].hidden, true);
+    assert.equal(h.registry[`${kind}-submit-btn`].disabled, false);
+    assert.equal(h.registry[`${kind}-field-product-name`].value, otherItem.name);
+    assert.equal(h.registry[`${kind}-field-product-key`].value, "OTH-001");
+  });
+
+  test(`bind${isQuote ? "Quote" : "Availability"}Modal(): Escape closes the modal`, () => {
+    const h = makeModalHarness(kind);
+    currentDoc = h.doc;
+    bindModal();
+    openModal(item, makeFocusable("trigger-btn"));
+    h.doc.dispatchKeydown({ key: "Escape", preventDefault() {} });
+    assert.equal(h.registry[`${kind}-modal-overlay`].hidden, true);
+  });
+
+  test(`bind${isQuote ? "Quote" : "Availability"}Modal(): clicking the overlay backdrop closes the modal, but clicking inside the modal does not`, () => {
+    const h = makeModalHarness(kind);
+    currentDoc = h.doc;
+    bindModal();
+    openModal(item, makeFocusable("trigger-btn"));
+    h.overlay.dispatch("click", { target: h.overlay });
+    assert.equal(h.registry[`${kind}-modal-overlay`].hidden, true);
+
+    openModal(item, makeFocusable("trigger-btn-2"));
+    h.overlay.dispatch("click", { target: h.nameInput });
+    assert.equal(h.registry[`${kind}-modal-overlay`].hidden, false, "a click on modal content must not close it");
+  });
+
+  test(`bind${isQuote ? "Quote" : "Availability"}Modal(): Tab from the last focusable element wraps to the first, and Shift+Tab from the first wraps to the last`, () => {
+    const h = makeModalHarness(kind);
+    currentDoc = h.doc;
+    bindModal();
+    openModal(item, makeFocusable("trigger-btn"));
+
+    h.focusOrder[h.focusOrder.length - 1].focus();
+    let prevented = false;
+    h.doc.dispatchKeydown({ key: "Tab", shiftKey: false, preventDefault() { prevented = true; } });
+    assert.equal(prevented, true);
+    assert.equal(currentDoc.activeElement, h.focusOrder[0], "Tab past the last element must wrap to the first");
+
+    h.focusOrder[0].focus();
+    prevented = false;
+    h.doc.dispatchKeydown({ key: "Tab", shiftKey: true, preventDefault() { prevented = true; } });
+    assert.equal(prevented, true);
+    assert.equal(currentDoc.activeElement, h.focusOrder[h.focusOrder.length - 1], "Shift+Tab before the first element must wrap to the last");
+  });
+
+  await testAsync(`bind${isQuote ? "Quote" : "Availability"}Modal(): a pending submission disables the submit button so a second click/Enter cannot double-submit; success re-enables it and never opens sms:`, async () => {
+    const h = makeModalHarness(kind);
+    currentDoc = h.doc;
+    bindModal();
+    openModal(item, makeFocusable("trigger-btn"));
+
+    let fetchCalls = 0;
+    let smsOpened = false;
+    const originalFetch = globalThis.fetch;
+    const originalOpen = globalThis.open;
+    globalThis.fetch = async () => { fetchCalls++; return { ok: true, status: 200 }; };
+    globalThis.open = (url) => { if (String(url).startsWith("sms:")) smsOpened = true; };
+    try {
+      const p1 = h.form.dispatch("submit", { preventDefault() {} });
+      // Fired again immediately, simulating a double-click before the
+      // first request resolves — must be a no-op because submitBtn is
+      // already disabled synchronously at the top of the handler.
+      const p2 = h.form.dispatch("submit", { preventDefault() {} });
+      await Promise.all([p1, p2]);
+
+      assert.equal(fetchCalls, 1, "a second submit while one is pending must not fire a second request");
+      assert.equal(h.registry[`${kind}-modal-form-view`].hidden, true);
+      assert.equal(h.registry[`${kind}-modal-success-view`].hidden, false);
+      assert.equal(h.registry[`${kind}-submit-btn`].disabled, false, "submit button must re-enable after a successful submission");
+      assert.equal(smsOpened, false, "a successful submission must never auto-open an sms: link");
+    } finally {
+      globalThis.fetch = originalFetch;
+      globalThis.open = originalOpen;
+    }
+  });
+
+  await testAsync(`bind${isQuote ? "Quote" : "Availability"}Modal(): a failed submission shows the error message (with role=alert in markup), re-enables the submit button, and does not show the success view`, async () => {
+    const h = makeModalHarness(kind);
+    currentDoc = h.doc;
+    bindModal();
+    openModal(item, makeFocusable("trigger-btn"));
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => ({ ok: false, status: 500 });
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      await h.form.dispatch("submit", { preventDefault() {} });
+      assert.equal(h.registry[`${kind}-form-error`].hidden, false);
+      assert.equal(h.registry[`${kind}-modal-success-view`].hidden, true);
+      assert.equal(h.registry[`${kind}-submit-btn`].disabled, false);
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.warn = originalWarn;
+    }
+  });
+}
+
+test("styles.css: error text elements use role=alert in markup (association with the form) for both modals on every page", () => {
+  for (const [html, label] of [[shopSrc, "shop.html"], [indexSrc, "index.html"], [productSrc, "product.html"]]) {
+    assert.match(html, /id="quote-form-error" role="alert"/, `${label}: quote-form-error must have role="alert"`);
+    assert.match(html, /id="availability-form-error" role="alert"/, `${label}: availability-form-error must have role="alert"`);
+  }
+});
+
+// ---------------------------------------------------------------------
+// No horizontal overflow at 320px: the modal is a relative-width box
+// (width:100%, max-width:440px) that fits inside any viewport at or
+// above its own minimum content width, and nothing in the form styling
+// forces a fixed width wider than a 320px viewport.
+// ---------------------------------------------------------------------
+test("styles.css: .modal has no fixed pixel width wider than 320px, scales via width:100% + max-width, and scrolls internally instead of overflowing", () => {
+  const modalBlock = stylesSrc.match(/\n\.modal\s*\{([^}]*)\}/)[0];
+  assert.match(modalBlock, /width:\s*100%/);
+  assert.match(modalBlock, /max-height:\s*90vh/);
+  assert.match(modalBlock, /overflow-y:\s*auto/);
+  const fixedWidth = modalBlock.match(/(?<!max-)width:\s*(\d+)px/);
+  assert.ok(!fixedWidth, ".modal must not set a fixed pixel width (would overflow narrow viewports)");
+});
+
+test("styles.css: no form-field/input/textarea rule sets a fixed min-width wider than 320px that would force horizontal overflow", () => {
+  const re = /\.form-field[^{]*\{[^}]*\}/g;
+  let m;
+  while ((m = re.exec(stylesSrc))) {
+    const minWidthMatch = m[0].match(/min-width:\s*(\d+)px/);
+    if (minWidthMatch) {
+      assert.ok(Number(minWidthMatch[1]) <= 320, `found a form-field rule with min-width:${minWidthMatch[1]}px, which would overflow a 320px viewport: ${m[0]}`);
+    }
+  }
 });
 
 if (failures > 0) {
