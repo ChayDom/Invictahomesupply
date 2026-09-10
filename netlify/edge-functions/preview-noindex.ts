@@ -1,27 +1,45 @@
 import type { Context, Config } from "@netlify/edge-functions";
 
-// Adds X-Robots-Tag: noindex, nofollow to every HTML route in every
-// non-production deploy context (branch-deploy, deploy-preview, and
-// local `netlify dev`, whose CONTEXT is "dev") — so a branch preview
-// (e.g. the planned final-pre-production branch's own preview URL)
-// never competes with production in Google.
+// Adds X-Robots-Tag: noindex, nofollow to every HTML route on every
+// hostname except the two production-indexable hostnames — so a branch
+// preview, a deploy preview, the site's own <sitename>.netlify.app
+// alias, or a local/unknown host never competes with production in
+// Google, while the real production domain stays indexable.
 //
-// netlify.toml's [[headers]] block has no per-context scoping (verified:
-// Netlify headers declared via netlify.toml/_headers are global across
-// every deploy context — there is no supported `[context.X.headers]`
-// syntax), so this can't be done in netlify.toml alone. Netlify DOES
-// already send this same header automatically for deploy previews and
-// old/inactive branch deploys — but explicitly NOT for the current/most
-// recent deploy of an active branch, which is exactly the case that
-// matters here (a long-lived branch like final-pre-production always has
-// a "most recent" deploy). Netlify.env.get("CONTEXT") is the documented,
-// runtime-available way to tell contexts apart inside a Function/Edge
-// Function (distinct from `context.deploy`, which only exposes
-// id/published, not the context name).
+// This used to key off Netlify.env.get("CONTEXT") === "production". That
+// failed in production: a real request to the live apex domain
+// (https://invictahomesupply.com/) was observed coming back with the
+// preview X-Robots-Tag set, which is only possible if that check
+// evaluated to false for that request — i.e. CONTEXT was not the string
+// "production" at the time this Edge Function actually ran for it. Root
+// cause, precisely: the function's indexing decision depended on a
+// deploy-context environment variable rather than on anything present in
+// the request itself, so it had no way to independently confirm which
+// hostname it was serving. Whatever value CONTEXT held for that
+// production edge-function invocation, it did not match the exact
+// string "production", and the code had no fallback check against the
+// request's own URL to catch that.
 //
-// Deliberately does nothing to the response in the production context —
-// no header is added there at all, so this can never accidentally ship a
-// permanent noindex to production.
+// Fixed by making the decision solely from the parsed request URL's
+// hostname (never the raw Host header, never CONTEXT) against a fixed
+// allowlist of the two production-indexable hostnames. This is
+// deterministic and has no dependency on Netlify's runtime environment
+// state.
+//
+// netlify.toml's [[headers]] block has no per-context or per-host
+// scoping (verified: Netlify headers declared via netlify.toml/_headers
+// are global across every deploy context/hostname — there is no
+// supported `[context.X.headers]` syntax), so this can't be done in
+// netlify.toml alone.
+//
+// Deliberately does nothing to the response on the two production
+// hostnames — no header is added there at all, so this can never
+// accidentally ship a permanent noindex to production.
+const PRODUCTION_HOSTNAMES = new Set([
+  "invictahomesupply.com",
+  "www.invictahomesupply.com",
+]);
+
 const HTML_ROUTES = [
   "/",
   "/index.html",
@@ -38,8 +56,9 @@ export default async (req: Request, context: Context) => {
   const response = await context.next();
 
   try {
-    const isProduction = Netlify.env.get("CONTEXT") === "production";
-    if (isProduction) return response;
+    const hostname = new URL(req.url).hostname.toLowerCase();
+    const isProductionHostname = PRODUCTION_HOSTNAMES.has(hostname);
+    if (isProductionHostname) return response;
 
     const headers = new Headers(response.headers);
     headers.set("X-Robots-Tag", "noindex, nofollow");
