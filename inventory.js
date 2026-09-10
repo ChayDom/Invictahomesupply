@@ -69,6 +69,12 @@ window.AIRTABLE_CONFIG = {
 // <img> tags until it expired on its own.
 const CACHE_KEY = "invicta_inventory_cache_v6";
 const INVENTORY_ENDPOINT = "/api/inventory";
+// fetchInventory() previously had no bounded timeout at all — a hung
+// Airtable/Netlify Function request left the shop page's loading state
+// on screen indefinitely instead of falling back to cache or an honest
+// error. 10s is generous for a same-origin serverless proxy call while
+// still resolving well within a visitor's patience.
+const INVENTORY_FETCH_TIMEOUT_MS = 10000;
 
 // ===================================================================
 // CANONICAL WEBSITE CATEGORY CONFIGURATION — single source of truth for
@@ -380,7 +386,13 @@ function normalizeBrand(raw) {
 // full `url` if `thumbnails` is ever missing (e.g. a non-image
 // attachment, or an older/odd API response) — never a broken image.
 function airtablePhotoVariants(photoField) {
-  return (photoField || [])
+  // Array.isArray, not just truthiness — a malformed Photos field (a
+  // stray string/object instead of Airtable's normal attachment array)
+  // used to throw here and crash mapAirtableRecord() for that one
+  // record, which in turn aborted fetchInventory()'s whole
+  // records.map() and took the entire catalog down over a single bad
+  // field on a single item.
+  return (Array.isArray(photoField) ? photoField : [])
     .filter(p => p && p.url)
     .map(p => ({
       full: p.url,
@@ -497,14 +509,34 @@ async function fetchInventory() {
   }
 
   try {
-    const res = await fetch(INVENTORY_ENDPOINT);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), INVENTORY_FETCH_TIMEOUT_MS);
+    let res;
+    try {
+      res = await fetch(INVENTORY_ENDPOINT, { signal: controller.signal });
+    } finally {
+      clearTimeout(timeoutId);
+    }
     if (!res.ok) throw new Error(`Inventory request failed: ${res.status}`);
     const json = await res.json();
     const records = json.records || [];
-    // .filter(Boolean) is defensive only — mapAirtableRecord() no longer
-    // returns null for any real record (every Category resolves to a
-    // canonical category, "Other" included — see resolveWebCategory).
-    const items = records.map(r => mapAirtableRecord(r.id, r.fields || {})).filter(Boolean);
+    // .filter(Boolean) covers both mapAirtableRecord() genuinely
+    // returning a falsy value (it no longer does — every Category
+    // resolves to a canonical category, "Other" included, see
+    // resolveWebCategory) and the catch below: one record with a
+    // malformed field (e.g. a non-array Photos value from a bad Airtable
+    // edit) must never crash every other item's mapping — skip just
+    // that record (logged, not silent) instead of letting the whole
+    // records.map() throw and taking the entire catalog down over one
+    // bad field on one item.
+    const items = records.map(r => {
+      try {
+        return mapAirtableRecord(r.id, r.fields || {});
+      } catch (err) {
+        console.warn(`Invicta: skipping record ${r.id} — malformed field data`, err);
+        return null;
+      }
+    }).filter(Boolean);
 
     localStorage.setItem(CACHE_KEY, JSON.stringify({ data: items, ts: Date.now() }));
     return { items, error: null };
@@ -517,19 +549,48 @@ async function fetchInventory() {
   }
 }
 
-// Escapes text for safe use inside an HTML attribute (e.g. alt="...") —
-// item.name/brand come from Airtable, a trusted internal source, but a
-// stray quote or angle bracket in a product name shouldn't be able to
-// break out of the attribute and corrupt the surrounding markup. Every
-// other interpolation in this file that already puts item text into a
-// text node (not an attribute) doesn't need this — only new attribute
-// contexts introduced for image alt text do.
+// Escapes text for safe interpolation into rendered HTML — both plain
+// text-node content and double-quoted attribute values share the same
+// escaping needs (&, <, >, ", '), so one implementation covers both;
+// escapeAttr/escapeHtml are two names for the same function, used at
+// their respective call sites purely so the context is obvious to a
+// reader. item.name/brand/details/etc. come from Airtable, but Airtable
+// values are no longer treated as inherently safe HTML: a compromised
+// Airtable credential, a pasted product description, or an accidental
+// stray "<"/"&" in a name must not be able to inject markup, an event
+// handler attribute, or break out of an attribute into a new one. Every
+// render-time interpolation of item-derived (or URL-derived, e.g. the
+// search query) text into innerHTML goes through one of these two names
+// — see mapAirtableRecord() itself, which deliberately does NOT escape
+// anything (escaping at storage time would double-escape on re-render
+// and corrupt non-HTML consumers like search matching or the SMS body).
 function escapeAttr(str) {
   return String(str == null ? "" : str)
     .replace(/&/g, "&amp;")
     .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+const escapeHtml = escapeAttr;
+
+// Validates an Airtable-sourced image URL before it's ever interpolated
+// into a src="..."/data-full="..." attribute. Only absolute https: URLs
+// are trusted — this rejects javascript:/vbscript:/data: schemes (which
+// could otherwise smuggle executable content into an <img> attribute a
+// compromised or malformed Airtable record controls) and any malformed
+// value that fails to parse as a URL at all. Returns "" (render code
+// then falls back to no image) rather than a URL that could execute
+// anything, never partially "fixes" a bad value.
+function sanitizeImageUrl(url) {
+  const value = String(url == null ? "" : url).trim();
+  if (!value) return "";
+  try {
+    const parsed = new URL(value, window.location.origin);
+    return parsed.protocol === "https:" ? value : "";
+  } catch {
+    return "";
+  }
 }
 
 function money(n) {
@@ -675,6 +736,27 @@ function productDetailHref(item) {
   return base;
 }
 
+// Validates a "?from=" back-link value (see productDetailHref() above,
+// which is what actually generates this parameter) before it's ever used
+// as an <a href> — see the call site in initProductDetail() for the
+// exploit this closes. Returns the href to use, or null if fromParam
+// isn't a genuine same-origin /shop or /shop.html path, so the caller
+// can fall back to a safely built default. Deliberately rebuilds the
+// href from the *parsed* URL's own pathname/search (both always
+// same-origin plain path text once parsed, never raw attacker text) —
+// never returns fromParam itself.
+function resolveSafeShopBackHref(fromParam) {
+  if (!fromParam) return null;
+  try {
+    const parsed = new URL(fromParam, window.location.origin);
+    if (parsed.origin !== window.location.origin) return null;
+    if (!/^\/shop(\.html)?$/.test(parsed.pathname)) return null;
+    return parsed.pathname + parsed.search;
+  } catch {
+    return null;
+  }
+}
+
 // Card image: photoCards (the "large" Airtable thumbnail when available,
 // falling back to the full photo) is the right size for a ~250-380px
 // card — never the tiny "small" thumbnail (too soft once stretched) or
@@ -700,10 +782,10 @@ function photoBlock(item) {
   const alt = escapeAttr(item.name);
   const thumbs = item.photos.length > 1
     ? `<div class="thumb-row">${item.photos.map((p, i) =>
-        `<img class="thumb${i === 0 ? " active" : ""}" src="${item.photoThumbs[i]}" data-full="${item.photos[i]}" alt="" loading="lazy" width="40" height="40" tabindex="0" role="button" aria-label="View photo ${i + 1} of ${item.photos.length}"${i === 0 ? ' aria-current="true"' : ""}>`).join("")}</div>`
+        `<img class="thumb${i === 0 ? " active" : ""}" src="${escapeAttr(sanitizeImageUrl(item.photoThumbs[i]))}" data-full="${escapeAttr(sanitizeImageUrl(item.photos[i]))}" alt="" loading="lazy" width="40" height="40" tabindex="0" role="button" aria-label="View photo ${i + 1} of ${item.photos.length}"${i === 0 ? ' aria-current="true"' : ""}>`).join("")}</div>`
     : THUMB_ROW_SPACER;
   return `<a class="product-photo main-photo" href="${href}">
-    <img src="${item.photoCards[0]}" alt="${alt}" loading="lazy" width="600" height="600" data-main-photo>
+    <img src="${escapeAttr(sanitizeImageUrl(item.photoCards[0]))}" alt="${alt}" loading="lazy" width="600" height="600" data-main-photo>
   </a>${thumbs}`;
 }
 
@@ -717,7 +799,7 @@ function photoBlock(item) {
 function statusBadge(item) {
   if (!isAvailable(item)) {
     const cls = /reserved/i.test(item.statusLabel) ? "badge-reserved" : "badge-sold";
-    return `<span class="badge ${cls}">${item.statusLabel}</span>`;
+    return `<span class="badge ${cls}">${escapeHtml(item.statusLabel)}</span>`;
   }
   return item.isNew ? `<span class="badge badge-new">New</span>` : "";
 }
@@ -763,14 +845,14 @@ function smsHrefForItem(item) {
 // Us link's visibility is breakpoint-dependent, via CSS.
 function actionButtons(item) {
   if (!isAvailable(item)) {
-    return `<span class="btn btn-outline btn-small btn-block" style="opacity:.5; cursor:default;">${item.statusLabel}</span>`;
+    return `<span class="btn btn-outline btn-small btn-block" style="opacity:.5; cursor:default;">${escapeHtml(item.statusLabel)}</span>`;
   }
   const textUs = `<a href="${smsHrefForItem(item)}" class="btn btn-outline btn-small btn-block text-us-secondary">Text Us</a>`;
   if (!isQuoteEligibleFlooring(item)) {
-    return `<button type="button" class="btn btn-dark btn-small btn-block" data-availability-id="${item.id}">Check Availability</button>
+    return `<button type="button" class="btn btn-dark btn-small btn-block" data-availability-id="${escapeAttr(item.id)}">Check Availability</button>
     ${textUs}`;
   }
-  return `<button type="button" class="btn btn-dark btn-small btn-block" data-quote-id="${item.id}">Get a Quote</button>
+  return `<button type="button" class="btn btn-dark btn-small btn-block" data-quote-id="${escapeAttr(item.id)}">Get a Quote</button>
     ${textUs}`;
 }
 
@@ -873,22 +955,25 @@ function priceBlock(item) {
 function productCard(item) {
   const { chips, remainingHighlights } = chipsAndRemainingHighlights(item);
   const hasMore = Boolean(item.details) || remainingHighlights.length > 0;
-  const categoryLabel = item.webSubcategory ? `${item.webCategory} &middot; ${item.webSubcategory}` : item.webCategory;
+  // webCategory is always one of the fixed WEB_CATEGORIES names (see
+  // resolveWebCategory()) — never raw Airtable free text — so it doesn't
+  // need escaping; webSubcategory does, since it's free text.
+  const categoryLabel = item.webSubcategory ? `${item.webCategory} &middot; ${escapeHtml(item.webSubcategory)}` : item.webCategory;
   return `
-  <div class="product-card" data-category="${item.webCategory}">
+  <div class="product-card" data-category="${escapeAttr(item.webCategory)}">
     <div class="photo-wrap">
       ${photoBlock(item)}
       ${statusBadge(item)}
     </div>
     <div class="product-info">
       <span class="product-cat">${categoryLabel}</span>
-      <h4><a href="${productDetailHref(item)}">${item.name}</a></h4>
-      ${chips.length ? `<div class="spec-chips">${chips.map(c => `<span class="spec-chip">${c}</span>`).join("")}</div>` : ""}
+      <h4><a href="${productDetailHref(item)}">${escapeHtml(item.name)}</a></h4>
+      ${chips.length ? `<div class="spec-chips">${chips.map(c => `<span class="spec-chip">${escapeHtml(c)}</span>`).join("")}</div>` : ""}
       ${priceBlock(item)}
       ${hasMore ? `<details class="product-more">
         <summary>More details</summary>
-        ${item.details ? `<p class="product-desc">${item.details}</p>` : ""}
-        ${remainingHighlights.length ? `<ul class="product-details">${remainingHighlights.map(b => `<li>${b}</li>`).join("")}</ul>` : ""}
+        ${item.details ? `<p class="product-desc">${escapeHtml(item.details)}</p>` : ""}
+        ${remainingHighlights.length ? `<ul class="product-details">${remainingHighlights.map(b => `<li>${escapeHtml(b)}</li>`).join("")}</ul>` : ""}
       </details>` : ""}
     </div>
     <div class="product-actions">
@@ -978,11 +1063,11 @@ function contractorBoxPriceCell(item) {
 
 function contractorRowCta(item) {
   if (!isAvailable(item)) {
-    return `<span class="btn btn-outline btn-small" style="opacity:.5; cursor:default;">${item.statusLabel}</span>`;
+    return `<span class="btn btn-outline btn-small" style="opacity:.5; cursor:default;">${escapeHtml(item.statusLabel)}</span>`;
   }
   const primary = isQuoteEligibleFlooring(item)
-    ? `<button type="button" class="btn btn-dark btn-small" data-quote-id="${item.id}">Get a Quote</button>`
-    : `<button type="button" class="btn btn-dark btn-small" data-availability-id="${item.id}">Check Availability</button>`;
+    ? `<button type="button" class="btn btn-dark btn-small" data-quote-id="${escapeAttr(item.id)}">Get a Quote</button>`
+    : `<button type="button" class="btn btn-dark btn-small" data-availability-id="${escapeAttr(item.id)}">Check Availability</button>`;
   return `${primary}
     <a href="${smsHrefForItem(item)}" class="btn btn-outline btn-small contractor-text-us">Text Us</a>`;
 }
@@ -1003,16 +1088,16 @@ function renderContractorTable(items, emptyMessage = CATALOG_MESSAGES.emptyFilte
     const boxes = boxesAvailable(item);
     const availLabel = flooringAvailabilityLabel(item) || "&mdash;";
     const lowStock = typeof boxes === "number" && boxes <= 2;
-    const photoImg = photo ? `<img src="${photo}" alt="" loading="lazy" width="48" height="48">` : "";
+    const photoImg = photo ? `<img src="${escapeAttr(sanitizeImageUrl(photo))}" alt="" loading="lazy" width="48" height="48">` : "";
     return `<tr>
       <td class="contractor-product-cell">
         <a class="contractor-product-photo" href="${productDetailHref(item)}">${photoImg}</a>
         <div>
-          <a class="contractor-product-name" href="${productDetailHref(item)}">${item.name}</a>
-          ${item.brand || item.webSubcategory ? `<div class="contractor-product-sub">${[item.brand, item.webSubcategory].filter(Boolean).join(" &middot; ")}</div>` : ""}
+          <a class="contractor-product-name" href="${productDetailHref(item)}">${escapeHtml(item.name)}</a>
+          ${item.brand || item.webSubcategory ? `<div class="contractor-product-sub">${[item.brand, item.webSubcategory].filter(Boolean).map(escapeHtml).join(" &middot; ")}</div>` : ""}
         </div>
       </td>
-      <td>${chips.length ? `<div class="spec-chips">${chips.map(c => `<span class="spec-chip">${c}</span>`).join("")}</div>` : "&mdash;"}</td>
+      <td>${chips.length ? `<div class="spec-chips">${chips.map(c => `<span class="spec-chip">${escapeHtml(c)}</span>`).join("")}</div>` : "&mdash;"}</td>
       <td>${typeof item.price === "number" ? `<strong>${money2(item.price)}</strong>` : "&mdash;"}</td>
       <td>${contractorBoxPriceCell(item)}</td>
       <td class="${lowStock ? "low-stock-emph" : ""}">${availLabel}</td>
@@ -1039,13 +1124,13 @@ function renderContractorMobileCards(items, emptyMessage = CATALOG_MESSAGES.empt
     const availLabel = flooringAvailabilityLabel(item) || "&mdash;";
     const lowStock = typeof boxes === "number" && boxes <= 2;
     const href = productDetailHref(item);
-    const photoImg = photo ? `<img src="${photo}" alt="" loading="lazy" width="64" height="64">` : "";
+    const photoImg = photo ? `<img src="${escapeAttr(sanitizeImageUrl(photo))}" alt="" loading="lazy" width="64" height="64">` : "";
     return `<div class="contractor-card">
       <a class="contractor-card-photo" href="${href}">${photoImg}</a>
       <div class="contractor-card-body">
-        <a class="contractor-card-name" href="${href}">${item.name}</a>
-        ${item.brand || item.webSubcategory ? `<div class="contractor-card-sub">${[item.brand, item.webSubcategory].filter(Boolean).join(" &middot; ")}</div>` : ""}
-        ${chips.length ? `<div class="contractor-card-specs spec-chips">${chips.map(c => `<span class="spec-chip">${c}</span>`).join("")}</div>` : ""}
+        <a class="contractor-card-name" href="${href}">${escapeHtml(item.name)}</a>
+        ${item.brand || item.webSubcategory ? `<div class="contractor-card-sub">${[item.brand, item.webSubcategory].filter(Boolean).map(escapeHtml).join(" &middot; ")}</div>` : ""}
+        ${chips.length ? `<div class="contractor-card-specs spec-chips">${chips.map(c => `<span class="spec-chip">${escapeHtml(c)}</span>`).join("")}</div>` : ""}
         <div class="contractor-card-prices">
           ${typeof item.price === "number" ? `<span><strong>${money2(item.price)}</strong> / sq ft</span>` : ""}
           ${contractorBoxPriceText(item) ? `<span><strong>${contractorBoxPriceText(item)}</strong> / box</span>` : ""}
@@ -1308,7 +1393,7 @@ function updateFacetFilterOptions(categoryItems, narrowedItems) {
   if (brandSelect) {
     const brands = facetBrandOptions(categoryItems);
     if (!brands.includes(currentBrand)) currentBrand = "";
-    brandSelect.innerHTML = `<option value="">All Brands</option>` + brands.map(b => `<option value="${b}">${b}</option>`).join("");
+    brandSelect.innerHTML = `<option value="">All Brands</option>` + brands.map(b => `<option value="${escapeAttr(b)}">${escapeHtml(b)}</option>`).join("");
     brandSelect.value = currentBrand;
   }
   // Subcategory ("Type") only ever makes sense once a specific top-level
@@ -1322,7 +1407,7 @@ function updateFacetFilterOptions(categoryItems, narrowedItems) {
     const subcategories = currentCategory === "all" ? [] : facetSubcategoryOptions(categoryItems);
     subcategoryGroup.hidden = subcategories.length === 0;
     if (!subcategories.includes(currentSubcategory)) currentSubcategory = "";
-    subcategorySelect.innerHTML = `<option value="">All Types</option>` + subcategories.map(s => `<option value="${s}">${s}</option>`).join("");
+    subcategorySelect.innerHTML = `<option value="">All Types</option>` + subcategories.map(s => `<option value="${escapeAttr(s)}">${escapeHtml(s)}</option>`).join("");
     subcategorySelect.value = currentSubcategory;
   }
 
@@ -1436,8 +1521,13 @@ function updateActiveFilterChips() {
   }
 
   container.hidden = chips.length === 0;
+  // c.key is always one of the fixed CLEAR_FILTER_SETTERS keys below (safe
+  // to leave unescaped); c.label can carry the raw search query — reflected
+  // straight from the "?q=" URL parameter, so genuinely attacker-controlled,
+  // not just Airtable-sourced — or a brand/subcategory/water-resistance
+  // value, so it's always escaped.
   container.innerHTML = chips.map(c =>
-    `<button type="button" class="filter-chip" data-chip-key="${c.key}">${c.label} <span aria-hidden="true">&times;</span></button>`
+    `<button type="button" class="filter-chip" data-chip-key="${c.key}">${escapeHtml(c.label)} <span aria-hidden="true">&times;</span></button>`
   ).join("");
 }
 
@@ -2498,10 +2588,10 @@ function productDetailPhotoBlock(item) {
   const alt = escapeAttr(item.name);
   const thumbs = item.photos.length > 1
     ? `<div class="thumb-row">${item.photos.map((p, i) =>
-        `<img class="thumb${i === 0 ? " active" : ""}" src="${item.photoThumbs[i]}" data-full="${item.photos[i]}" alt="" loading="lazy" width="40" height="40" tabindex="0" role="button" aria-label="View photo ${i + 1} of ${item.photos.length}"${i === 0 ? ' aria-current="true"' : ""}>`).join("")}</div>`
+        `<img class="thumb${i === 0 ? " active" : ""}" src="${escapeAttr(sanitizeImageUrl(item.photoThumbs[i]))}" data-full="${escapeAttr(sanitizeImageUrl(item.photos[i]))}" alt="" loading="lazy" width="40" height="40" tabindex="0" role="button" aria-label="View photo ${i + 1} of ${item.photos.length}"${i === 0 ? ' aria-current="true"' : ""}>`).join("")}</div>`
     : "";
   return `<div class="product-photo main-photo">
-    <img src="${item.photos[0]}" alt="${alt}" width="800" height="800" data-main-photo>
+    <img src="${escapeAttr(sanitizeImageUrl(item.photos[0]))}" alt="${alt}" width="800" height="800" data-main-photo>
   </div>${thumbs}`;
 }
 
@@ -2627,21 +2717,27 @@ function initProductDetail(items) {
 
   updateProductPageMetadata(item);
 
-  const categoryLabel = item.webSubcategory ? `${item.webCategory} &middot; ${item.webSubcategory}` : item.webCategory;
+  const categoryLabel = item.webSubcategory ? `${item.webCategory} &middot; ${escapeHtml(item.webSubcategory)}` : item.webCategory;
   const specRows = productDetailSpecRows(item);
   const highlightLines = highlightBullets(item.highlights);
   // Prefer the shop page's own carried-forward state (?from=, set by
   // productDetailHref()) so "Back to inventory" restores category+search
-  // (see syncShopUrl()), not just the bare category. window.location.
-  // pathname always has a leading "/" (productDetailHref() built this
-  // from that same property), so the same-site check has to match that,
-  // not a bare "/shop" — this keeps it to an actual same-site /shop path
-  // rather than trusting the query param as an arbitrary redirect target.
-  // Matches the legacy /shop.html path too (still reachable pre-redirect,
-  // e.g. a stale cached link), even though every link this site generates
-  // now points at /shop.
+  // (see syncShopUrl()), not just the bare category. Matches the legacy
+  // /shop.html path too (still reachable pre-redirect, e.g. a stale
+  // cached link), even though every link this site generates now points
+  // at /shop.
+  //
+  // fromParam is attacker-controlled (a raw URL query parameter, not
+  // Airtable data) and is used as an <a href>, so a substring/regex check
+  // alone isn't a safe same-site test — a value like
+  // "javascript:alert(1)//shop?" contains "/shop?" and would pass a bare
+  // /(^|\/)shop(\.html)?(\?|$)/ test while still being a real javascript:
+  // URL once assigned to href. Parsing it as a URL and checking the
+  // resulting *origin* and *pathname* (never the raw string) is what
+  // actually confirms same-site — resolveSafeShopBackHref() then rebuilds
+  // the href from only those parsed, canonical parts.
   const fromParam = new URLSearchParams(window.location.search).get("from");
-  const backHref = fromParam && /(^|\/)shop(\.html)?(\?|$)/.test(fromParam) ? fromParam : `/shop?cat=${encodeURIComponent(item.webCategory)}`;
+  const backHref = resolveSafeShopBackHref(fromParam) || `/shop?cat=${encodeURIComponent(item.webCategory)}`;
 
   container.innerHTML = `
     <a class="product-detail-back" href="${backHref}">&larr; Back to inventory</a>
@@ -2651,20 +2747,20 @@ function initProductDetail(items) {
       </div>
       <div class="product-detail-info">
         <span class="product-cat">${categoryLabel}</span>
-        <h1>${item.name}</h1>
+        <h1>${escapeHtml(item.name)}</h1>
         ${statusBadge(item)}
         ${priceBlock(item)}
-        ${specRows.length ? `<div class="product-detail-specs"><table>${specRows.map(([l, v]) => `<tr><td>${l}</td><td>${v}</td></tr>`).join("")}</table></div>` : ""}
-        ${item.details ? `<p class="product-detail-desc">${item.details}</p>` : ""}
-        ${highlightLines.length ? `<ul class="product-details">${highlightLines.map(h => `<li>${h}</li>`).join("")}</ul>` : ""}
+        ${specRows.length ? `<div class="product-detail-specs"><table>${specRows.map(([l, v]) => `<tr><td>${l}</td><td>${escapeHtml(v)}</td></tr>`).join("")}</table></div>` : ""}
+        ${item.details ? `<p class="product-detail-desc">${escapeHtml(item.details)}</p>` : ""}
+        ${highlightLines.length ? `<ul class="product-details">${highlightLines.map(h => `<li>${escapeHtml(h)}</li>`).join("")}</ul>` : ""}
         <div class="product-detail-actions">
           ${isAvailable(item)
             ? (isQuoteEligibleFlooring(item)
-                ? `<button type="button" class="btn btn-dark" data-quote-id="${item.id}">Get a Quote</button>`
-                : `<button type="button" class="btn btn-dark" data-availability-id="${item.id}">Check Availability</button>`)
-            : `<span class="btn btn-outline" style="opacity:.5; cursor:default;">${item.statusLabel}</span>`}
+                ? `<button type="button" class="btn btn-dark" data-quote-id="${escapeAttr(item.id)}">Get a Quote</button>`
+                : `<button type="button" class="btn btn-dark" data-availability-id="${escapeAttr(item.id)}">Check Availability</button>`)
+            : `<span class="btn btn-outline" style="opacity:.5; cursor:default;">${escapeHtml(item.statusLabel)}</span>`}
           ${isAvailable(item) ? `<a href="${smsHrefForItem(item)}" class="btn btn-outline text-us-secondary">Text Us</a>` : ""}
-          <a href="tel:" data-tel-link class="btn btn-outline">Call</a>
+          <a href="tel:" data-tel-link class="btn btn-outline product-detail-call">Call</a>
           <a href="${backHref}" class="btn btn-outline">Back to inventory</a>
         </div>
       </div>

@@ -397,3 +397,27 @@ and we can walk through it live using a browser tool.
 - `inventory.js` — Airtable config + fetch/cache (no fake fallback) + product card, Contractor View (table + mobile cards), and product detail rendering (chips/pricing structured-first for Flooring)
 - `netlify/functions/inventory.mts` — serverless proxy to Airtable (holds the API token server-side; filters on `Post to Website = TRUE`)
 - `marketplace-post-templates.md` — copy-paste posts for Marketplace/FB groups
+- `assets/hero/hero-living-room-flooring.{avif,webp,png}` — the homepage hero photo, served via `.hero-photo` in `styles.css` as AVIF first, WebP second, PNG fallback (`image-set()`, no JS). All three are the same 2007×783 crop of the same photo — if the source photo is ever replaced, regenerate all three from the new PNG together (AVIF quality ~60, WebP quality 82/method 6) so they never drift out of sync with each other.
+- `package.json` — test-suite-only dependencies (Playwright) and `npm` scripts; does not build or bundle the site
+- `test/*.test.mjs` — dependency-free unit/DOM-integration tests run against the real source files
+- `test/e2e/` — Playwright end-to-end specs (mocked network, Chromium)
+- `test/smoke/run-smoke-test.mjs` — read-only smoke test against a real deployed URL
+- `.github/workflows/test.yml` — CI: runs `npm test` on PRs/pushes to `main`/`final-pre-production`
+
+## Testing
+
+See `docs/LOCAL_DEVELOPMENT.md` for full setup. Summary:
+
+```
+npm ci                              # install Playwright (the only dependency)
+npm run test:unit                   # 500+ dependency-free unit/DOM tests
+npm run test:e2e                    # Playwright E2E, Chromium, fully mocked network
+npm test                            # test:unit then test:e2e — what CI runs
+SMOKE_BASE_URL=<url> npm run test:smoke   # read-only check against a real deploy
+```
+
+Every test in `test/` and `test/e2e/` runs entirely offline against real
+source files and mocked network responses — never real Airtable data, and
+never a real form submission. Only `test/smoke/run-smoke-test.mjs` talks to
+a real deployed URL, and even it is GET/HEAD-only and refuses to run without
+an explicit `SMOKE_BASE_URL`.

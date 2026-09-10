@@ -150,28 +150,12 @@ nav.primary-nav a.active {
   border-color: var(--amber);
 }
 
-.nav-cta {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  /* Never let this shrink below its content — the phone link and CTA
-     button both need white-space:nowrap to hold their width, and a
-     shrunk-but-not-actually-narrower box is what let this get clipped
-     past the container's right edge. (Do NOT also add margin-left:auto
-     here: .nav-row's justify-content:space-between already pins the
-     first/last flex children flush to the row's edges and splits the
-     leftover space evenly between all three items; an auto margin on
-     this item would swallow that entire leftover into its own margin,
-     collapsing the gap between .brand and .primary-nav to zero.) */
-  flex-shrink: 0;
-}
-
-.phone-icon { width: 17px; height: 17px; flex-shrink: 0; }
-
 /* Groups the Call/Text buttons and the hamburger as one right-aligned
-   unit. Without this, .nav-row's justify-content:space-between (see
-   .nav-cta's comment above) spread its 3-4 children evenly across the
-   row's leftover space — with the nav links hidden on mobile, that put
+   unit. Without this, .nav-row's justify-content:space-between (which
+   pins the first/last flex children flush to the row's edges and
+   splits the leftover space evenly between all three items) spread its
+   3-4 children evenly across the row's leftover space — with the nav
+   links hidden on mobile, that put
    equal gaps on both sides of .contact-cta, leaving it stranded nearer
    the middle of the row instead of flush against the hamburger. On
    desktop this wrapper is invisible: it holds .contact-cta (visible)
@@ -336,12 +320,31 @@ nav.primary-nav a.active {
    photo's right-hand flooring/living-room detail in view (rather than
    center-cropping it) at every width — the scrim is strongest on the
    left precisely because that's where the photo matters least and the
-   text sits. */
+   text sits.
+   Two `background` declarations, PNG first: a browser that doesn't
+   understand image-set() treats the whole second declaration as an
+   invalid value and drops it entirely (per the CSS cascade — an
+   unsupported value never partially applies), leaving the first,
+   universally-supported PNG declaration in effect. This is a real
+   fallback, not one that depends on a custom property (an inline
+   style setting the same custom property on the element would always
+   win over anything set here, which is why the photo path lives
+   directly in these two declarations instead of behind --hero-photo
+   the way it used to). Same three files, same crop/dimensions
+   (2007x783) — see README.md's file map for how to regenerate all
+   three together if the source photo ever changes. */
 .hero-photo {
   position: relative;
   background:
     linear-gradient(90deg, rgba(15, 22, 17, 0.94) 0%, rgba(20, 28, 22, 0.78) 45%, rgba(28, 40, 32, 0.5) 100%),
-    var(--hero-photo, linear-gradient(120deg, #2f4234 0%, #1c2820 55%, #24352a 100%));
+    url('/assets/hero/hero-living-room-flooring.png');
+  background:
+    linear-gradient(90deg, rgba(15, 22, 17, 0.94) 0%, rgba(20, 28, 22, 0.78) 45%, rgba(28, 40, 32, 0.5) 100%),
+    image-set(
+      url('/assets/hero/hero-living-room-flooring.avif') type('image/avif'),
+      url('/assets/hero/hero-living-room-flooring.webp') type('image/webp'),
+      url('/assets/hero/hero-living-room-flooring.png') type('image/png')
+    );
   background-size: cover;
   background-position: right center;
 }
@@ -433,22 +436,21 @@ nav.primary-nav a.active {
   flex-wrap: wrap;
 }
 
-.hero-text-link {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--cream);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-.hero-text-link:hover { color: var(--gold); }
-
 .hero .btn-outline {
   color: var(--cream);
   border-color: var(--cream-dim);
 }
 .hero .btn-outline:hover { background: var(--cream); color: var(--charcoal); }
-.hero .btn-dark { background: var(--amber); border-color: var(--amber); color: var(--cream); }
-.hero .btn-dark:hover { background: var(--amber-dark); border-color: var(--amber-dark); color: var(--cream); }
+/* --amber against --cream text is only 4.3:1 (fails WCAG AA's 4.5:1 for
+   normal text, confirmed by axe on the hero's "Shop flooring" CTA) —
+   --amber-dark clears it at ~6:1 while staying on-brand; same fix as
+   .optin .btn-dark above. Hover darkens further via filter (never swaps
+   back to --amber) — swapping to the plain --amber pairing on hover
+   would silently reintroduce the same 4.3:1 failure on interaction. A
+   darkening filter can only ever raise contrast against light text, so
+   this can't regress the same way. */
+.hero .btn-dark { background: var(--amber-dark); border-color: var(--amber-dark); color: var(--cream); }
+.hero .btn-dark:hover { filter: brightness(0.85); }
 
 /* ---------- Section headings ---------- */
 .section {
@@ -509,15 +511,6 @@ nav.primary-nav a.active {
   .stat-strip { grid-template-columns: 1fr; }
   .stat-cell { border-left: none !important; border-bottom: 1px solid rgba(238,241,234,0.14); }
   .stat-cell:last-child { border-bottom: none; }
-}
-
-/* ---------- Category grid (icon cards, still used on About) ---------- */
-.category-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 24px;
-  max-width: var(--max-width);
-  margin: 0 auto;
 }
 
 /* ---------- Category tiles (homepage) — photo-style tiles standing in
@@ -656,33 +649,6 @@ nav.primary-nav a.active {
   .category-tile-grid { grid-template-columns: 1fr; }
 }
 
-.category-card {
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-card);
-  padding: 40px 24px;
-  text-align: center;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-.category-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 14px 30px rgba(36,53,42,0.1);
-}
-.category-card .icon {
-  width: 46px;
-  height: 46px;
-  margin: 0 auto 20px;
-  color: var(--amber-dark);
-}
-.category-card h3 {
-  font-size: 1.05rem;
-  margin-bottom: 6px;
-}
-.category-card span {
-  font-size: 0.82rem;
-  color: var(--text-muted);
-}
-
 /* ---------- Product grid ---------- */
 .product-grid {
   display: grid;
@@ -799,13 +765,6 @@ nav.primary-nav a.active {
 }
 .product-more ul { padding-left: 18px; }
 .product-more li { margin-bottom: 2px; }
-.product-ref-link {
-  display: inline-block;
-  margin-top: 8px;
-  color: var(--amber-dark);
-  text-decoration: underline;
-  font-weight: 600;
-}
 
 .product-info {
   padding: 20px;
@@ -859,11 +818,10 @@ nav.primary-nav a.active {
   font-weight: 700;
 }
 
-/* Regular Card View only (.product-detail-price has its own separate
-   .price-unit rule, untouched) — charcoal instead of the muted gray so
-   the unit ("/ sq ft"/"each") reads as part of one bold price
-   expression with the number beside it, rather than a separate muted
-   fragment despite already sharing the same font-weight: 700. */
+/* Charcoal instead of the muted gray so the unit ("/ sq ft"/"each")
+   reads as part of one bold price expression with the number beside
+   it, rather than a separate muted fragment despite already sharing
+   the same font-weight: 700. */
 .product-price .price-unit {
   font-family: 'Inter', sans-serif;
   font-size: 0.85rem;
@@ -1695,6 +1653,18 @@ nav.primary-nav a.active {
 @media (min-width: 881px) {
   .btn.text-us-secondary { display: none; }
   .btn.contractor-text-us { display: none; }
+  /* Product-detail's own Call action (tel:, .product-detail-call) is
+     mobile/tablet-only for the same reason the header's own phone
+     number display goes plain-text (non-tel:) at this exact
+     breakpoint, further down this file — a desktop visitor tapping
+     "Call" gets an unwanted OS tel: app-picker prompt. display:none
+     (not visibility/opacity) so it drops out of layout AND the tab
+     order/hit-testing entirely, same guarantee as .text-us-secondary
+     above. The remaining actions'
+     full-width desktop layout (once Call is gone) is set later in this
+     file, right after .product-detail-actions .btn's own base rule —
+     see the comment there for why it can't live in this earlier block. */
+  .btn.product-detail-call { display: none; }
 }
 /* Forces the secondary link onto its own line directly below the
    primary button, regardless of the primary's own flex-basis or how
@@ -1887,7 +1857,7 @@ footer.site-footer {
 
 /* ---------- Responsive ---------- */
 @media (max-width: 900px) {
-  .category-grid, .product-grid { grid-template-columns: repeat(2, 1fr); }
+  .product-grid { grid-template-columns: repeat(2, 1fr); }
   .two-col, .contact-grid { grid-template-columns: 1fr; gap: 32px; }
   .steps, .audience-grid { grid-template-columns: 1fr; }
   /* 2 columns instead of stacking all 4 sections full-width — keeps the
@@ -2010,7 +1980,7 @@ footer.site-footer {
      above. Comes after .section's own mobile rule so it wins despite
      equal (single-class) specificity. */
   .category-section { padding-bottom: 40px; }
-  .category-grid, .product-grid { grid-template-columns: 1fr 1fr; gap: 14px; }
+  .product-grid { grid-template-columns: 1fr 1fr; gap: 14px; }
   .wrap { padding: 0 20px; }
 
   /* ---------- Shop mobile: compact category strip + toolbar so the
@@ -2095,7 +2065,7 @@ footer.site-footer {
 }
 
 @media (max-width: 480px) {
-  .category-grid, .product-grid { grid-template-columns: 1fr; }
+  .product-grid { grid-template-columns: 1fr; }
   /* .product-grid is a single column here, so there's no sibling card
      in the same row left to align with — the reserved 3-line title
      height (see .product-info h4) only exists to keep prices/buttons
@@ -2228,11 +2198,16 @@ footer.site-footer {
   margin: 0 auto 28px;
 }
 .optin .btn-dark {
-  background: var(--amber);
-  border-color: var(--amber);
+  /* --amber against --cream text is only 4.3:1 (fails WCAG AA's 4.5:1 for
+     normal text) — --amber-dark clears it at ~6:1 while staying on-brand.
+     Hover darkens further via filter rather than swapping back to
+     --amber — see the identical .hero .btn-dark:hover comment above for
+     why that swap would silently reintroduce the same failure. */
+  background: var(--amber-dark);
+  border-color: var(--amber-dark);
   color: var(--cream);
 }
-.optin .btn-dark:hover { background: var(--amber-dark); border-color: var(--amber-dark); color: var(--cream); }
+.optin .btn-dark:hover { filter: brightness(0.85); }
 .optin .btn-outline {
   color: var(--cream);
   border-color: var(--cream-dim);
@@ -2405,7 +2380,9 @@ footer.site-footer {
   text-transform: uppercase;
   letter-spacing: 0.16em;
   font-size: 0.68rem;
-  color: var(--amber);
+  /* --amber on --charcoal is only 2.64:1 (axe: fails WCAG AA's 4.5:1) —
+     --cream clears it at >11:1 on this same dark banner background. */
+  color: var(--cream);
   margin-bottom: 10px;
   display: block;
 }
@@ -2445,55 +2422,6 @@ footer.site-footer {
 }
 .icon-btn svg { width: 18px; height: 18px; }
 .icon-btn:hover { color: var(--charcoal); border-color: var(--charcoal); }
-
-/* ---------- Recently reserved ticker ---------- */
-.ticker-wrap {
-  background: var(--cream-dim);
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  padding: 18px 32px;
-  overflow-x: auto;
-}
-.ticker-row {
-  display: flex;
-  gap: 32px;
-  max-width: var(--max-width);
-  margin: 0 auto;
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-.ticker-item strong { color: var(--charcoal); }
-
-/* ---------- Trust badges ---------- */
-.trust-badges {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 12px;
-  max-width: var(--max-width);
-  margin: 0 auto;
-  padding: 48px 32px;
-  background: var(--cream);
-}
-.trust-badge {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 10px 20px;
-  font-size: 0.82rem;
-  color: var(--charcoal);
-  box-shadow: 0 10px 24px rgba(36,53,42,0.1);
-}
-.trust-badge svg {
-  width: 16px;
-  height: 16px;
-  color: var(--amber-dark);
-  flex-shrink: 0;
-}
 
 /* ---------- Audience grid ---------- */
 .audience-grid {
@@ -2656,13 +2584,6 @@ body.modal-open { overflow: hidden; }
 .form-field textarea { resize: vertical; min-height: 72px; }
 .form-field input:focus, .form-field textarea:focus { outline: none; border-color: var(--charcoal); }
 .form-field input:focus-visible, .form-field textarea:focus-visible { outline: 2px solid var(--charcoal); outline-offset: 2px; }
-
-.form-field-checkbox {
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-}
-.form-field-checkbox input { width: 16px; height: 16px; }
 
 .quote-form-error {
   font-size: 0.82rem;
@@ -2879,27 +2800,6 @@ nav.primary-nav.open {
   margin: 0 0 12px;
 }
 .product-detail-info .spec-chips { margin-bottom: 16px; }
-.product-detail-price {
-  margin: 16px 0;
-  padding: 16px 0;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-}
-.product-detail-price .price-line {
-  font-family: 'Zilla Slab', Georgia, serif;
-  font-size: 1.7rem;
-  font-weight: 700;
-}
-.product-detail-price .price-unit {
-  font-size: 1rem;
-  color: var(--text-muted);
-  font-weight: 700;
-}
-.product-detail-price .price-avail {
-  font-size: 0.88rem;
-  color: var(--text-muted);
-  margin-top: 4px;
-}
 .product-detail-specs {
   margin: 16px 0;
 }
@@ -2918,6 +2818,18 @@ nav.primary-nav.open {
   margin-top: 24px;
 }
 .product-detail-actions .btn { flex: 1 1 160px; text-align: center; }
+/* At 881px+, .product-detail-call (see above) is display:none, leaving
+   just the primary Check Availability/Get a Quote button and Back to
+   inventory — each gets the full row instead of sharing it at the
+   160px basis above. Placed after that base rule (same specificity,
+   .product-detail-actions .btn either way) so it wins on source order
+   regardless of where in the file the 881px breakpoint is otherwise
+   grouped — the earlier @media (min-width: 881px) block that hides
+   .product-detail-call can't win this tie were the override put there
+   instead, since this unconditional rule follows it. */
+@media (min-width: 881px) {
+  .product-detail-actions .btn { flex: 1 1 100%; }
+}
 .product-detail-notfound {
   max-width: 640px;
   margin: 0 auto;
@@ -3043,6 +2955,10 @@ nav.primary-nav.open {
 .about-split-more { background: var(--charcoal); }
 .about-split-more .about-split-text h2 { color: var(--cream); }
 .about-split-more .about-split-text p { color: var(--cream-dim); }
+/* .about-split-text .eyebrow's base --amber-dark reads fine on the light
+   split sections, but only 1.87:1 on this dark panel's --charcoal
+   background (axe: fails WCAG AA's 4.5:1) — --cream clears it at >11:1. */
+.about-split-more .about-split-text .eyebrow { color: var(--cream); }
 
 @media (max-width: 900px) {
   .about-split-inner { grid-template-columns: 1fr; padding: 40px 32px; gap: 24px; }

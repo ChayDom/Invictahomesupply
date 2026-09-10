@@ -1,0 +1,46 @@
+name: Smoke Test (manual)
+
+# Manual-only, read-only smoke test against a real deployed URL you choose
+# (e.g. a Netlify deploy preview) — runs test/smoke/run-smoke-test.mjs,
+# the same read-only script documented in docs/LOCAL_DEVELOPMENT.md.
+#
+# Deliberately separate from test.yml: this never runs on push/PR/schedule,
+# only when explicitly dispatched (Actions tab -> this workflow -> Run
+# workflow, or via the API/gh CLI). Needs no secrets — SMOKE_BASE_URL and
+# SMOKE_EXPECT_CONTEXT are the only inputs, and the smoke script itself
+# refuses to run without an explicit target and is GET/HEAD-only.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: "URL to smoke test (e.g. a Netlify deploy preview)"
+        required: true
+      expect_context:
+        description: "Expected deploy context"
+        required: true
+        default: "preview"
+        type: choice
+        options:
+          - preview
+          - production
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run read-only deployment smoke test
+        env:
+          SMOKE_BASE_URL: ${{ inputs.target_url }}
+          SMOKE_EXPECT_CONTEXT: ${{ inputs.expect_context }}
+        run: node test/smoke/run-smoke-test.mjs
