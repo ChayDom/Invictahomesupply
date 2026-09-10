@@ -444,9 +444,13 @@ nav.primary-nav a.active {
 /* --amber against --cream text is only 4.3:1 (fails WCAG AA's 4.5:1 for
    normal text, confirmed by axe on the hero's "Shop flooring" CTA) —
    --amber-dark clears it at ~6:1 while staying on-brand; same fix as
-   .optin .btn-dark above. */
+   .optin .btn-dark above. Hover darkens further via filter (never swaps
+   back to --amber) — swapping to the plain --amber pairing on hover
+   would silently reintroduce the same 4.3:1 failure on interaction. A
+   darkening filter can only ever raise contrast against light text, so
+   this can't regress the same way. */
 .hero .btn-dark { background: var(--amber-dark); border-color: var(--amber-dark); color: var(--cream); }
-.hero .btn-dark:hover { background: var(--amber); border-color: var(--amber); color: var(--cream); }
+.hero .btn-dark:hover { filter: brightness(0.85); }
 
 /* ---------- Section headings ---------- */
 .section {
@@ -2195,12 +2199,15 @@ footer.site-footer {
 }
 .optin .btn-dark {
   /* --amber against --cream text is only 4.3:1 (fails WCAG AA's 4.5:1 for
-     normal text) — --amber-dark clears it at ~6:1 while staying on-brand. */
+     normal text) — --amber-dark clears it at ~6:1 while staying on-brand.
+     Hover darkens further via filter rather than swapping back to
+     --amber — see the identical .hero .btn-dark:hover comment above for
+     why that swap would silently reintroduce the same failure. */
   background: var(--amber-dark);
   border-color: var(--amber-dark);
   color: var(--cream);
 }
-.optin .btn-dark:hover { background: var(--amber); border-color: var(--amber); color: var(--cream); }
+.optin .btn-dark:hover { filter: brightness(0.85); }
 .optin .btn-outline {
   color: var(--cream);
   border-color: var(--cream-dim);
