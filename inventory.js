@@ -855,13 +855,20 @@ function priceBlock(item) {
 // Compact card: square image -> category (+ subcategory, if set) -> name
 // -> up to 3 chips (structured Flooring fields for Flooring, Card Spec
 // 1/2/3 for every other category) -> short price -> availability line ->
-// one CTA. Long copy
-// (Details, remaining Highlights, a product reference link) moves into a
+// one CTA. Long copy (Details, remaining Highlights) moves into a
 // collapsed <details> section instead of living on the card — keeps the
 // row/card itself from turning back into a wall of text.
+//
+// item.productUrl (Airtable's "Product URL" — the manufacturer/retailer
+// listing Invicta sourced this item from) is deliberately never rendered
+// here or anywhere else customer-facing: a link straight from an Invicta
+// product page to Home Depot/Lowe's/Amazon/etc. is exactly the kind of
+// external-source exposure this site must not have. The field itself is
+// untouched — still mapped by mapAirtableRecord(), still real internal
+// data — it's only ever kept out of rendered HTML/hrefs.
 function productCard(item) {
   const { chips, remainingHighlights } = chipsAndRemainingHighlights(item);
-  const hasMore = Boolean(item.details) || remainingHighlights.length > 0 || Boolean(item.productUrl);
+  const hasMore = Boolean(item.details) || remainingHighlights.length > 0;
   const categoryLabel = item.webSubcategory ? `${item.webCategory} &middot; ${item.webSubcategory}` : item.webCategory;
   return `
   <div class="product-card" data-category="${item.webCategory}">
@@ -878,7 +885,6 @@ function productCard(item) {
         <summary>More details</summary>
         ${item.details ? `<p class="product-desc">${item.details}</p>` : ""}
         ${remainingHighlights.length ? `<ul class="product-details">${remainingHighlights.map(b => `<li>${b}</li>`).join("")}</ul>` : ""}
-        ${item.productUrl ? `<a href="${item.productUrl}" target="_blank" rel="noopener" class="product-ref-link">View manufacturer page</a>` : ""}
       </details>` : ""}
     </div>
     <div class="product-actions">
