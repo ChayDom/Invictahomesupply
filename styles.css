@@ -1973,6 +1973,18 @@ footer.site-footer {
      shrink further rather than hide "Home Supply". */
   .brand { font-size: 0.92rem; gap: 6px; }
   .brand img { height: 26px; }
+
+  /* Shop's mobile filter row (.filter-row, forced flex-wrap: nowrap at
+     max-width: 700px above) holds only "All Products" + "Browse
+     Categories" here — their combined natural width already fits one
+     line down to ~340px, but overflows the viewport by ~2px at exactly
+     320px (measured: 322px scroll width vs 320px viewport). flex-wrap
+     only takes effect once content actually doesn't fit on one line, so
+     this is a no-op everywhere above 320px (340px+ still renders on one
+     line, unchanged) and only wraps "Browse Categories" to its own
+     centered second line at 320px — no text, padding, font-size, or
+     touch-target change to either button. */
+  .filter-row { flex-wrap: wrap; }
 }
 
 /* ---------- Photo gallery / product card additions ---------- */
