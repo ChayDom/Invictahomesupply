@@ -292,6 +292,62 @@ await test("a non-GET request is passed through untouched", async () => {
   assert.equal(html, PRODUCT_HTML);
 });
 
+// --- Adversarial output security --------------------------------------
+// This edge function already escapes every value it interpolates (see
+// escapeHtmlAttr() in product-meta.ts, applied to title/description/url/
+// image before they ever reach applyProductMetadata()'s string
+// replacement) — these tests are regression coverage for that existing,
+// already-correct behavior, not a new fix. Confirms a hostile/malformed
+// Airtable Name can't break out of the <title>/<meta content="..."> tags
+// it's rewritten into, nor leave the response invalid HTML.
+
+await test("a Name containing a closing </title> and a <script> tag cannot break out of the rewritten <title> element", async () => {
+  airtableRecords = [airtableRecordFor({ ...VALID_PRODUCT_FIELDS, Name: `</title><script>window.__xss=1</script><title>X` })];
+  const res = await run("id=LEG-HD-001157");
+  const html = await res.text();
+  // The literal payload must appear only as escaped text inside the
+  // <title> tag — never as a real, separate <script> element.
+  assert.ok(!/<script>window\.__xss=1<\/script>/.test(html), "a live <script> element must not appear in the rewritten response");
+  const title = tagContent(html, /<title>([^<]*)<\/title>/i);
+  assert.ok(title && title.includes("&lt;script&gt;"), "expected the script tag to be HTML-escaped inside <title>");
+});
+
+await test("a Name containing a double quote and an event-handler attribute cannot break out of a meta content=\"...\" attribute", async () => {
+  airtableRecords = [airtableRecordFor({ ...VALID_PRODUCT_FIELDS, Name: `X" onmouseover="window.__xss=1` })];
+  const res = await run("id=LEG-HD-001157");
+  const html = await res.text();
+  assert.ok(!/onmouseover="window\.__xss=1"/.test(html), "the raw, unescaped onmouseover attribute must never appear in the response");
+  const ogTitle = tagContent(html, /<meta property="og:title" content="([^"]*)">/i);
+  assert.ok(ogTitle && ogTitle.includes("&quot;"), "expected the embedded quote to be escaped inside the content attribute");
+});
+
+await test("a Details field used as the description is escaped the same way when it contains markup", async () => {
+  airtableRecords = [airtableRecordFor({ ...VALID_PRODUCT_FIELDS, Details: `Nice <img src=x onerror="window.__xss=1"> flooring` })];
+  const res = await run("id=LEG-HD-001157");
+  const html = await res.text();
+  assert.ok(!/<img src=x onerror="window\.__xss=1">/.test(html), "a live <img onerror> must never appear in the response");
+  const description = tagContent(html, /<meta name="description" content="([^"]*)">/i);
+  assert.ok(description && description.includes("&lt;img"), "expected the img tag to be HTML-escaped inside the description");
+});
+
+await test("a Photos URL using a javascript: scheme is still HTML-escaped (this meta tag is inert either way — content isn't a navigable src/href)", async () => {
+  airtableRecords = [airtableRecordFor({
+    ...VALID_PRODUCT_FIELDS,
+    Photos: [{ url: `javascript:alert(1)"><script>window.__xss=1</script>` }],
+  })];
+  const res = await run("id=LEG-HD-001157");
+  const html = await res.text();
+  assert.ok(!/<script>window\.__xss=1<\/script>/.test(html), "a live <script> element must never appear in the response");
+});
+
+await test("legitimate Unicode/punctuation in a Name (accents, &, apostrophes) still round-trips correctly through the escaped title", async () => {
+  airtableRecords = [airtableRecordFor({ ...VALID_PRODUCT_FIELDS, Name: `Café LVP — Mom's "Favorite" Plank & Trim` })];
+  const res = await run("id=LEG-HD-001157");
+  const html = await res.text();
+  const title = tagContent(html, /<title>([^<]*)<\/title>/i);
+  assert.equal(title, `Café LVP — Mom&#39;s &quot;Favorite&quot; Plank &amp; Trim | Invicta Home Supply`);
+});
+
 if (failures > 0) {
   console.error(`\n${failures} test(s) failed.`);
   process.exit(1);

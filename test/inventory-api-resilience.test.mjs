@@ -27,13 +27,26 @@
 //    field — every field has a safe default (blank string, undefined,
 //    or a resolved fallback like "Untitled item" / "Other" / "In
 //    Stock") — see the per-field tests below.
-//  - Item TEXT content (e.g. item.name interpolated into an <h4>) is
-//    not HTML-escaped; only attribute contexts (e.g. alt="...") go
-//    through escapeAttr(). This matches the codebase's own standing
-//    documentation that Airtable is treated as a trusted internal
-//    source, not public input — not a newly discovered defect, and not
-//    changed here. Documented as a real property of the current code,
-//    not asserted as either "safe" or "unsafe" beyond what it is.
+//  - mapAirtableRecord() itself does NOT escape any field — item.name,
+//    item.details, etc. come back exactly as Airtable sent them. This is
+//    intentional and unchanged: escaping belongs at render time, not at
+//    mapping time, so the raw value stays usable for non-HTML consumers
+//    (search matching, the SMS body's URL-encoding, a future export)
+//    without being double-escaped or corrupted. See the corrected
+//    "attribute-context rendering" test below for what changed instead.
+//
+// CORRECTION to an earlier version of this file: it documented render-
+// time text-node interpolation (e.g. item.name inside an <h4>) as
+// deliberately unescaped, on the premise that Airtable is "a trusted
+// internal source." That premise doesn't hold up: a compromised Airtable
+// credential, a pasted product description, or an accidental stray "<"
+// in a name could inject markup into every page that renders it. Every
+// render-time interpolation of item-derived text (and the shop page's
+// URL-reflected search query) now goes through escapeHtml()/escapeAttr()
+// — see inventory.js's productCard()/renderContractorTable()/
+// renderContractorMobileCards()/initProductDetail()/
+// updateActiveFilterChips(), and test/e2e/output-security.spec.mjs for
+// the adversarial browser-level regression coverage.
 //
 // PRODUCTION FIXES bundled with this file:
 //  1. fetchInventory() had no bounded timeout at all before this change
@@ -79,7 +92,7 @@ async function test(name, fn) {
   }
 }
 
-globalThis.window = { AIRTABLE_CONFIG: { cacheMinutes: 15 }, SITE_CONFIG: {}, location: { search: "", hash: "", pathname: "/shop.html", href: "http://localhost/shop.html" } };
+globalThis.window = { AIRTABLE_CONFIG: { cacheMinutes: 15 }, SITE_CONFIG: {}, location: { origin: "http://localhost", search: "", hash: "", pathname: "/shop.html", href: "http://localhost/shop.html" } };
 let store = {};
 globalThis.localStorage = {
   getItem: (k) => (k in store ? store[k] : null),
@@ -303,14 +316,35 @@ await test("mapAirtableRecord(): two different records sharing the same Product 
   assert.notEqual(a.id, b.id, "the two records must still keep distinct ids even with an identical Product Key");
 });
 
-await test("mapAirtableRecord(): text fields are not HTML-escaped when later interpolated into rendered markup — documented, not a newly introduced defect (Airtable is a trusted internal source, not public input)", () => {
+await test("mapAirtableRecord() itself stores fields exactly as Airtable sent them — no escaping/sanitization at mapping time (escaping happens at render time instead — see escapeHtml()/escapeAttr() and test/e2e/output-security.spec.mjs)", () => {
   const item = mapAirtableRecord("rec1", { Name: "<b>Bold</b> Name", Category: "Tools" });
-  assert.equal(item.name, "<b>Bold</b> Name", "mapAirtableRecord() itself does no escaping/sanitization of any field");
+  assert.equal(item.name, "<b>Bold</b> Name", "mapAirtableRecord() must not mutate the raw value — render-time escaping needs the original text, not a pre-escaped copy");
 });
 
-await test("mapAirtableRecord(): attribute-context rendering (e.g. photo alt text) DOES escape via escapeAttr(), unlike the raw text-content path above", () => {
-  const escaped = escapeAttr('Item "with quotes" & <tags>');
-  assert.equal(escaped, "Item &quot;with quotes&quot; &amp; &lt;tags&gt;");
+await test("escapeHtml()/escapeAttr() (the same function under two names) escape &, \", ', <, > for safe interpolation into text nodes and attributes alike", () => {
+  const escaped = escapeAttr(`Item "with quotes" & <tags> and 'apostrophes'`);
+  assert.equal(escaped, "Item &quot;with quotes&quot; &amp; &lt;tags&gt; and &#39;apostrophes&#39;");
+  assert.equal(escapeHtml, escapeAttr, "escapeHtml must be the same function as escapeAttr, not a second implementation to keep in sync");
+});
+
+await test("sanitizeImageUrl() only trusts absolute https: URLs — javascript:/data: schemes and malformed values are rejected to \"\"", () => {
+  assert.equal(sanitizeImageUrl("https://dl.airtable.com/photo.jpg"), "https://dl.airtable.com/photo.jpg");
+  assert.equal(sanitizeImageUrl('javascript:alert(1)'), "");
+  assert.equal(sanitizeImageUrl("data:text/html,<script>alert(1)</script>"), "");
+  assert.equal(sanitizeImageUrl("vbscript:msgbox(1)"), "");
+  assert.equal(sanitizeImageUrl("not a url"), "");
+  assert.equal(sanitizeImageUrl(""), "");
+  assert.equal(sanitizeImageUrl(null), "");
+});
+
+await test("resolveSafeShopBackHref() only accepts a genuine same-origin /shop or /shop.html path — a value that merely contains \"/shop\" as a substring (e.g. smuggled behind a javascript: scheme) is rejected", () => {
+  assert.equal(resolveSafeShopBackHref("/shop?cat=Flooring"), "/shop?cat=Flooring");
+  assert.equal(resolveSafeShopBackHref("/shop.html?cat=Tools"), "/shop.html?cat=Tools");
+  assert.equal(resolveSafeShopBackHref("javascript:alert(1)//shop?"), null, "a javascript: URL that merely contains \"/shop?\" must not pass the same-site check");
+  assert.equal(resolveSafeShopBackHref("https://evil.example.com/shop"), null, "a different origin must never be accepted even with a /shop path");
+  assert.equal(resolveSafeShopBackHref("//evil.example.com/shop"), null, "a protocol-relative URL to a different host must never be accepted");
+  assert.equal(resolveSafeShopBackHref(""), null);
+  assert.equal(resolveSafeShopBackHref(null), null);
 });
 
 if (failures > 0) {
