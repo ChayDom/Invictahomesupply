@@ -397,3 +397,4 @@ and we can walk through it live using a browser tool.
 - `inventory.js` — Airtable config + fetch/cache (no fake fallback) + product card, Contractor View (table + mobile cards), and product detail rendering (chips/pricing structured-first for Flooring)
 - `netlify/functions/inventory.mts` — serverless proxy to Airtable (holds the API token server-side; filters on `Post to Website = TRUE`)
 - `marketplace-post-templates.md` — copy-paste posts for Marketplace/FB groups
+- `assets/hero/hero-living-room-flooring.{avif,webp,png}` — the homepage hero photo, served via `.hero-photo` in `styles.css` as AVIF first, WebP second, PNG fallback (`image-set()`, no JS). All three are the same 2007×783 crop of the same photo — if the source photo is ever replaced, regenerate all three from the new PNG together (AVIF quality ~60, WebP quality 82/method 6) so they never drift out of sync with each other.

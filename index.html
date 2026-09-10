@@ -78,11 +78,14 @@
   </div>
 </header>
 
-<!-- Real hero photo: a living-room LVP flooring shot in
-     /assets/hero/hero-living-room-flooring.png. The left-to-right dark
-     green scrim in styles.css keeps the left-aligned text readable while
-     the photo shows through on the right. -->
-<section class="hero hero-photo" style="--hero-photo:url('/assets/hero/hero-living-room-flooring.png');">
+<!-- Real hero photo: a living-room LVP flooring shot, served as AVIF/
+     WebP/PNG (see .hero-photo in styles.css) with the left-to-right
+     dark green scrim keeping the left-aligned text readable while the
+     photo shows through on the right. No inline style here — the image
+     path lives entirely in styles.css so the PNG-first/image-set()
+     fallback chain can't be short-circuited by an inline declaration
+     that would otherwise always win the cascade. -->
+<section class="hero hero-photo">
   <div class="hero-content">
     <div class="eyebrow">Flooring &middot; Water heaters &middot; Tools &middot; Lawn &amp; outdoor &middot; Appliances &middot; more</div>
     <h1>Luxury Vinyl Plank Flooring<br><span class="hero-line-nowrap">from <span class="hero-price hero-price-skeleton" id="hero-price" role="status" aria-live="polite"><span class="sr-only">Loading current flooring price</span></span> / sq ft</span><br>In stock in McKinney, TX.</h1>

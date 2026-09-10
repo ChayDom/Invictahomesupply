@@ -320,12 +320,31 @@ nav.primary-nav a.active {
    photo's right-hand flooring/living-room detail in view (rather than
    center-cropping it) at every width — the scrim is strongest on the
    left precisely because that's where the photo matters least and the
-   text sits. */
+   text sits.
+   Two `background` declarations, PNG first: a browser that doesn't
+   understand image-set() treats the whole second declaration as an
+   invalid value and drops it entirely (per the CSS cascade — an
+   unsupported value never partially applies), leaving the first,
+   universally-supported PNG declaration in effect. This is a real
+   fallback, not one that depends on a custom property (an inline
+   style setting the same custom property on the element would always
+   win over anything set here, which is why the photo path lives
+   directly in these two declarations instead of behind --hero-photo
+   the way it used to). Same three files, same crop/dimensions
+   (2007x783) — see README.md's file map for how to regenerate all
+   three together if the source photo ever changes. */
 .hero-photo {
   position: relative;
   background:
     linear-gradient(90deg, rgba(15, 22, 17, 0.94) 0%, rgba(20, 28, 22, 0.78) 45%, rgba(28, 40, 32, 0.5) 100%),
-    var(--hero-photo, linear-gradient(120deg, #2f4234 0%, #1c2820 55%, #24352a 100%));
+    url('/assets/hero/hero-living-room-flooring.png');
+  background:
+    linear-gradient(90deg, rgba(15, 22, 17, 0.94) 0%, rgba(20, 28, 22, 0.78) 45%, rgba(28, 40, 32, 0.5) 100%),
+    image-set(
+      url('/assets/hero/hero-living-room-flooring.avif') type('image/avif'),
+      url('/assets/hero/hero-living-room-flooring.webp') type('image/webp'),
+      url('/assets/hero/hero-living-room-flooring.png') type('image/png')
+    );
   background-size: cover;
   background-position: right center;
 }
