@@ -184,6 +184,27 @@ nav.primary-nav a.active {
   flex-shrink: 0;
 }
 
+/* Desktop-only plain-text phone number (see the @media (min-width:
+   881px) block further down — its own breakpoint, deliberately
+   independent of the nav's separate 1150/1151px layout breakpoint; see
+   that rule's own comment for why). Deliberately a bare <span>, never
+   an <a>/<button>: no href, no role, no tabindex, no click handler, so
+   it carries no interactive semantics, cursor, or focus stop — exactly
+   a label, not a disguised control. Populated by app.js's existing
+   generic [data-phone] -> SITE_CONFIG.phoneDisplay binding (see
+   app.js), so no new JS is added for this. Hidden by default
+   (mobile/tablet, <=880px, keeps the real tel:/sms: buttons below,
+   unchanged) and shown only once .contact-cta is hidden at the same
+   881px breakpoint, so exactly one of the two is ever visible. */
+.header-phone-text {
+  display: none;
+  color: var(--charcoal);
+  font-weight: 600;
+  font-size: 15px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 /* Header CTA: a Call button (filled) and a Text button (outlined) side by
    side, each a real tel:/sms: anchor. Standalone component (not .btn) so
    it can use sentence-case labels at its own size/weight instead of
@@ -1952,6 +1973,27 @@ footer.site-footer {
      one evenly-spaced group ("Call | Text | Menu"), not two different
      rhythms. */
   .nav-actions { gap: 8px; }
+}
+
+/* Contact-method swap — its own breakpoint (880/881px), deliberately
+   independent of the nav's own 1150/1151px layout breakpoint above.
+   The nav breakpoint controls when the link row collapses into the
+   hamburger; it has nothing to do with whether a visitor should get a
+   real tel:/sms: action or a plain, unclickable number, and reusing it
+   would put every Windows/laptop visitor at the very common 900px/
+   1024px/1150px window widths behind a still-live tel:/sms: control —
+   triggering an OS app-picker prompt for an action that makes no sense
+   on a laptop. So: <=880px shows the real Call/Text icon buttons and
+   hides the plain number (unchanged from before this pass); >=881px
+   shows the plain number and hides the icon buttons outright — display:
+   none, not merely visual hiding, so those tel:/sms: anchors are also
+   out of both the tab order and click reach there. Between 881-1150px
+   the hamburger nav and the plain number legitimately coexist — this
+   never forces the desktop nav links to appear early; nav.primary-nav's
+   own 1150px breakpoint is untouched. */
+@media (min-width: 881px) {
+  .header-phone-text { display: inline-block; }
+  .contact-cta { display: none; }
 }
 
 @media (max-width: 700px) {
