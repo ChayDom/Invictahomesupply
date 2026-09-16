@@ -1,4 +1,34 @@
 /* ===================================================================
+   Google Analytics 4 — shared sitewide loader
+   Measurement ID: G-R1Y6B33M8G
+
+   All customer-facing pages load app.js, so this keeps the GA4 tag in
+   one shared place and avoids duplicating the same tag across each HTML
+   file. The external library is loaded asynchronously and gtag() is
+   initialized immediately when app.js runs.
+   =================================================================== */
+(function initGoogleAnalytics() {
+  const measurementId = "G-R1Y6B33M8G";
+
+  // Guard against duplicate initialization if app.js is ever loaded twice.
+  if (window.__invictaGa4Initialized) return;
+  window.__invictaGa4Initialized = true;
+
+  const script = document.createElement("script");
+  script.async = true;
+  script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(measurementId)}`;
+  document.head.appendChild(script);
+
+  window.dataLayer = window.dataLayer || [];
+  window.gtag = window.gtag || function gtag() {
+    window.dataLayer.push(arguments);
+  };
+
+  window.gtag("js", new Date());
+  window.gtag("config", measurementId);
+})();
+
+/* ===================================================================
    Invicta Home Supply — site config + shared behavior
 
    EDIT THIS BLOCK to update contact info sitewide (every page reads
