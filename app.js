@@ -2,9 +2,9 @@
    Google Analytics 4 — shared sitewide loader
    Measurement ID: G-R1Y6B33M8G
 
-   All customer-facing pages load app.js. The environment guard keeps
-   lightweight unit-test DOM mocks from trying to create a real script
-   element, while normal browsers initialize GA4 once sitewide.
+   All customer-facing pages load app.js. The environment guards keep
+   lightweight unit-test DOM mocks and localhost/E2E runs from loading
+   Google Analytics, while normal deployed browsers initialize GA4 once.
    =================================================================== */
 (function initGoogleAnalytics() {
   if (
@@ -13,6 +13,13 @@
     typeof document.createElement !== "function" ||
     !document.head
   ) {
+    return;
+  }
+
+  const hostname = window.location && window.location.hostname
+    ? window.location.hostname
+    : "";
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0") {
     return;
   }
 
