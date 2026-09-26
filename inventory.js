@@ -2085,6 +2085,7 @@ function openQuoteModal(item, triggerEl) {
   document.getElementById("quote-field-product-key").value = item.productKey || item.id;
   document.getElementById("quote-field-price-per-sqft").value = typeof item.price === "number" ? money2(item.price) : "";
   document.getElementById("quote-field-box-price").value = typeof item.boxPrice === "number" ? money2(item.boxPrice) : "";
+  calcProduct = item;
 
   document.getElementById("quote-modal-form-view").hidden = false;
   document.getElementById("quote-modal-success-view").hidden = true;
@@ -2288,6 +2289,7 @@ let calcRoomCounter = 0;
 let calcWasteRate = 0.10;
 let calcOpenedFromQuote = false;
 let calcLastRecommended = 0;
+let calcProduct = null;
 
 // Clamps/defaults a feet+inches pair into a safe non-negative decimal-feet
 // value: blank or non-numeric input becomes 0, negative feet become 0, and
@@ -2388,10 +2390,28 @@ function calcRecalculate() {
 
   const recommended = totalArea * (1 + calcWasteRate);
   calcLastRecommended = recommended;
+  calcRenderPurchaseSummary(recommended);
   const recEl = document.getElementById("calc-recommended");
   if (recEl) recEl.textContent = `${calcRound2(recommended)} sq ft`;
 }
 
+function calcRenderPurchaseSummary(recommended) {
+  const summary = document.getElementById("calc-purchase-summary");
+  if (!summary) return;
+  if (!calcProduct || calcProduct.webCategory !== "Flooring") { summary.hidden = true; summary.innerHTML = ""; return; }
+  const perUnit = Number(calcProduct.sqFtPerUnit), unitPrice = Number(calcProduct.price), boxPrice = Number(calcProduct.boxPrice), available = Number(calcProduct.availableSqFt);
+  const hasPack = Number.isFinite(perUnit) && perUnit > 0;
+  const cases = hasPack ? Math.ceil(recommended / perUnit) : null;
+  const purchased = hasPack ? cases * perUnit : null;
+  const cost = Number.isFinite(boxPrice) && boxPrice >= 0 && hasPack ? cases * boxPrice : (Number.isFinite(unitPrice) && unitPrice >= 0 && purchased !== null ? purchased * unitPrice : null);
+  const inventoryKnown = Number.isFinite(available) && available >= 0;
+  const sufficient = inventoryKnown && purchased !== null ? available >= purchased : null;
+  const status = calcProduct.statusLabel || "Availability not provided";
+  summary.hidden = false;
+  summary.innerHTML = '<div class="calc-purchase-heading">Purchase estimate for ' + escapeHtml(calcProduct.name || "this flooring") + '</div>' +
+    '<div class="calc-purchase-grid"><div><span>Recommended</span><strong>' + calcRound2(recommended) + ' sq ft</strong></div><div><span>Cases required</span><strong>' + (cases === null ? "—" : cases) + '</strong></div><div><span>Purchased</span><strong>' + (purchased === null ? "—" : calcRound2(purchased) + ' sq ft') + '</strong></div><div><span>Material cost</span><strong>' + (cost === null ? "—" : money2(cost)) + '</strong></div></div>' +
+    '<div class="calc-purchase-availability"><strong>Inventory:</strong> ' + (inventoryKnown ? calcRound2(available) + ' sq ft available' : 'quantity not provided') + ' · <strong>Status:</strong> ' + escapeHtml(status) + (sufficient === null ? '' : sufficient ? ' · Sufficient for this project' : ' · Not enough for this project') + '</div>';
+}
 // Resets the calculator back to a single empty room and the default waste
 // rate every time it's opened — it doesn't need to remember a prior session.
 function calcResetState() {
@@ -2408,6 +2428,7 @@ function calcResetState() {
 
 function openCalculatorModal(fromQuote) {
   calcOpenedFromQuote = !!fromQuote;
+  if (calcOpenedFromQuote && !calcProduct) calcProduct = { name: document.getElementById("quote-field-product-name")?.value || "", webCategory: "Flooring", price: parseFloat(document.getElementById("quote-field-price-per-sqft")?.value), boxPrice: parseFloat(document.getElementById("quote-field-box-price")?.value) };
   calcResetState();
   const useForQuoteBtn = document.getElementById("calc-use-for-quote");
   const doneBtn = document.getElementById("calc-done");
@@ -2433,6 +2454,7 @@ function closeCalculatorModal() {
     document.body.classList.remove("modal-open");
   }
   calcOpenedFromQuote = false;
+  calcProduct = null;
 }
 
 function bindCalculatorModal() {
