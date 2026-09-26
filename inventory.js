@@ -2395,22 +2395,39 @@ function calcRecalculate() {
   if (recEl) recEl.textContent = `${calcRound2(recommended)} sq ft`;
 }
 
+function calcPurchaseEstimate(recommended, product) {
+  const perUnit = Number(product?.sqFtPerUnit);
+  const unitPrice = Number(product?.price);
+  const boxPrice = Number(product?.boxPrice);
+  const available = Number(product?.availableSqFt);
+  const hasPack = Number.isFinite(perUnit) && perUnit > 0;
+  const cases = hasPack ? Math.ceil(recommended / perUnit) : null;
+  const purchased = hasPack ? cases * perUnit : null;
+  const cost = Number.isFinite(boxPrice) && boxPrice >= 0 && hasPack
+    ? cases * boxPrice
+    : (Number.isFinite(unitPrice) && unitPrice >= 0 && purchased !== null ? purchased * unitPrice : null);
+  const inventoryKnown = Number.isFinite(available) && available >= 0;
+  const sufficient = inventoryKnown && purchased !== null ? available >= purchased : null;
+  const shortageSqFt = sufficient === false ? purchased - available : null;
+  return { cases, purchased, cost, available, inventoryKnown, sufficient, shortageSqFt };
+}
+
 function calcRenderPurchaseSummary(recommended) {
   const summary = document.getElementById("calc-purchase-summary");
   if (!summary) return;
   if (!calcProduct || calcProduct.webCategory !== "Flooring") { summary.hidden = true; summary.innerHTML = ""; return; }
-  const perUnit = Number(calcProduct.sqFtPerUnit), unitPrice = Number(calcProduct.price), boxPrice = Number(calcProduct.boxPrice), available = Number(calcProduct.availableSqFt);
-  const hasPack = Number.isFinite(perUnit) && perUnit > 0;
-  const cases = hasPack ? Math.ceil(recommended / perUnit) : null;
-  const purchased = hasPack ? cases * perUnit : null;
-  const cost = Number.isFinite(boxPrice) && boxPrice >= 0 && hasPack ? cases * boxPrice : (Number.isFinite(unitPrice) && unitPrice >= 0 && purchased !== null ? purchased * unitPrice : null);
-  const inventoryKnown = Number.isFinite(available) && available >= 0;
-  const sufficient = inventoryKnown && purchased !== null ? available >= purchased : null;
+  const estimate = calcPurchaseEstimate(recommended, calcProduct);
   const status = calcProduct.statusLabel || "Availability not provided";
+  const inventoryMessage = estimate.inventoryKnown ? calcRound2(estimate.available) + " sq ft available" : "quantity not provided";
+  const sufficiencyMessage = estimate.sufficient === null
+    ? ""
+    : estimate.sufficient
+      ? " · Sufficient for this project"
+      : " · Not enough inventory · " + calcRound2(estimate.shortageSqFt) + " sq ft short";
   summary.hidden = false;
   summary.innerHTML = '<div class="calc-purchase-heading">Purchase estimate for ' + escapeHtml(calcProduct.name || "this flooring") + '</div>' +
-    '<div class="calc-purchase-grid"><div><span>Recommended</span><strong>' + calcRound2(recommended) + ' sq ft</strong></div><div><span>Cases required</span><strong>' + (cases === null ? "—" : cases) + '</strong></div><div><span>Purchased</span><strong>' + (purchased === null ? "—" : calcRound2(purchased) + ' sq ft') + '</strong></div><div><span>Material cost</span><strong>' + (cost === null ? "—" : money2(cost)) + '</strong></div></div>' +
-    '<div class="calc-purchase-availability"><strong>Inventory:</strong> ' + (inventoryKnown ? calcRound2(available) + ' sq ft available' : 'quantity not provided') + ' · <strong>Status:</strong> ' + escapeHtml(status) + (sufficient === null ? '' : sufficient ? ' · Sufficient for this project' : ' · Not enough for this project') + '</div>';
+    '<div class="calc-purchase-grid"><div><span>Recommended</span><strong>' + calcRound2(recommended) + ' sq ft</strong></div><div><span>Cases required</span><strong>' + (estimate.cases === null ? "—" : estimate.cases) + '</strong></div><div><span>Purchased</span><strong>' + (estimate.purchased === null ? "—" : calcRound2(estimate.purchased) + ' sq ft') + '</strong></div><div><span>Material cost</span><strong>' + (estimate.cost === null ? "—" : money2(estimate.cost)) + '</strong></div></div>' +
+    '<div class="calc-purchase-availability"><strong>Inventory:</strong> ' + inventoryMessage + ' · <strong>Status:</strong> ' + escapeHtml(status) + sufficiencyMessage + '</div>';
 }
 // Resets the calculator back to a single empty room and the default waste
 // rate every time it's opened — it doesn't need to remember a prior session.
