@@ -228,6 +228,12 @@ function resolveSellUnit(f, webCategory) {
 function resolveStatusLabel(f) {
   const legacyStatus = (f["Status"] || "").trim();
   if (legacyStatus) return legacyStatus;
+  if (resolveWebCategory(f) === "Flooring") {
+    if (typeof f["Available Sq Ft"] === "number" && Number.isFinite(f["Available Sq Ft"])) {
+      return f["Available Sq Ft"] > 0 ? "In Stock" : "Out of Stock";
+    }
+    if (typeof f["Quantity Available"] !== "number") return "Contact for Availability";
+  }
   if (typeof f["Quantity Available"] === "number") return f["Quantity Available"] > 0 ? "In Stock" : "Out of Stock";
   return "In Stock";
 }
@@ -270,7 +276,38 @@ function normalizeForCompare(v) {
 }
 
 function isPositiveNumber(v) {
-  return typeof v === "number" && !isNaN(v) && v > 0;
+  return typeof v === "number" && Number.isFinite(v) && v > 0;
+}
+
+// Material classification is separate from quote eligibility: missing pack/price/
+// inventory must still let customers calculate area and see what needs confirmation.
+function isFlooringMaterial(item) {
+  return !!item && item.webCategory === "Flooring" &&
+    QUOTE_ELIGIBLE_FLOORING_SUBCATEGORIES_NORMALIZED.includes(normalizeForCompare(item.webSubcategory));
+}
+
+// UI policy, not invented Airtable fields. Keep pickup, delivery, freight and parcel
+// shipping distinct so a future verified per-product policy can replace this default.
+function fulfillmentForItem(item) {
+  return item?.webCategory === "Flooring" ? {
+    pickup: "available", pickupLocation: "McKinney, TX", localDelivery: "contact",
+    freight: "contact-large-orders", shipping: "unavailable"
+  } : null;
+}
+
+function flooringFulfillmentMarkup(item, detailed = false) {
+  const policy = fulfillmentForItem(item);
+  if (!policy) return "";
+  return detailed ? `<div class="flooring-fulfillment">
+    <strong>Local Pickup Only &bull; ${policy.pickupLocation}</strong>
+    <p>Flooring is currently available for local pickup in McKinney, TX. We do not currently ship individual flooring orders.</p>
+    <p>Local delivery may be available — contact us for a quote. Need a large commercial or pallet-size order? Contact us to discuss freight options.</p>
+  </div>` : `<p class="flooring-pickup">Local Pickup Only &bull; ${policy.pickupLocation}</p>`;
+}
+
+function calculateProjectLink(item) {
+  return isFlooringMaterial(item) ? `<a class="btn btn-outline btn-small btn-block project-calculate-link"
+    href="${productDetailHref(item)}#project-calculator">Calculate My Project</a>` : "";
 }
 
 // Single source of truth for whether an item gets the "Get a Quote"
@@ -594,12 +631,12 @@ function sanitizeImageUrl(url) {
 }
 
 function money(n) {
-  return typeof n === "number" ? `$${n.toLocaleString()}` : "";
+  return typeof n === "number" && Number.isFinite(n) ? `$${n.toLocaleString()}` : "";
 }
 
 // 2-decimal currency, used for per-sq-ft/per-box pricing.
 function money2(n) {
-  return typeof n === "number" ? `$${n.toFixed(2)}` : "";
+  return typeof n === "number" && Number.isFinite(n) ? `$${n.toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:2})}` : "";
 }
 
 // Thousands-separated sq ft total; only shows decimals when the value actually has them.
@@ -728,6 +765,15 @@ function flooringAvailabilityLabel(item) {
 // (saveFlooringViewMode), so it survives the round trip on its own.
 // Only shop.html has this state to carry, so the homepage/product-detail
 // cards linking here just get the plain id link.
+function flooringAvailabilitySummary(item) {
+  const available = calcNumber(item.availableSqFt);
+  const boxes = boxesAvailable(item);
+  if (available === null || available < 0) return "Contact for Availability";
+  if (available === 0) return "Out of Stock · 0 sq ft available";
+  if (boxes === 1 || boxes === 2) return `<span class="contractor-avail-lines"><strong class="contractor-avail-sqft">${sqFtAvailable(available)} sq ft available</strong><span class="contractor-avail-boxes">${flooringAvailabilityLabel(item)}</span></span>`;
+  return flooringAvailabilityLabel(item);
+}
+
 function productDetailHref(item) {
   const base = `product.html?id=${encodeURIComponent(item.productKey || item.id)}`;
   if (document.getElementById("catalog-grid")) {
@@ -844,15 +890,15 @@ function smsHrefForItem(item) {
 // button is identical markup at every width; only the secondary Text
 // Us link's visibility is breakpoint-dependent, via CSS.
 function actionButtons(item) {
-  if (!isAvailable(item)) {
-    return `<span class="btn btn-outline btn-small btn-block" style="opacity:.5; cursor:default;">${escapeHtml(item.statusLabel)}</span>`;
+  if (!canInquire(item)) {
+    return `${calculateProjectLink(item)}<span class="btn btn-outline btn-small btn-block" style="opacity:.5; cursor:default;">${escapeHtml(item.statusLabel)}</span>`;
   }
   const textUs = `<a href="${smsHrefForItem(item)}" class="btn btn-outline btn-small btn-block text-us-secondary">Text Us</a>`;
   if (!isQuoteEligibleFlooring(item)) {
-    return `<button type="button" class="btn btn-dark btn-small btn-block" data-availability-id="${escapeAttr(item.id)}">Check Availability</button>
+    return `${calculateProjectLink(item)}<button type="button" class="btn btn-dark btn-small btn-block" data-availability-id="${escapeAttr(item.id)}">Check Availability</button>
     ${textUs}`;
   }
-  return `<button type="button" class="btn btn-dark btn-small btn-block" data-quote-id="${escapeAttr(item.id)}">Get a Quote</button>
+  return `${calculateProjectLink(item)}<button type="button" class="btn btn-dark btn-small btn-block" data-quote-id="${escapeAttr(item.id)}">Get a Quote</button>
     ${textUs}`;
 }
 
@@ -869,8 +915,8 @@ function actionButtons(item) {
 // an estimate, which callers must label as such (≈) so a stored price
 // and a computed one are never visually indistinguishable.
 function boxPriceInfo(item) {
-  if (typeof item.boxPrice === "number") return { amount: item.boxPrice, computed: false };
-  if (typeof item.price === "number" && typeof item.sqFtPerUnit === "number" && item.sqFtPerUnit > 0) {
+  if (isPositiveNumber(item.boxPrice)) return { amount: item.boxPrice, computed: false };
+  if (isPositiveNumber(item.price) && isPositiveNumber(item.sqFtPerUnit) && Number.isFinite(item.price * item.sqFtPerUnit)) {
     return { amount: item.price * item.sqFtPerUnit, computed: true };
   }
   return null;
@@ -893,7 +939,7 @@ function boxPriceInfo(item) {
 //   box (non-flooring) -> "$42.11 / box"  then "Retail $89.00 · 12 boxes available"
 //   roll         -> "$42.11 / roll" then "Retail $89.00 · 12 rolls available"
 function priceBlock(item) {
-  if (item.webCategory === "Flooring" && typeof item.price === "number") {
+  if (item.webCategory === "Flooring") {
     const subParts = [];
     const boxInfo = boxPriceInfo(item);
     if (boxInfo) {
@@ -904,7 +950,7 @@ function priceBlock(item) {
     // it used to only show up bundled inside the computed-box-price
     // branch, silently disappearing for the common case of a row with
     // both a real Box Price AND Sq Ft Per Unit populated.
-    if (typeof item.sqFtPerUnit === "number" && item.sqFtPerUnit > 0) {
+    if (isPositiveNumber(item.sqFtPerUnit)) {
       subParts.push(`${sqFtAvailable(item.sqFtPerUnit)} sq ft / box`);
     }
     // Available sq-ft + box count get their own line (same two-line
@@ -912,10 +958,11 @@ function priceBlock(item) {
     // flooringAvailabilityLabel()) rather than being folded into the
     // middot-joined box-price/coverage line above: that line is a
     // single flowing sentence, and the sq-ft/box pair needs to stack.
-    const availLabel = flooringAvailabilityLabel(item);
+    const availLabel = flooringAvailabilitySummary(item);
     return `<div class="product-price product-price-flooring">
-      <div class="price-line">${money2(item.price)} <span class="price-unit">/ sq ft</span></div>
+      <div class="price-line">${isPositiveNumber(item.price) ? `${money2(item.price)} <span class="price-unit">/ sq ft</span>` : "Contact for price"}</div>
       ${subParts.length ? `<div class="price-avail">${subParts.join(" &middot; ")}</div>` : ""}
+      ${comparableRetailMarkup(item)}
       ${availLabel ? `<div class="price-avail price-avail-qty">${availLabel}</div>` : ""}
     </div>`;
   }
@@ -927,7 +974,7 @@ function priceBlock(item) {
   const isPerUnit = item.sellUnit === "box" || item.sellUnit === "roll";
   const priceText = isPerUnit && typeof item.price === "number" ? money2(item.price) : money(item.price);
   const availParts = [];
-  if (typeof item.wasPrice === "number") availParts.push(`Retail ${money(item.wasPrice)}`);
+  if (validComparableRetail(item)) availParts.push(`Comparable Retail ${money(item.wasPrice)}`);
   if (typeof item.qtyAvailable === "number") {
     const unitWord = item.qtyAvailable === 1 ? singularWords[item.sellUnit] : pluralWords[item.sellUnit];
     availParts.push(`${item.qtyAvailable}${unitWord || ""} available`);
@@ -936,6 +983,13 @@ function priceBlock(item) {
     <div class="price-line">${priceText} <span class="price-unit">${unitLabel}</span></div>
     ${availParts.length ? `<div class="price-avail">${availParts.join(" &middot; ")}</div>` : ""}
   </div>`;
+}
+
+function validComparableRetail(item) {
+  return isPositiveNumber(item.price) && isPositiveNumber(item.wasPrice) && item.wasPrice > item.price;
+}
+function comparableRetailMarkup(item) {
+  return validComparableRetail(item) ? `<div class="comparable-retail">Comparable Retail ${money2(item.wasPrice)} / sq ft</div>` : "";
 }
 
 // Compact card: square image -> category (+ subcategory, if set) -> name
@@ -970,6 +1024,7 @@ function productCard(item) {
       <h4><a href="${productDetailHref(item)}">${escapeHtml(item.name)}</a></h4>
       ${chips.length ? `<div class="spec-chips">${chips.map(c => `<span class="spec-chip">${escapeHtml(c)}</span>`).join("")}</div>` : ""}
       ${priceBlock(item)}
+      ${flooringFulfillmentMarkup(item)}
       ${hasMore ? `<details class="product-more">
         <summary>More details</summary>
         ${item.details ? `<p class="product-desc">${escapeHtml(item.details)}</p>` : ""}
@@ -1061,14 +1116,17 @@ function contractorBoxPriceCell(item) {
   return contractorBoxPriceText(item) || "&mdash;";
 }
 
+function canInquire(item) {
+  return isAvailable(item) || item.statusLabel === "Contact for Availability";
+}
 function contractorRowCta(item) {
-  if (!isAvailable(item)) {
-    return `<span class="btn btn-outline btn-small" style="opacity:.5; cursor:default;">${escapeHtml(item.statusLabel)}</span>`;
+  if (!canInquire(item)) {
+    return `${calculateProjectLink(item)}<span class="btn btn-outline btn-small" style="opacity:.5; cursor:default;">${escapeHtml(item.statusLabel)}</span>`;
   }
   const primary = isQuoteEligibleFlooring(item)
     ? `<button type="button" class="btn btn-dark btn-small" data-quote-id="${escapeAttr(item.id)}">Get a Quote</button>`
     : `<button type="button" class="btn btn-dark btn-small" data-availability-id="${escapeAttr(item.id)}">Check Availability</button>`;
-  return `${primary}
+  return `${calculateProjectLink(item)}${primary}
     <a href="${smsHrefForItem(item)}" class="btn btn-outline btn-small contractor-text-us">Text Us</a>`;
 }
 
@@ -1086,22 +1144,25 @@ function renderContractorTable(items, emptyMessage = CATALOG_MESSAGES.emptyFilte
     // right size rather than loading a full-resolution image per row.
     const photo = item.photoThumbs && item.photoThumbs[0] ? item.photoThumbs[0] : "";
     const boxes = boxesAvailable(item);
-    const availLabel = flooringAvailabilityLabel(item) || "&mdash;";
+    const availLabel = flooringAvailabilitySummary(item) || "&mdash;";
     const lowStock = typeof boxes === "number" && boxes <= 2;
     const photoImg = photo ? `<img src="${escapeAttr(sanitizeImageUrl(photo))}" alt="" loading="lazy" width="48" height="48">` : "";
     return `<tr>
       <td class="contractor-product-cell">
+        <div class="contractor-product-layout">
         <a class="contractor-product-photo" href="${productDetailHref(item)}">${photoImg}</a>
         <div>
           <a class="contractor-product-name" href="${productDetailHref(item)}">${escapeHtml(item.name)}</a>
+          ${flooringFulfillmentMarkup(item)}
           ${item.brand || item.webSubcategory ? `<div class="contractor-product-sub">${[item.brand, item.webSubcategory].filter(Boolean).map(escapeHtml).join(" &middot; ")}</div>` : ""}
+        </div>
         </div>
       </td>
       <td>${chips.length ? `<div class="spec-chips">${chips.map(c => `<span class="spec-chip">${escapeHtml(c)}</span>`).join("")}</div>` : "&mdash;"}</td>
-      <td>${typeof item.price === "number" ? `<strong>${money2(item.price)}</strong>` : "&mdash;"}</td>
+      <td>${typeof item.price === "number" ? `<strong>${money2(item.price)}</strong>` : "&mdash;"}${comparableRetailMarkup(item)}</td>
       <td>${contractorBoxPriceCell(item)}</td>
       <td class="${lowStock ? "low-stock-emph" : ""}">${availLabel}</td>
-      <td class="contractor-actions-cell">${contractorRowCta(item)}</td>
+      <td class="contractor-actions-cell"><div class="contractor-actions-layout">${contractorRowCta(item)}</div></td>
     </tr>`;
   }).join("");
 }
@@ -1121,7 +1182,7 @@ function renderContractorMobileCards(items, emptyMessage = CATALOG_MESSAGES.empt
     const chips = flooringStructuredChips(item);
     const photo = item.photoThumbs && item.photoThumbs[0] ? item.photoThumbs[0] : "";
     const boxes = boxesAvailable(item);
-    const availLabel = flooringAvailabilityLabel(item) || "&mdash;";
+    const availLabel = flooringAvailabilitySummary(item) || "&mdash;";
     const lowStock = typeof boxes === "number" && boxes <= 2;
     const href = productDetailHref(item);
     const photoImg = photo ? `<img src="${escapeAttr(sanitizeImageUrl(photo))}" alt="" loading="lazy" width="64" height="64">` : "";
@@ -1129,6 +1190,7 @@ function renderContractorMobileCards(items, emptyMessage = CATALOG_MESSAGES.empt
       <a class="contractor-card-photo" href="${href}">${photoImg}</a>
       <div class="contractor-card-body">
         <a class="contractor-card-name" href="${href}">${escapeHtml(item.name)}</a>
+        ${flooringFulfillmentMarkup(item)}
         ${item.brand || item.webSubcategory ? `<div class="contractor-card-sub">${[item.brand, item.webSubcategory].filter(Boolean).map(escapeHtml).join(" &middot; ")}</div>` : ""}
         ${chips.length ? `<div class="contractor-card-specs spec-chips">${chips.map(c => `<span class="spec-chip">${escapeHtml(c)}</span>`).join("")}</div>` : ""}
         <div class="contractor-card-prices">
@@ -1136,6 +1198,7 @@ function renderContractorMobileCards(items, emptyMessage = CATALOG_MESSAGES.empt
           ${contractorBoxPriceText(item) ? `<span><strong>${contractorBoxPriceText(item)}</strong> / box</span>` : ""}
         </div>
         <div class="contractor-card-avail${lowStock ? " low-stock-emph" : ""}">${availLabel}</div>
+        ${comparableRetailMarkup(item)}
         <div class="contractor-card-cta">${contractorRowCta(item)}</div>
       </div>
     </div>`;
@@ -1166,7 +1229,9 @@ function bindFlooringCalcCard() {
       result.hidden = true;
       return;
     }
-    result.textContent = `Recommended: ${calcRound2(sqft * (1 + FLOORING_CALC_WASTE_RATE))} sq ft`;
+    const recommended = calcRecommendedSqFt(sqft, FLOORING_CALC_WASTE_RATE * 100);
+    if (recommended === null) { result.hidden = true; return; }
+    result.textContent = `Recommended: ${calcRound2(recommended)} sq ft`;
     result.hidden = false;
   };
 
@@ -1177,7 +1242,7 @@ function bindFlooringCalcCard() {
   // open drawer (a stacking-order bug the .modal-overlay z-index comment
   // in styles.css also guards against, belt-and-suspenders). No-op on
   // desktop, where the sidebar isn't a drawer to begin with.
-  fullLink?.addEventListener("click", () => { closeShopSidebarDrawer(); openCalculatorModal(false); });
+  fullLink?.addEventListener("click", () => { closeShopSidebarDrawer(); openCalculatorModal(false, null, fullLink); });
 }
 
 // Wires everything around the sidebar that isn't a single facet <select>
@@ -1219,7 +1284,7 @@ function bindSidebarFilterExtras() {
     document.body.classList.add("modal-open");
   };
   document.getElementById("mobile-filters-btn")?.addEventListener("click", openDrawer);
-  document.getElementById("mobile-calc-btn")?.addEventListener("click", () => openCalculatorModal(false));
+  document.getElementById("mobile-calc-btn")?.addEventListener("click", e => openCalculatorModal(false, null, e.currentTarget));
   document.getElementById("sidebar-close-btn")?.addEventListener("click", closeShopSidebarDrawer);
   document.getElementById("sidebar-apply-btn-mobile")?.addEventListener("click", closeShopSidebarDrawer);
   backdrop?.addEventListener("click", closeShopSidebarDrawer);
@@ -1594,6 +1659,8 @@ const FLOORING_ONLY_SIDEBAR_GROUP_IDS = [
 // apply to them).
 function updateViewToggle() {
   const flooring = isFlooringView();
+  const fulfillmentNotice = document.getElementById("flooring-fulfillment-notice");
+  if (fulfillmentNotice) fulfillmentNotice.hidden = !flooring;
   const contractor = isContractorView();
   document.body.classList.toggle("is-flooring-view", flooring);
 
@@ -1625,7 +1692,8 @@ function updateViewToggle() {
 // simply skipped.
 function searchMatches(item, query) {
   if (!query) return true;
-  const haystack = [item.name, item.brand, item.model, item.webCategory, item.webSubcategory, item.retailer, item.highlights]
+  const haystack = [item.name, item.brand, item.model, item.webCategory, item.webSubcategory, item.retailer,
+    item.retailSku, item.highlights, ...flooringStructuredChips(item), item.cardSpec1, item.cardSpec2, item.cardSpec3]
     .filter(Boolean)
     .join(" \n ")
     .toLowerCase();
@@ -2067,6 +2135,45 @@ function quotePriceText(item) {
 }
 
 let quoteModalTrigger = null;
+let activeQuoteProduct = null;
+// Store inputs by permanent identity, never by editable SKU or another item's modal.
+const flooringProjects = new Map();
+function flooringProjectKey(item) { return item.productKey || item.id; }
+
+function quoteProjectFields(item, state) {
+  const estimate = state ? calcProjectEstimate(state.projectSqFt, state.wastePercentage, item) : null;
+  const inventory = calcNumber(item.availableSqFt);
+  const policy = fulfillmentForItem(item);
+  return {
+    "retail-sku": item.retailSku || "",
+    "project-sqft": estimate?.valid ? estimate.projectSqFt : "",
+    "waste-percent": estimate?.valid ? estimate.wastePercentage : "",
+    "recommended-sqft": estimate?.valid ? estimate.recommended : "",
+    "boxes-needed": estimate?.cases ?? "",
+    "actual-coverage": estimate?.purchased ?? "",
+    "estimated-material-cost": estimate?.cost == null ? "" : estimate.cost.toFixed(2),
+    "cost-basis": estimate?.cost == null ? "Confirmation required" : estimate.costComputed ? "Estimated from square-foot price" : "Catalog Box Price",
+    "available-sqft": inventory !== null && inventory >= 0 ? inventory : "",
+    "inventory-status": estimate?.sufficient === true ? "Sufficient" : estimate?.sufficient === false ? "Insufficient" : "Unknown",
+    "inventory-shortage-sqft": estimate?.shortageSqFt ?? "",
+    "fulfillment": policy ? "Local Pickup Only; delivery contact for availability; no individual parcel shipping; freight contact for large orders" : "Contact for fulfillment",
+    "pickup-location": policy?.pickupLocation || ""
+  };
+}
+
+function syncQuoteProjectFields(item, state) {
+  const form = document.getElementById("quote-form");
+  if (!form || !item) return;
+  Object.entries(quoteProjectFields(item, state)).forEach(([name, value]) => {
+    const field = form.querySelector(`[name="${name}"]`);
+    if (field) field.value = String(value);
+  });
+  const context = document.getElementById("quote-project-context");
+  if (context) {
+    context.innerHTML = `${flooringFulfillmentMarkup(item)}${state ? calcProjectSummaryMarkup(state.projectSqFt, state.wastePercentage, item) : ""}`;
+    context.hidden = !fulfillmentForItem(item);
+  }
+}
 
 function openQuoteModal(item, triggerEl) {
   if (!item) return;
@@ -2086,6 +2193,11 @@ function openQuoteModal(item, triggerEl) {
   document.getElementById("quote-field-price-per-sqft").value = typeof item.price === "number" ? money2(item.price) : "";
   document.getElementById("quote-field-box-price").value = typeof item.boxPrice === "number" ? money2(item.boxPrice) : "";
   calcProduct = item;
+  activeQuoteProduct = item;
+  const project = flooringProjects.get(flooringProjectKey(item));
+  const sqftInput = document.getElementById("quote-sqft-input");
+  if (sqftInput && project) sqftInput.value = String(project.projectSqFt);
+  syncQuoteProjectFields(item, project);
 
   document.getElementById("quote-modal-form-view").hidden = false;
   document.getElementById("quote-modal-success-view").hidden = true;
@@ -2104,6 +2216,7 @@ function closeQuoteModal() {
   document.body.classList.remove("modal-open");
   quoteModalTrigger?.focus();
   quoteModalTrigger = null;
+  activeQuoteProduct = null;
 }
 
 function encodeFormData(data) {
@@ -2115,6 +2228,17 @@ function bindQuoteModal() {
   const form = document.getElementById("quote-form");
   if (!overlay || !form) return;
 
+  const refreshProject = () => {
+    if (!activeQuoteProduct) return;
+    const key = flooringProjectKey(activeQuoteProduct);
+    const prior = flooringProjects.get(key);
+    const area = calcNumber(document.getElementById("quote-sqft-input")?.value);
+    const state = area !== null && area > 0 ? { projectSqFt: area, wastePercentage: prior?.wastePercentage ?? 10 } : null;
+    if (state) flooringProjects.set(key, state); else flooringProjects.delete(key);
+    syncQuoteProjectFields(activeQuoteProduct, state);
+  };
+  document.getElementById("quote-sqft-input")?.addEventListener("input", refreshProject);
+
   document.getElementById("quote-modal-close")?.addEventListener("click", closeQuoteModal);
   document.getElementById("quote-modal-done")?.addEventListener("click", closeQuoteModal);
   overlay.addEventListener("click", (e) => { if (e.target === overlay) closeQuoteModal(); });
@@ -2124,14 +2248,14 @@ function bindQuoteModal() {
     trapModalTab(overlay, e);
   });
 
-  document.getElementById("quote-calc-link")?.addEventListener("click", () => {
-    // The Flooring Calculator modal only exists on shop.html — guard so
+  document.getElementById("quote-calc-link")?.addEventListener("click", e => {
+    // The calculator exists on shop and flooring product detail pages — guard so
     // a page without it (this link itself is omitted from the homepage/
     // product-detail copies of this modal, but stay defensive) never
     // hides the quote modal with nothing to replace it.
     if (!document.getElementById("calc-modal-overlay")) return;
     overlay.hidden = true;
-    openCalculatorModal(true);
+    openCalculatorModal(true, null, e.currentTarget);
   });
 
   form.addEventListener("submit", async (e) => {
@@ -2145,6 +2269,7 @@ function bindQuoteModal() {
     // Guards against a second submit firing (double-click, or Enter held
     // down) while the first request is still in flight.
     if (submitBtn?.disabled) return;
+    refreshProject();
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Sending..."; }
     document.getElementById("quote-form-error").hidden = true;
 
@@ -2290,6 +2415,8 @@ let calcWasteRate = 0.10;
 let calcOpenedFromQuote = false;
 let calcLastRecommended = 0;
 let calcProduct = null;
+let calcLastProjectArea = 0;
+let calcModalTrigger = null;
 
 // Clamps/defaults a feet+inches pair into a safe non-negative decimal-feet
 // value: blank or non-numeric input becomes 0, negative feet become 0, and
@@ -2308,6 +2435,8 @@ function calcParseFeetInches(feetRaw, inchesRaw) {
 // (100 -> "100", 138.6 -> "138.6", 434.69 -> "434.69") — never rounds the
 // values used in the underlying math, only what's shown on screen.
 function calcRound2(n) {
+  if (!Number.isFinite(n)) return "0";
+  if (Math.abs(n) > Number.MAX_VALUE / 100) return n.toString();
   return (Math.round((n + Number.EPSILON) * 100) / 100).toString();
 }
 
@@ -2317,7 +2446,8 @@ function calcRoomTemplate(n) {
   return `
   <div class="calc-room" data-room-id="${id}">
     <div class="calc-room-header">
-      <span class="calc-room-label">Room ${n}</span>
+      <label class="calc-room-name">Room name<input type="text" maxlength="60" value="Room ${n}" aria-label="Room ${n} name"></label>
+      <span class="calc-room-label sr-only">Room ${n}</span>
       <button type="button" class="calc-room-remove" data-remove-room="${id}" aria-label="Remove Room ${n}">&times;</button>
     </div>
     <div class="calc-dim-row">
@@ -2379,16 +2509,18 @@ function calcRecalculate() {
       roomEl.querySelector('[data-dim="width-ft"]')?.value,
       roomEl.querySelector('[data-dim="width-in"]')?.value
     );
-    const area = length * width;
+    const area = Number.isFinite(length * width) ? length * width : 0;
     totalArea += area;
     const areaEl = roomEl.querySelector("[data-room-area]");
     if (areaEl) areaEl.innerHTML = `Room area: <strong>${calcRound2(area)} sq ft</strong>`;
   });
 
   const totalEl = document.getElementById("calc-total-area");
+  if (!Number.isFinite(totalArea)) totalArea = 0;
   if (totalEl) totalEl.textContent = `${calcRound2(totalArea)} sq ft`;
 
-  const recommended = totalArea * (1 + calcWasteRate);
+  const recommended = calcRecommendedSqFt(totalArea, calcWasteRate * 100) ?? 0;
+  calcLastProjectArea = Number.isFinite(totalArea) ? totalArea : 0;
   calcLastRecommended = recommended;
   calcRenderPurchaseSummary(recommended);
   const recEl = document.getElementById("calc-recommended");
@@ -2396,38 +2528,72 @@ function calcRecalculate() {
 }
 
 function calcPurchaseEstimate(recommended, product) {
-  const perUnit = Number(product?.sqFtPerUnit);
-  const unitPrice = Number(product?.price);
-  const boxPrice = Number(product?.boxPrice);
-  const available = Number(product?.availableSqFt);
-  const hasPack = Number.isFinite(perUnit) && perUnit > 0;
-  const cases = hasPack ? Math.ceil(recommended / perUnit) : null;
-  const purchased = hasPack ? cases * perUnit : null;
-  const cost = Number.isFinite(boxPrice) && boxPrice >= 0 && hasPack
-    ? cases * boxPrice
-    : (Number.isFinite(unitPrice) && unitPrice >= 0 && purchased !== null ? purchased * unitPrice : null);
-  const inventoryKnown = Number.isFinite(available) && available >= 0;
-  const sufficient = inventoryKnown && purchased !== null ? available >= purchased : null;
-  const shortageSqFt = sufficient === false ? purchased - available : null;
-  return { cases, purchased, cost, available, inventoryKnown, sufficient, shortageSqFt };
+  const perUnit = calcNumber(product?.sqFtPerUnit);
+  const available = calcNumber(product?.availableSqFt);
+  const valid = Number.isFinite(recommended) && recommended > 0;
+  const hasPack = perUnit !== null && perUnit > 0;
+  const ratio = valid && hasPack ? recommended / perUnit : null;
+  // Only cancel floating-point noise at an exact whole-box boundary.
+  const nearest = ratio === null ? 0 : Math.round(ratio);
+  const rounded = nearest >= 1 && Math.abs(ratio - nearest) <= Number.EPSILON * Math.max(1, ratio) * 4
+    ? nearest : Math.ceil(ratio);
+  const cases = valid && hasPack && Number.isSafeInteger(rounded) && rounded > 0 ? rounded : null;
+  const coverage = cases === null ? null : cases * perUnit;
+  const purchased = Number.isFinite(coverage) ? coverage : null;
+  const price = product ? boxPriceInfo(product) : null;
+  const material = purchased !== null && price ? cases * price.amount : null;
+  const cost = Number.isFinite(material) && material > 0 ? material : null;
+  const inventoryKnown = available !== null && available >= 0;
+  const availableForSale = !product?.statusLabel || product.statusLabel === "In Stock";
+  const sufficient = inventoryKnown && purchased !== null && (available === 0 || availableForSale) ? available + Number.EPSILON * Math.max(1, available, purchased) * 4 >= purchased : null;
+  const shortageSqFt = sufficient === false ? Math.max(0, purchased - available) : null;
+  return { cases, purchased, cost, available, inventoryKnown, sufficient, shortageSqFt, costComputed: !!price?.computed };
+}
+
+function calcNumber(value) {
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  if (typeof value === "string" && !value.trim()) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+function calcRecommendedSqFt(projectSqFt, wastePercentage = 10) {
+  const area = calcNumber(projectSqFt), waste = calcNumber(wastePercentage);
+  if (area === null || area <= 0 || ![0,5,10,15].includes(waste)) return null;
+  const recommended = area * (1 + waste / 100);
+  return Number.isFinite(recommended) && recommended > 0 ? recommended : null;
+}
+function calcProjectEstimate(projectSqFt, wastePercentage, product) {
+  const recommended = calcRecommendedSqFt(projectSqFt, wastePercentage);
+  return { valid: recommended !== null, projectSqFt: calcNumber(projectSqFt), wastePercentage: calcNumber(wastePercentage),
+    recommended, ...calcPurchaseEstimate(recommended, product) };
+}
+
+function calcProjectSummaryMarkup(projectSqFt, wastePercentage, product) {
+  const result = calcProjectEstimate(projectSqFt, wastePercentage, product);
+  if (!result.valid) return '<p class="project-input-hint">Enter a positive project area to see your estimate.</p>';
+  const sqft = n => n === null ? "Confirmation required" : `${sqFtAvailable(n)} sq ft`;
+  const message = result.sufficient === true ? "In Stock — enough flooring for this project"
+    : result.sufficient === false ? `Not enough inventory for this project · Approximately ${sqFtAvailable(result.shortageSqFt)} sq ft additional flooring needed.`
+    : "Inventory quantity confirmation required";
+  const entries = [["Project Area",sqft(result.projectSqFt)],["Waste",`${result.wastePercentage}%`],
+    ["Recommended",sqft(result.recommended)],["Boxes Needed",result.cases ?? "Pack size confirmation required"],
+    ["Actual Coverage",sqft(result.purchased)],["Estimated Material",result.cost === null ? "Price confirmation required" : `${result.costComputed ? "≈ " : ""}${money2(result.cost)}`],
+    ["Available", result.inventoryKnown ? sqft(result.available) : "Confirmation required"]];
+  return `<dl class="project-results">${entries.map(([label,value])=>`<div><dt>${label}</dt><dd>${value}</dd></div>`).join("")}</dl>
+    <p class="project-inventory-message">${message}</p>
+    ${result.costComputed ? '<p class="project-estimate-note">Approximate material price derived from the square-foot price; confirm the box price before purchase.</p>' : ""}
+    <p class="project-estimate-note">Material only. Taxes, installation, delivery and freight are not included. Final stock and pricing require confirmation.</p>`;
 }
 
 function calcRenderPurchaseSummary(recommended) {
   const summary = document.getElementById("calc-purchase-summary");
   if (!summary) return;
   if (!calcProduct || calcProduct.webCategory !== "Flooring") { summary.hidden = true; summary.innerHTML = ""; return; }
-  const estimate = calcPurchaseEstimate(recommended, calcProduct);
-  const status = calcProduct.statusLabel || "Availability not provided";
-  const inventoryMessage = estimate.inventoryKnown ? calcRound2(estimate.available) + " sq ft available" : "quantity not provided";
-  const sufficiencyMessage = estimate.sufficient === null
-    ? ""
-    : estimate.sufficient
-      ? " · Sufficient for this project"
-      : " · Not enough inventory · " + calcRound2(estimate.shortageSqFt) + " sq ft short";
   summary.hidden = false;
   summary.innerHTML = '<div class="calc-purchase-heading">Purchase estimate for ' + escapeHtml(calcProduct.name || "this flooring") + '</div>' +
-    '<div class="calc-purchase-grid"><div><span>Recommended</span><strong>' + calcRound2(recommended) + ' sq ft</strong></div><div><span>Cases required</span><strong>' + (estimate.cases === null ? "—" : estimate.cases) + '</strong></div><div><span>Purchased</span><strong>' + (estimate.purchased === null ? "—" : calcRound2(estimate.purchased) + ' sq ft') + '</strong></div><div><span>Material cost</span><strong>' + (estimate.cost === null ? "—" : money2(estimate.cost)) + '</strong></div></div>' +
-    '<div class="calc-purchase-availability"><strong>Inventory:</strong> ' + inventoryMessage + ' · <strong>Status:</strong> ' + escapeHtml(status) + sufficiencyMessage + '</div>';
+    calcProjectSummaryMarkup(calcLastProjectArea, calcWasteRate * 100, calcProduct) + flooringFulfillmentMarkup(calcProduct);
+  const quoteBtn = document.getElementById("calc-use-for-quote");
+  if (quoteBtn) quoteBtn.disabled = !calcProjectEstimate(calcLastProjectArea, calcWasteRate * 100, calcProduct).valid;
 }
 // Resets the calculator back to a single empty room and the default waste
 // rate every time it's opened — it doesn't need to remember a prior session.
@@ -2438,23 +2604,35 @@ function calcResetState() {
   if (container) container.innerHTML = calcRoomTemplate(1);
   document.querySelectorAll(".calc-waste-btn").forEach(b => {
     b.classList.toggle("active", b.getAttribute("data-waste") === "10");
+    b.setAttribute("aria-pressed", String(b.getAttribute("data-waste") === "10"));
   });
   calcUpdateRoomChrome();
   calcRecalculate();
 }
 
-function openCalculatorModal(fromQuote) {
+function openCalculatorModal(fromQuote, selectedProduct = null, triggerEl = null) {
   calcOpenedFromQuote = !!fromQuote;
-  if (calcOpenedFromQuote && !calcProduct) calcProduct = { name: document.getElementById("quote-field-product-name")?.value || "", webCategory: "Flooring", price: parseFloat(document.getElementById("quote-field-price-per-sqft")?.value), boxPrice: parseFloat(document.getElementById("quote-field-box-price")?.value) };
+  // WebKit does not focus buttons on pointer clicks; record the actual opener.
+  calcModalTrigger = triggerEl || document.activeElement;
+  calcProduct = calcOpenedFromQuote ? activeQuoteProduct : selectedProduct;
+  const productSelect = document.getElementById("calc-product-select");
+  if (productSelect) {
+    productSelect.innerHTML = '<option value="">Area estimate only — choose flooring (optional)</option>' + Object.values(itemsById)
+      .filter(isFlooringMaterial).map(item=>`<option value="${escapeAttr(item.id)}">${escapeHtml(item.name)}</option>`).join("");
+    productSelect.value = calcProduct?.id || "";
+    productSelect.disabled = calcOpenedFromQuote;
+  }
   calcResetState();
   const useForQuoteBtn = document.getElementById("calc-use-for-quote");
   const doneBtn = document.getElementById("calc-done");
-  if (useForQuoteBtn) useForQuoteBtn.hidden = !calcOpenedFromQuote;
+  if (useForQuoteBtn) useForQuoteBtn.hidden = !calcProduct || !isQuoteEligibleFlooring(calcProduct);
   if (doneBtn) doneBtn.hidden = calcOpenedFromQuote;
 
   const overlay = document.getElementById("calc-modal-overlay");
   if (overlay) overlay.hidden = false;
   document.body.classList.add("modal-open");
+  if (calcOpenedFromQuote) document.querySelector("#calc-rooms .calc-input")?.focus();
+  else document.getElementById("calc-product-select")?.focus();
 }
 
 // Closing always hides the calculator; if it was opened from Get a Quote,
@@ -2472,6 +2650,8 @@ function closeCalculatorModal() {
   }
   calcOpenedFromQuote = false;
   calcProduct = null;
+  calcModalTrigger?.focus();
+  calcModalTrigger = null;
 }
 
 function bindCalculatorModal() {
@@ -2482,7 +2662,17 @@ function bindCalculatorModal() {
   document.getElementById("calc-modal-close")?.addEventListener("click", closeCalculatorModal);
   document.getElementById("calc-done")?.addEventListener("click", closeCalculatorModal);
   overlay.addEventListener("click", (e) => { if (e.target === overlay) closeCalculatorModal(); });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !overlay.hidden) closeCalculatorModal(); });
+  document.addEventListener("keydown", (e) => {
+    if (overlay.hidden) return;
+    if (e.key === "Escape") closeCalculatorModal();
+    else trapModalTab(overlay, e);
+  });
+  document.getElementById("calc-product-select")?.addEventListener("change", e => {
+    calcProduct = itemsById[e.target.value] || null;
+    const useBtn = document.getElementById("calc-use-for-quote");
+    if (useBtn) useBtn.hidden = !calcProduct || !isQuoteEligibleFlooring(calcProduct);
+    calcRecalculate();
+  });
 
   roomsContainer.addEventListener("input", (e) => {
     if (e.target.matches(".calc-input")) calcRecalculate();
@@ -2510,16 +2700,23 @@ function bindCalculatorModal() {
     btn.addEventListener("click", () => {
       document.querySelectorAll(".calc-waste-btn").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
+      document.querySelectorAll(".calc-waste-btn").forEach(b=>b.setAttribute("aria-pressed",String(b===btn)));
       calcWasteRate = parseFloat(btn.getAttribute("data-waste")) / 100;
       calcRecalculate();
     });
   });
 
   document.getElementById("calc-use-for-quote")?.addEventListener("click", () => {
-    const roundedUp = Math.max(0, Math.ceil(calcLastRecommended));
-    const sqftInput = document.getElementById("quote-sqft-input");
-    if (sqftInput) sqftInput.value = roundedUp > 0 ? String(roundedUp) : "";
+    if (!calcProduct || !calcRecommendedSqFt(calcLastProjectArea, calcWasteRate * 100)) return;
+    const item = calcProduct;
+    const state = { projectSqFt: calcLastProjectArea, wastePercentage: calcWasteRate * 100 };
+    flooringProjects.set(flooringProjectKey(item), state);
+    const returningToQuote = calcOpenedFromQuote;
     closeCalculatorModal();
+    if (!returningToQuote) openQuoteModal(item, document.activeElement);
+    const sqftInput = document.getElementById("quote-sqft-input");
+    if (sqftInput) sqftInput.value = String(state.projectSqFt);
+    syncQuoteProjectFields(item, state);
     sqftInput?.focus();
   });
 }
@@ -2789,21 +2986,25 @@ function initProductDetail(items) {
         <h1>${escapeHtml(item.name)}</h1>
         ${statusBadge(item)}
         ${priceBlock(item)}
+        ${flooringFulfillmentMarkup(item, true)}
+        ${isFlooringMaterial(item) ? productProjectCalculatorMarkup(item) : ""}
         ${specRows.length ? `<div class="product-detail-specs"><table>${specRows.map(([l, v]) => `<tr><td>${l}</td><td>${escapeHtml(v)}</td></tr>`).join("")}</table></div>` : ""}
         ${item.details ? `<p class="product-detail-desc">${escapeHtml(item.details)}</p>` : ""}
         ${highlightLines.length ? `<ul class="product-details">${highlightLines.map(h => `<li>${escapeHtml(h)}</li>`).join("")}</ul>` : ""}
         <div class="product-detail-actions">
-          ${isAvailable(item)
+          ${canInquire(item)
             ? (isQuoteEligibleFlooring(item)
-                ? `<button type="button" class="btn btn-dark" data-quote-id="${escapeAttr(item.id)}">Get a Quote</button>`
+                ? `<a href="#project-calculator" class="btn btn-outline">Back to project estimate</a>`
                 : `<button type="button" class="btn btn-dark" data-availability-id="${escapeAttr(item.id)}">Check Availability</button>`)
             : `<span class="btn btn-outline" style="opacity:.5; cursor:default;">${escapeHtml(item.statusLabel)}</span>`}
-          ${isAvailable(item) ? `<a href="${smsHrefForItem(item)}" class="btn btn-outline text-us-secondary">Text Us</a>` : ""}
+          ${canInquire(item) ? `<a href="${smsHrefForItem(item)}" class="btn btn-outline text-us-secondary">Text Us</a>` : ""}
           <a href="tel:" data-tel-link class="btn btn-outline product-detail-call">Call</a>
           <a href="${backHref}" class="btn btn-outline">Back to inventory</a>
         </div>
       </div>
     </div>`;
+
+  bindProductProjectCalculator(item);
 
   // app.js's own DOMContentLoaded pass already ran before this HTML
   // existed, so the freshly-inserted data-tel-link needs its href set
@@ -2827,6 +3028,45 @@ function initProductDetail(items) {
       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectThumb(thumb); }
     });
   });
+}
+
+function productProjectCalculatorMarkup(item) {
+  return `<section id="project-calculator" class="product-project-calculator" aria-labelledby="project-calculator-heading">
+    <h2 id="project-calculator-heading">How much flooring do you need?</h2>
+    <p>Calculate whole boxes of this flooring, with your choice of waste allowance.</p>
+    <div class="project-inputs">
+      <label for="project-sqft">Project Square Footage<input id="project-sqft" type="number" inputmode="decimal" min="0.01" step="any" placeholder="e.g. 1000"></label>
+      <label for="project-waste">Waste<select id="project-waste">${[0,5,10,15].map(n=>`<option value="${n}"${n===10?' selected':''}>${n}%${n===10?' — recommended default':''}</option>`).join("")}</select></label>
+    </div>
+    <div id="project-results" role="status" aria-live="polite" aria-atomic="true"></div>
+    <div class="project-actions">${isQuoteEligibleFlooring(item) ? `<button type="button" class="btn btn-dark" data-quote-id="${escapeAttr(item.id)}">Get a Quote</button>` : ""}
+      <button type="button" id="project-multi-room" class="btn btn-outline">Calculate multiple rooms</button>
+    </div>
+  </section>`;
+}
+
+function bindProductProjectCalculator(item) {
+  const area = document.getElementById("project-sqft"), waste = document.getElementById("project-waste");
+  const results = document.getElementById("project-results");
+  if (!area || !waste || !results) return;
+  const prior = flooringProjects.get(flooringProjectKey(item));
+  if (prior) { area.value = String(prior.projectSqFt); waste.value = String(prior.wastePercentage); }
+  const update = () => {
+    const estimate = calcProjectEstimate(area.value, waste.value, item);
+    const key = flooringProjectKey(item);
+    if (estimate.valid) flooringProjects.set(key, {projectSqFt:estimate.projectSqFt,wastePercentage:estimate.wastePercentage});
+    else flooringProjects.delete(key);
+    results.innerHTML = calcProjectSummaryMarkup(area.value, waste.value, item);
+  };
+  area.addEventListener("input",update); waste.addEventListener("change",update);
+  document.getElementById("project-multi-room")?.addEventListener("click", e=>openCalculatorModal(false,item,e.currentTarget));
+  update();
+  if (window.location.hash === "#project-calculator") {
+    document.getElementById("project-calculator")?.scrollIntoView();
+    area.focus({preventScroll:true});
+    // Native fragment navigation can move focus after the async catalog render.
+    window.requestAnimationFrame(() => area.focus({preventScroll:true}));
+  }
 }
 
 async function initInventory() {
@@ -2857,6 +3097,7 @@ async function initInventory() {
   // Product detail page
   if (document.getElementById("product-detail-root")) {
     initProductDetail(items);
+    bindCalculatorModal();
   }
 }
 

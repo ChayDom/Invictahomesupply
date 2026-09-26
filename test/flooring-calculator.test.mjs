@@ -221,8 +221,8 @@ test("calcRecalculate(): a waste rate other than the 10% default is honored (e.g
 test("calcResetState(): resets to a single room and the default 10% waste rate, discarding any prior room count/waste selection", () => {
   const roomsContainer = { innerHTML: "" };
   const wasteButtons = [
-    { getAttribute: () => "10", classList: { toggle(cls, on) { this._active = on; } } },
-    { getAttribute: () => "15", classList: { toggle(cls, on) { this._active = on; } } },
+    { getAttribute: () => "10", setAttribute() {}, classList: { toggle(cls, on) { this._active = on; } } },
+    { getAttribute: () => "15", setAttribute() {}, classList: { toggle(cls, on) { this._active = on; } } },
   ];
   const addBtn = { disabled: false, textContent: "" };
   const registry = { "calc-rooms": roomsContainer, "calc-total-area": { textContent: "" }, "calc-recommended": { textContent: "" }, "calc-add-room": addBtn };

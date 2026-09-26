@@ -136,9 +136,9 @@ test("renderContractorTable: a flooring row with boxes > 2 renders the two-line 
   assert.equal(tableBody.innerHTML.includes("(199 boxes)"), false);
 });
 
-test("renderContractorTable: low-stock row (2 boxes) keeps the existing single-line low-stock-emph treatment", () => {
+test("renderContractorTable: low stock retains emphasis and adds actual available square feet", () => {
   renderContractorTable([flooringItem({ qtyAvailable: 2 })]);
-  assert.match(tableBody.innerHTML, /class="low-stock-emph">Only 2 boxes left<\/td>/);
+  assert.match(tableBody.innerHTML, /class="low-stock-emph">[\s\S]*3,737.22 sq ft available[\s\S]*Only 2 boxes left/);
 });
 
 // --- Rendered into the Contractor mobile cards -----------------------------

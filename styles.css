@@ -1371,6 +1371,9 @@ nav.primary-nav a.active {
   vertical-align: middle;
 }
 .contractor-product-cell {
+  min-width: 220px;
+}
+.contractor-product-layout {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1393,7 +1396,7 @@ nav.primary-nav a.active {
    — visible only up to 880px, see .contractor-text-us below — never
    forces this cell wider than the primary button alone; desktop
    (≥881px) only ever has the one primary button here regardless. */
-.contractor-actions-cell { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.contractor-actions-layout { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .contractor-low-stock { color: var(--amber-dark); font-weight: 700; white-space: nowrap; }
 .contractor-table .table-empty {
   text-align: center;
@@ -2978,3 +2981,45 @@ nav.primary-nav.open {
 .calc-purchase-grid strong { display: block; margin-top: 3px; color: var(--charcoal, #24352a); }
 .calc-purchase-availability { margin-top: 14px; font-size: .86rem; line-height: 1.5; }
 @media (max-width: 560px) { .calc-purchase-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* Flooring shopping: shared project estimates and scoped fulfillment policy. */
+.flooring-pickup{font-size:.76rem;font-weight:600;margin:10px 0}
+.flooring-category-notice,.flooring-fulfillment{background:#faf7f0;border:1px solid #ded8cc;border-radius:10px;padding:16px;margin-bottom:20px}
+.flooring-fulfillment{margin-top:20px}
+.comparable-retail{font-size:.78rem;color:#666;margin-top:5px}
+.project-calculate-link{white-space:normal}
+.product-actions .project-calculate-link{margin-bottom:8px}
+.product-project-calculator{scroll-margin-top:100px;border:1px solid #ded8cc;border-radius:12px;padding:20px;margin:24px 0}
+.product-project-calculator h2{font-size:1.35rem}
+.project-inputs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.project-inputs label{display:flex;flex-direction:column}
+.project-inputs input,.project-inputs select,#calc-product-select{min-height:44px;max-width:100%;width:100%;background:white;border:1px solid #bbb;border-radius:6px;padding:10px}
+.project-inputs input:focus-visible,.project-inputs select:focus-visible,#calc-product-select:focus-visible,.calc-room-name input:focus-visible{outline:2px solid #333;outline-offset:2px}
+.project-results{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.project-results>div{padding:12px;background:#faf7f0;border-radius:6px;min-width:0}
+.project-results dt{font-size:.75rem;color:#666}
+.project-results dd{margin:4px 0 0;font-size:1rem;font-weight:600;overflow-wrap:anywhere}
+.project-inventory-message{border-left:3px solid #a87528;padding:10px;background:#faf7f0;font-size:.88rem}
+.project-estimate-note{font-size:.78rem;color:#666}
+.project-actions{display:flex;flex-wrap:wrap;gap:10px}
+.project-actions .btn,.project-calculate-link{min-height:44px;white-space:normal}
+.calc-room-name{flex:1;font-size:.76rem;color:#666;margin-right:12px}
+.calc-room-name input{width:100%;min-height:44px;margin-top:4px;padding:8px;border:1px solid #bbb;border-radius:6px}
+.quote-project-context{margin:18px 0}
+.quote-project-context .project-results{gap:8px}
+.contractor-actions .project-calculate-link{display:block;margin-bottom:6px}
+.calc-product-label{display:block;margin:12px 0 6px}
+/* Equal collapsed rows, without stretching siblings when More details expands. */
+@media(min-width:881px){
+  #catalog-grid:not(:has(.product-more[open])){align-items:stretch}
+  #catalog-grid .product-price{margin-top:0}
+}
+#calc-modal-overlay .calc-waste-btn,#calc-modal-overlay .calc-room-remove{min-height:44px}
+#calc-modal-overlay .calc-room-remove{min-width:44px}
+#calc-modal-overlay .modal-close,#quote-modal-overlay .modal-close{width:44px;height:44px}
+@media(max-width:480px){
+  .product-project-calculator{padding:16px}
+  .project-inputs{grid-template-columns:1fr;gap:0}
+  .project-results{gap:8px}
+  .project-results>div{padding:10px}
+  .project-actions .btn{width:100%}
+}

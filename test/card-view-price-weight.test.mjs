@@ -151,7 +151,7 @@ test("priceBlock: non-Flooring quantity text (\"8 available\") is rendered in .p
   const html = priceBlock(nonFlooringItem());
   const priceLineMatch = html.match(/<div class="price-line">.*?<\/div>/s);
   assert.equal(priceLineMatch[0].includes("available"), false);
-  assert.match(html, /<div class="price-avail">Retail \$249 &middot; 8 available<\/div>/);
+  assert.match(html, /<div class="price-avail">Comparable Retail \$249 &middot; 8 available<\/div>/);
 });
 
 test("priceBlock: singular quantity wording (\"1 available\") also stays out of the bold price-line", () => {

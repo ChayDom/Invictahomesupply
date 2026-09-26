@@ -372,7 +372,7 @@ test("styles.css: no leftover rule hides the primary Get a Quote/Check Availabil
 // ---------------------------------------------------------------------
 test("shop.html: static quote-request declaration has exactly the required fields, no email/zip/installation", () => {
   const staticBlock = shopSrc.match(/<form name="quote-request" data-netlify="true"[\s\S]*?<\/form>/)[0];
-  const required = ["product-name", "product-key", "price-per-sqft", "box-price", "submitted-at", "sqft-needed", "name", "phone", "notes", "bot-field"];
+  const required = ["product-name", "product-key", "price-per-sqft", "box-price", "retail-sku", "project-sqft", "waste-percent", "recommended-sqft", "boxes-needed", "actual-coverage", "estimated-material-cost", "cost-basis", "available-sqft", "inventory-status", "inventory-shortage-sqft", "fulfillment", "pickup-location", "submitted-at", "sqft-needed", "name", "phone", "notes", "bot-field"];
   for (const field of required) {
     assert.match(staticBlock, new RegExp(`name="${field}"`), `static quote-request declaration missing ${field}`);
   }
@@ -450,7 +450,7 @@ for (const [html, label] of [[shopSrc, "shop.html"], [indexSrc, "index.html"], [
     // copy addition — same required set, same names, as already pinned
     // above; this just re-confirms none of them were touched here.
     const submittedFieldNames = [...form.matchAll(/<(?:input|textarea)[^>]*\sname="([a-z-]+)"/g)].map(m => m[1]);
-    assert.deepEqual(submittedFieldNames, ["form-name", "product-name", "product-key", "price-per-sqft", "box-price", "submitted-at", "bot-field", "sqft-needed", "name", "phone", "notes"]);
+    assert.deepEqual(submittedFieldNames, ["form-name", "product-name", "product-key", "price-per-sqft", "box-price", "retail-sku", "project-sqft", "waste-percent", "recommended-sqft", "boxes-needed", "actual-coverage", "estimated-material-cost", "cost-basis", "available-sqft", "inventory-status", "inventory-shortage-sqft", "fulfillment", "pickup-location", "submitted-at", "bot-field", "sqft-needed", "name", "phone", "notes"]);
   });
 
   test(`${label}: quote modal is an accessible dialog with unique ids and matching aria-labelledby`, () => {
