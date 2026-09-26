@@ -2968,3 +2968,13 @@ nav.primary-nav.open {
      never touches the viewport edge. */
   .about-split-media { height: 220px; }
 }
+
+
+/* Purchase details for the shared flooring calculator modal. */
+.calc-purchase-summary { margin-top: 18px; padding: 16px; background: var(--cream-dim, #f7f4ee); border: 1px solid rgba(36,53,42,.14); }
+.calc-purchase-heading { font-weight: 700; margin-bottom: 12px; }
+.calc-purchase-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.calc-purchase-grid span { display: block; font-size: .76rem; color: #5a665d; }
+.calc-purchase-grid strong { display: block; margin-top: 3px; color: var(--charcoal, #24352a); }
+.calc-purchase-availability { margin-top: 14px; font-size: .86rem; line-height: 1.5; }
+@media (max-width: 560px) { .calc-purchase-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
