@@ -26,7 +26,7 @@ is:
 
 ```
 Google Sheets "Product Catalog" + "Product Inventory"  (you edit here — identity, merchandising, price, publish controls, live stock)
-        │  Apps Script: Website Export is combined from Product Catalog + live Product Inventory
+        │  Workbook formulas: Website Export combines Product Catalog + live Product Inventory
         ▼
 Google Sheet "Website Export"   (generated — don't hand-edit)
         │  Apps Script sync pushes Website Export rows into Airtable
@@ -42,6 +42,14 @@ Product Catalog, so the next Apps Script sync can silently overwrite or
 ignore it.
 
 ### This site reuses real fields — it does not invent duplicates
+
+The current Product Catalog has 29 header-resolved columns. Product Key is permanent;
+Product ID follows the editable Retail SKU. Maintenance and legacy repair share one
+reconciliation planner. AUTO BOX PRICE belongs only to the K2 spill formula.
+Website Export preserves permanent keys and carries COMPARABLE RETAIL PRICE,
+mapped to Airtable `Was Price`. No additional matching/hash/lock columns are required.
+See [Apps Script refactor and mandatory live acceptance](docs/APPS_SCRIPT_WORKBOOK_REFACTOR.md)
+before deploying this repository snapshot to the bound Apps Script project.
 
 Two earlier passes through this migration proposed new fields (Web
 Category/Sell Unit/Specs/Web Status, then Website Category/Web

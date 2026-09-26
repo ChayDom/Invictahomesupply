@@ -1,7 +1,7 @@
 
 /**
  * Product catalog enrichment through the Gemini Developer API.
- * Existing content is never overwritten; legacy records are excluded.
+ * Existing content is never overwritten; only explicitly queued records are processed.
  * A stock image URL is written only for an exact, cited result.
  *
  * Highlights:
@@ -19,11 +19,6 @@
  * - Maximum 24 characters per spec.
  */
 
-const ENRICHMENT_CARD_SPEC_COLUMNS_ = Object.freeze({
-  CARD_SPEC_1: 33, // AG
-  CARD_SPEC_2: 34, // AH
-  CARD_SPEC_3: 35  // AI
-});
 
 /*
  * HIGHLIGHT RULES
@@ -91,24 +86,14 @@ function processCatalogEnrichment_(limit) {
       INVENTORY_CONFIG.PRODUCT_CATALOG_SHEET
     );
 
-    const lastRow = getLastDataRowInColumn_(
-      sheet,
-      CATALOG_COLUMNS.PRODUCT_KEY
-    );
+    const columns = getCatalogColumns_(sheet);
+    const lastRow = getLastDataRowInColumn_(sheet, columns.PRODUCT_KEY);
 
     if (lastRow < 2) {
       return summary;
     }
 
-    /*
-     * Card Spec 3 in column AI is now farther right than
-     * LAST_ENRICHED_AT. Read through whichever column is
-     * farthest to ensure existing Card Specs are preserved.
-     */
-    const lastRequiredColumn = Math.max(
-      CATALOG_COLUMNS.LAST_ENRICHED_AT,
-      ENRICHMENT_CARD_SPEC_COLUMNS_.CARD_SPEC_3
-    );
+    const lastRequiredColumn = sheet.getLastColumn();
 
     const rows = sheet
       .getRange(
@@ -129,7 +114,7 @@ function processCatalogEnrichment_(limit) {
 
       if (
         !isCatalogRowEligibleForEnrichment_(
-          values
+          values, columns
         )
       ) {
         continue;
@@ -141,7 +126,7 @@ function processCatalogEnrichment_(limit) {
       sheet
         .getRange(
           rowNumber,
-          CATALOG_COLUMNS.ENRICHMENT_STATUS
+          columns.ENRICHMENT_STATUS
         )
         .setValue('PROCESSING');
 
@@ -151,7 +136,7 @@ function processCatalogEnrichment_(limit) {
         const record =
           catalogRowToEnrichmentRecord_(
             values,
-            rowNumber
+            rowNumber, columns
           );
 
         const result =
@@ -165,7 +150,7 @@ function processCatalogEnrichment_(limit) {
             sheet,
             rowNumber,
             values,
-            result
+            result, columns
           );
 
         if (
@@ -180,7 +165,7 @@ function processCatalogEnrichment_(limit) {
         sheet
           .getRange(
             rowNumber,
-            CATALOG_COLUMNS.ENRICHMENT_STATUS
+            columns.ENRICHMENT_STATUS
           )
           .setValue('FAILED');
 
@@ -208,176 +193,101 @@ function processCatalogEnrichment_(limit) {
 }
 
 
-function isCatalogRowEligibleForEnrichment_(
-  values
-) {
-  const key = String(
-    values[
-      CATALOG_COLUMNS.PRODUCT_KEY - 1
-    ] || ''
-  )
-    .trim()
-    .toUpperCase();
-
-  const sourceItem = String(
-    values[
-      CATALOG_COLUMNS.SOURCE_ITEM - 1
-    ] || ''
-  ).trim();
-
-  const description = String(
-    values[
-      CATALOG_COLUMNS.DESCRIPTION - 1
-    ] || ''
-  ).trim();
-
-  const highlights = String(
-    values[
-      CATALOG_COLUMNS.HIGHLIGHTS - 1
-    ] || ''
-  ).trim();
-
-  const status = String(
-    values[
-      CATALOG_COLUMNS.ENRICHMENT_STATUS - 1
-    ] || ''
-  )
-    .trim()
-    .toUpperCase();
-
-  const locked =
-    values[
-      CATALOG_COLUMNS.CONTENT_LOCKED - 1
-    ] === true;
-
-  const lastEnriched =
-    values[
-      CATALOG_COLUMNS.LAST_ENRICHED_AT - 1
-    ];
-
-  /*
-   * Existing legacy catalog records are never
-   * researched automatically.
-   */
-  if (key.indexOf('LEG-') === 0) {
-    return false;
-  }
-
-  /*
-   * The normal enrichment queue remains unchanged.
-   * This prevents the Card Spec / Highlight validation
-   * changes from reprocessing all existing products.
-   */
-  if (
-    !key ||
-    !sourceItem ||
-    locked ||
-    (description && highlights)
-  ) {
-    return false;
-  }
-
-  if (
-    status === 'PROCESSING' ||
-    status === 'FAILED' ||
-    status === 'ENRICHED - VERIFIED'
-  ) {
-    return false;
-  }
-
-  /*
-   * Do not repeatedly spend API calls on the same
-   * uncertain record.
-   */
-  if (
-    status === 'NEEDS REVIEW' &&
-    lastEnriched
-  ) {
-    return false;
-  }
-
-  return true;
+function isCatalogRowEligibleForEnrichment_(values, columns) {
+  const key = normalizeKey_(values[columns.PRODUCT_KEY - 1]);
+  const item = catalogText_(values[columns.SOURCE_ITEM - 1]);
+  const status = normalizeKey_(values[columns.ENRICHMENT_STATUS - 1]);
+  // Historical permanent identities are excluded even when marked PENDING.
+  // The bulk queue helper does not constitute permission to research legacy products.
+  if (/^(LEG-|LEGACY\|)/.test(key)) return false;
+  const description = catalogText_(values[columns.DESCRIPTION - 1]);
+  const highlights = catalogText_(values[columns.HIGHLIGHTS - 1]);
+  // Preserve the previous completed-content guard; optional missing specs alone
+  // must not trigger another Gemini request for already populated products.
+  if (description && highlights) return false;
+  // Only missing-content blank/PENDING rows enter the automatic queue.
+  return Boolean(key && item && (!status || status === 'PENDING'));
 }
 
 
 function catalogRowToEnrichmentRecord_(
   values,
-  rowNumber
+  rowNumber, columns
 ) {
   return {
     rowNumber: rowNumber,
 
     productKey: String(
       values[
-        CATALOG_COLUMNS.PRODUCT_KEY - 1
+        columns.PRODUCT_KEY - 1
       ] || ''
     ).trim(),
 
     retailer: String(
       values[
-        CATALOG_COLUMNS.RETAILER - 1
+        columns.RETAILER - 1
       ] || ''
     ).trim(),
 
     retailSku: String(
       values[
-        CATALOG_COLUMNS.RETAIL_SKU - 1
+        columns.RETAIL_SKU - 1
       ] || ''
     ).trim(),
 
     sourceItem: String(
       values[
-        CATALOG_COLUMNS.SOURCE_ITEM - 1
+        columns.SOURCE_ITEM - 1
       ] || ''
     ).trim(),
 
-    sourceCategory: String(
+    websiteCategory: String(
       values[
-        CATALOG_COLUMNS.SOURCE_CATEGORY - 1
+        columns.WEBSITE_CATEGORY - 1
       ] || ''
     ).trim(),
 
     existingDisplayName: String(
       values[
-        CATALOG_COLUMNS.DISPLAY_NAME - 1
+        columns.DISPLAY_NAME - 1
       ] || ''
     ).trim(),
 
     existingBrand: String(
       values[
-        CATALOG_COLUMNS.BRAND - 1
+        columns.BRAND - 1
       ] || ''
     ).trim(),
 
     existingModel: String(
       values[
-        CATALOG_COLUMNS.MODEL - 1
+        columns.MODEL - 1
       ] || ''
     ).trim(),
 
     existingUrl: String(
       values[
-        CATALOG_COLUMNS.PRODUCT_URL - 1
+        columns.PRODUCT_URL - 1
       ] || ''
     ).trim(),
 
     existingCardSpec1: String(
       values[
-        ENRICHMENT_CARD_SPEC_COLUMNS_
+        columns
           .CARD_SPEC_1 - 1
       ] || ''
     ).trim(),
 
     existingCardSpec2: String(
       values[
-        ENRICHMENT_CARD_SPEC_COLUMNS_
+        columns
           .CARD_SPEC_2 - 1
       ] || ''
     ).trim(),
 
     existingCardSpec3: String(
       values[
-        ENRICHMENT_CARD_SPEC_COLUMNS_
+        columns
           .CARD_SPEC_3 - 1
       ] || ''
     ).trim()
@@ -474,8 +384,8 @@ function buildGeminiEnrichmentPrompt_(
     'Retailer: ' + record.retailer,
     'Retail SKU: ' + record.retailSku,
     'Inventory title: ' + record.sourceItem,
-    'Source category: ' +
-      record.sourceCategory,
+    'Website category: ' +
+      record.websiteCategory,
     'Product key: ' + record.productKey,
     'Existing display name: ' +
       record.existingDisplayName,
@@ -503,6 +413,13 @@ function buildGeminiEnrichmentPrompt_(
     '  "website_category": "",',
     '  "brand": "",',
     '  "model": "",',
+    '  "web_subcategory": "",',
+    '  "unit_type": "",',
+    '  "sq_ft_per_unit": null,',
+    '  "thickness_mm": null,',
+    '  "wear_layer_mil": null,',
+    '  "underlayment_attached": "Yes|No or empty",',
+    '  "water_resistance": "Waterproof|Water Resistant|Not Water Resistant|Unknown or empty",',
     '  "product_url": "",',
     '  "stock_image_url": "",',
     '  "description": "",',
@@ -512,6 +429,8 @@ function buildGeminiEnrichmentPrompt_(
     '  "notes": ""',
     '}',
     '',
+    'Only return applicable verified attributes; flooring specs must describe the exact SKU/model.',
+    'Use null or empty values for unknown/inapplicable fields. Never infer thickness, wear layer or pack area.',
     'Description must be two concise factual sentences suitable for a product catalog.',
     '',
     'HIGHLIGHT RULES:',
@@ -825,15 +744,22 @@ function applyCatalogEnrichmentResult_(
   sheet,
   rowNumber,
   existingValues,
-  result
+  result, columns
 ) {
-  const stockImageColumn =
-    CATALOG_COLUMNS.STOCK_IMAGE_URL ||
-    11;
+  columns = columns || getCatalogColumns_(sheet);
+  const latestValues = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
+  if (normalizeKey_(latestValues[columns.PRODUCT_KEY - 1]) !== normalizeKey_(existingValues[columns.PRODUCT_KEY - 1]) ||
+      catalogText_(latestValues[columns.RETAIL_SKU - 1]) !== catalogText_(existingValues[columns.RETAIL_SKU - 1])) {
+    throw new Error('Product identity changed while enrichment was running; review and requeue.');
+  }
+  // Human edits can occur during the API call despite the script lock.
+  existingValues = latestValues;
+  const stockImageColumn = columns.STOCK_IMAGE_URL;
+  result = Object.assign({}, result, { highlights: sanitizeGeminiHighlights_(result.highlights) });
 
   const retailSku = String(
     existingValues[
-      CATALOG_COLUMNS.RETAIL_SKU - 1
+      columns.RETAIL_SKU - 1
     ] || ''
   ).trim();
 
@@ -882,57 +808,23 @@ function applyCatalogEnrichmentResult_(
 
   if (verified) {
     const fieldMap = [
-      [
-        CATALOG_COLUMNS.DISPLAY_NAME,
-        result.display_name
-      ],
-      [
-        CATALOG_COLUMNS.WEBSITE_CATEGORY,
-        result.website_category
-      ],
-      [
-        CATALOG_COLUMNS.BRAND,
-        result.brand
-      ],
-      [
-        CATALOG_COLUMNS.MODEL,
-        result.model
-      ],
-      [
-        CATALOG_COLUMNS.PRODUCT_URL,
-        result.product_url
-      ],
-      [
-        CATALOG_COLUMNS.DESCRIPTION,
-        result.description
-      ],
-      [
-        CATALOG_COLUMNS.HIGHLIGHTS,
-        (
-          result.highlights || []
-        ).join('\n')
-      ],
-      [
-        ENRICHMENT_CARD_SPEC_COLUMNS_
-          .CARD_SPEC_1,
-        (
-          result.card_specs || []
-        )[0]
-      ],
-      [
-        ENRICHMENT_CARD_SPEC_COLUMNS_
-          .CARD_SPEC_2,
-        (
-          result.card_specs || []
-        )[1]
-      ],
-      [
-        ENRICHMENT_CARD_SPEC_COLUMNS_
-          .CARD_SPEC_3,
-        (
-          result.card_specs || []
-        )[2]
-      ]
+      [columns.DISPLAY_NAME, result.display_name],
+      [columns.WEBSITE_CATEGORY, result.website_category],
+      [columns.BRAND, result.brand],
+      [columns.MODEL, result.model],
+      [columns.WEB_SUBCATEGORY, result.web_subcategory],
+      [columns.UNIT_TYPE, result.unit_type],
+      [columns.SQ_FT_PER_UNIT, enrichmentPositiveNumber_(result.sq_ft_per_unit)],
+      [columns.PRODUCT_URL, result.product_url],
+      [columns.DESCRIPTION, result.description],
+      [columns.HIGHLIGHTS, (result.highlights || []).join('\n')],
+      [columns.THICKNESS_MM, enrichmentPositiveNumber_(result.thickness_mm)],
+      [columns.WEAR_LAYER_MIL, enrichmentPositiveNumber_(result.wear_layer_mil)],
+      [columns.UNDERLAYMENT_ATTACHED, enrichmentEnum_(result.underlayment_attached, ['Yes', 'No'])],
+      [columns.WATER_RESISTANCE, enrichmentEnum_(result.water_resistance, ['Waterproof', 'Water Resistant', 'Not Water Resistant', 'Unknown'])],
+      [columns.CARD_SPEC_1, enrichmentCardSpec_((result.card_specs || [])[0])],
+      [columns.CARD_SPEC_2, enrichmentCardSpec_((result.card_specs || [])[1])],
+      [columns.CARD_SPEC_3, enrichmentCardSpec_((result.card_specs || [])[2])]
     ];
 
     /*
@@ -948,12 +840,7 @@ function applyCatalogEnrichmentResult_(
             entry[1] || ''
           ).trim();
 
-        const existingValue =
-          String(
-            existingValues[
-              column - 1
-            ] || ''
-          ).trim();
+        const existingValue = catalogText_(existingValues[column - 1]);
 
         if (
           !existingValue &&
@@ -965,7 +852,7 @@ function applyCatalogEnrichmentResult_(
               column
             )
             .setValue(
-              proposedValue
+              typeof entry[1] === 'number' ? entry[1] : proposedValue
             );
         }
       }
@@ -1009,23 +896,11 @@ function applyCatalogEnrichmentResult_(
   sheet
     .getRange(
       rowNumber,
-      CATALOG_COLUMNS.ENRICHMENT_STATUS
+      columns.ENRICHMENT_STATUS
     )
     .setValue(finalStatus);
 
-  sheet
-    .getRange(
-      rowNumber,
-      CATALOG_COLUMNS.ENRICHMENT_CONFIDENCE
-    )
-    .setValue(result.confidence);
 
-  sheet
-    .getRange(
-      rowNumber,
-      CATALOG_COLUMNS.LAST_ENRICHED_AT
-    )
-    .setValue(new Date());
 
   const noteParts = [];
 
@@ -1144,7 +1019,7 @@ function appendCatalogNote_(
 ) {
   const cell = sheet.getRange(
     rowNumber,
-    CATALOG_COLUMNS.NOTES
+    getCatalogColumns_(sheet).NOTES
   );
 
   const oldNote = String(
@@ -1166,5 +1041,17 @@ function appendCatalogNote_(
           cleanNewNote
       : cleanNewNote
   );
+}
+
+function enrichmentPositiveNumber_(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : '';
+}
+function enrichmentEnum_(value, allowed) {
+  return allowed.find(function(item) { return item.toLowerCase() === catalogText_(value).toLowerCase(); }) || '';
+}
+function enrichmentCardSpec_(value) {
+  const text = catalogText_(value);
+  return text.length <= 24 ? text : '';
 }
 

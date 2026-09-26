@@ -18,7 +18,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const EDGE_FUNCTIONS_DIR = path.join(__dirname, "..", "netlify", "edge-functions");
@@ -51,7 +51,7 @@ await test("every edge function under netlify/edge-functions/ exports an onError
   const files = edgeFunctionFiles();
   assert.ok(files.length > 0, "expected at least one edge function file");
   for (const file of files) {
-    const { config } = await import(file);
+    const { config } = await import(pathToFileURL(file).href);
     assert.ok(config, `${path.basename(file)} must export a config object`);
     assert.notEqual(config.onError, "continue", `${path.basename(file)}: "continue" is not a real Netlify onError value`);
     assert.ok(
@@ -62,12 +62,12 @@ await test("every edge function under netlify/edge-functions/ exports an onError
 });
 
 await test("product-meta.ts's onError is specifically \"bypass\"", async () => {
-  const { config } = await import(path.join(EDGE_FUNCTIONS_DIR, "product-meta.ts"));
+  const { config } = await import(pathToFileURL(path.join(EDGE_FUNCTIONS_DIR, "product-meta.ts")).href);
   assert.equal(config.onError, "bypass");
 });
 
 await test("preview-noindex.ts's onError is specifically \"bypass\"", async () => {
-  const { config } = await import(path.join(EDGE_FUNCTIONS_DIR, "preview-noindex.ts"));
+  const { config } = await import(pathToFileURL(path.join(EDGE_FUNCTIONS_DIR, "preview-noindex.ts")).href);
   assert.equal(config.onError, "bypass");
 });
 

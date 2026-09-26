@@ -1,6 +1,6 @@
 /**
  * Administrative controls and audit utilities for Gemini catalog enrichment.
- * The nightly trigger runs runCatalogEnrichment between 3–4 AM UTC.
+ * The nightly trigger runs runCatalogEnrichment at approximately 3 AM in the project timezone (America/Chicago).
  */
 
 function auditCatalogEnrichment() {
@@ -9,7 +9,8 @@ function auditCatalogEnrichment() {
     spreadsheet,
     INVENTORY_CONFIG.PRODUCT_CATALOG_SHEET
   );
-  const lastRow = getLastDataRowInColumn_(sheet, CATALOG_COLUMNS.PRODUCT_KEY);
+  const columns = getCatalogColumns_(sheet);
+  const lastRow = getLastDataRowInColumn_(sheet, columns.PRODUCT_KEY);
   const audit = {
     totalProducts: 0,
     complete: 0,
@@ -19,26 +20,25 @@ function auditCatalogEnrichment() {
     pending: 0,
     needsReview: 0,
     failed: 0,
-    locked: 0,
     duplicateProductKeys: 0
   };
 
   if (lastRow < 2) return audit;
-  const rows = sheet.getRange(2, 1, lastRow - 1, CATALOG_COLUMNS.LAST_ENRICHED_AT)
+  const rows = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn())
     .getValues();
   const keyCounts = {};
 
   rows.forEach(function(values) {
-    const key = normalizeKey_(values[CATALOG_COLUMNS.PRODUCT_KEY - 1]);
+    const key = normalizeKey_(values[columns.PRODUCT_KEY - 1]);
     if (!key) return;
 
     audit.totalProducts++;
     keyCounts[key] = (keyCounts[key] || 0) + 1;
 
-    const displayName = String(values[CATALOG_COLUMNS.DISPLAY_NAME - 1] || '').trim();
-    const description = String(values[CATALOG_COLUMNS.DESCRIPTION - 1] || '').trim();
-    const highlights = String(values[CATALOG_COLUMNS.HIGHLIGHTS - 1] || '').trim();
-    const status = String(values[CATALOG_COLUMNS.ENRICHMENT_STATUS - 1] || '')
+    const displayName = String(values[columns.DISPLAY_NAME - 1] || '').trim();
+    const description = String(values[columns.DESCRIPTION - 1] || '').trim();
+    const highlights = String(values[columns.HIGHLIGHTS - 1] || '').trim();
+    const status = String(values[columns.ENRICHMENT_STATUS - 1] || '')
       .trim()
       .toUpperCase();
 
@@ -46,10 +46,9 @@ function auditCatalogEnrichment() {
     if (!displayName) audit.missingDisplayName++;
     if (!description) audit.missingDescription++;
     if (!highlights) audit.missingHighlights++;
-    if (!status || status === 'PENDING' || status === 'STANDARD') audit.pending++;
+    if (isCatalogRowEligibleForEnrichment_(values, columns)) audit.pending++;
     if (status === 'NEEDS REVIEW') audit.needsReview++;
     if (status === 'FAILED') audit.failed++;
-    if (values[CATALOG_COLUMNS.CONTENT_LOCKED - 1] === true) audit.locked++;
   });
 
   Object.keys(keyCounts).forEach(function(key) {
@@ -66,27 +65,20 @@ function queueMissingCatalogEnrichment() {
     spreadsheet,
     INVENTORY_CONFIG.PRODUCT_CATALOG_SHEET
   );
-  const lastRow = getLastDataRowInColumn_(sheet, CATALOG_COLUMNS.PRODUCT_KEY);
+  const columns = getCatalogColumns_(sheet);
+  const lastRow = getLastDataRowInColumn_(sheet, columns.PRODUCT_KEY);
   if (lastRow < 2) return 0;
 
-  const rows = sheet.getRange(2, 1, lastRow - 1, CATALOG_COLUMNS.LAST_ENRICHED_AT)
+  const rows = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn())
     .getValues();
   let queued = 0;
 
   rows.forEach(function(values, index) {
-    const key = String(values[CATALOG_COLUMNS.PRODUCT_KEY - 1] || '').trim();
-    const description = String(values[CATALOG_COLUMNS.DESCRIPTION - 1] || '').trim();
-    const highlights = String(values[CATALOG_COLUMNS.HIGHLIGHTS - 1] || '').trim();
-    const status = String(values[CATALOG_COLUMNS.ENRICHMENT_STATUS - 1] || '')
-      .trim()
-      .toUpperCase();
-    const locked = values[CATALOG_COLUMNS.CONTENT_LOCKED - 1] === true;
+    // Intentional bulk requeue, not a legacy/excluded-status override. Share the
+    // nightly eligibility gate so this helper cannot accidentally broaden it.
+    if (!isCatalogRowEligibleForEnrichment_(values, columns)) return;
 
-    if (!key || locked || (description && highlights)) return;
-    if (status === 'PROCESSING' || status === 'FAILED' ||
-        status === 'NEEDS REVIEW') return;
-
-    sheet.getRange(index + 2, CATALOG_COLUMNS.ENRICHMENT_STATUS)
+    sheet.getRange(index + 2, columns.ENRICHMENT_STATUS)
       .setValue('PENDING');
     queued++;
   });

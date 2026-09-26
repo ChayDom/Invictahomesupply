@@ -1,676 +1,235 @@
 /**
- * Production Product Catalog synchronization and maintenance.
- *
- * Normal operation: runProductCatalogMaintenance().
- * The scheduled six-hour trigger calls that function.
- *
- * Processing order:
- * 1. Reconcile unambiguous legacy catalog identities.
- * 2. Add genuinely new Product Inventory keys.
- * 3. Ensure Auto Box Price formulas exist.
- * 4. Refresh source-controlled catalog fields.
- * 5. Audit permanent Product Keys for duplicates.
- *
- * Permanent Product Catalog Product Keys and manually managed
- * website/enrichment fields are preserved.
+ * One reconciliation planner for maintenance and legacy preview. All matching
+ * and duplicate checks finish before writes; established keys are never changed.
  */
-
-/**
- * Refreshes Product Catalog fields owned by Product Inventory.
- *
- * Updated fields:
- * - Retailer
- * - Retail SKU
- * - Source Item
- * - Source Category
- * - Product ID
- *
- * Matching is performed using Product Catalog Match Key.
- */
-function refreshProductCatalogSourceFields() {
-  const spreadsheet =
-    SpreadsheetApp.getActiveSpreadsheet();
-
-  const inventorySheet =
-    getInventorySheetOrThrow_(
-      spreadsheet,
-      INVENTORY_CONFIG.PRODUCT_INVENTORY_SHEET
-    );
-
-  const catalogSheet =
-    getInventorySheetOrThrow_(
-      spreadsheet,
-      INVENTORY_CONFIG.PRODUCT_CATALOG_SHEET
-    );
-
-  const inventoryLastRow =
-    getLastDataRowInColumn_(
-      inventorySheet,
-      1
-    );
-
-  const catalogLastRow =
-    getLastDataRowInColumn_(
-      catalogSheet,
-      CATALOG_COLUMNS.PRODUCT_KEY
-    );
-
-  if (
-    inventoryLastRow < 2 ||
-    catalogLastRow < 2
-  ) {
-    console.log(
-      'Nothing to refresh.'
-    );
-    return;
-  }
-
-  /*
-   * Product Inventory columns A:F:
-   * A Product Key
-   * B Product ID
-   * C Retail SKU
-   * D Item
-   * E Category
-   * F Retailer
-   */
-  const inventoryData = inventorySheet
-    .getRange(
-      2,
-      1,
-      inventoryLastRow - 1,
-      6
-    )
-    .getValues();
-
-  /*
-   * Read Product Catalog columns from A through Product ID.
-   * Fields beyond Product ID are not needed for this operation.
-   */
-  const catalogData = catalogSheet
-    .getRange(
-      2,
-      1,
-      catalogLastRow - 1,
-      CATALOG_COLUMNS.PRODUCT_ID
-    )
-    .getValues();
-
-  const inventoryByKey = new Map();
-
-  inventoryData.forEach(function(row) {
-    const key =
-      normalizeKey_(row[0]);
-
-    if (!key) {
-      return;
-    }
-
-    /*
-     * A duplicate Product Inventory key is unsafe because the
-     * catalog would not know which source row to use.
-     */
-    if (inventoryByKey.has(key)) {
-      console.log(
-        'WARNING: duplicate Product Inventory key skipped: ' +
-          key
-      );
-      return;
-    }
-
-    inventoryByKey.set(key, {
-      productId:
-        String(row[1] || '').trim(),
-
-      retailSku:
-        String(row[2] || '').trim(),
-
-      item:
-        String(row[3] || '').trim(),
-
-      category:
-        String(row[4] || '').trim(),
-
-      retailer:
-        String(row[5] || '').trim()
+function inventorySources_(table) {
+  requireHeaders_(table.map, ['PRODUCT KEY', 'PRODUCT ID', 'RETAIL SKU', 'RETAILER'], 'Product Inventory');
+  const itemHeader = table.map['ITEM'] !== undefined ? 'ITEM' : 'SOURCE ITEM';
+  requireHeaders_(table.map, [itemHeader], 'Product Inventory');
+  const value = function(row, header) { return catalogText_(row[table.map[header]]); };
+  return table.rows.filter(function(row) { return row.some(function(v) { return catalogText_(v); }); })
+    .map(function(row) {
+      const retailer = value(row, 'RETAILER');
+      const retailSku = value(row, 'RETAIL SKU');
+      const productId = currentProductId_(retailer, retailSku) || value(row, 'PRODUCT ID') || value(row, 'PRODUCT KEY');
+      const productKey = value(row, 'PRODUCT KEY') || productId;
+      const item = value(row, itemHeader);
+      if (!retailer || !item || !productId || !productKey) {
+        throw new Error('Incomplete Product Inventory identity; retailer, item and product identity are required.');
+      }
+      const fields = {};
+      // Optional structured source attributes, when supplied; manual publishing
+      // controls/prices/images are deliberately outside source ownership.
+      ['DISPLAY NAME', 'BRAND', 'MODEL', 'UNIT TYPE', 'SQ FT PER UNIT',
+        'PRODUCT URL', 'DESCRIPTION', 'HIGHLIGHTS', 'THICKNESS MM', 'WEAR LAYER MIL',
+        'UNDERLAYMENT ATTACHED', 'WATER RESISTANCE', 'CARD SPEC 1', 'CARD SPEC 2', 'CARD SPEC 3']
+        .forEach(function(header) {
+          if (table.map[header] !== undefined && catalogText_(row[table.map[header]])) {
+            fields[header] = row[table.map[header]];
+          }
+        });
+      return { retailer: retailer, retailSku: retailSku, productId: productId, fields: fields,
+        productKey: productKey, item: item,
+        category: value(row, 'WEBSITE CATEGORY') || value(row, 'CATEGORY'),
+        subcategory: value(row, 'WEB SUBCATEGORY') || value(row, 'SUBCATEGORY') };
     });
-  });
-
-  let changed = 0;
-  let alreadyCurrent = 0;
-  let noMatch = 0;
-
-  catalogData.forEach(function(row) {
-    const matchKey =
-      normalizeKey_(
-        row[
-          CATALOG_COLUMNS.MATCH_KEY - 1
-        ]
-      );
-
-    const source = matchKey
-      ? inventoryByKey.get(matchKey)
-      : null;
-
-    /*
-     * Catalog-only products and historical products without a
-     * current Product Inventory match are preserved unchanged.
-     */
-    if (!source) {
-      noMatch++;
-      return;
-    }
-
-    const isCurrent =
-      String(
-        row[
-          CATALOG_COLUMNS.RETAILER - 1
-        ] || ''
-      ).trim() === source.retailer &&
-
-      String(
-        row[
-          CATALOG_COLUMNS.RETAIL_SKU - 1
-        ] || ''
-      ).trim() === source.retailSku &&
-
-      String(
-        row[
-          CATALOG_COLUMNS.SOURCE_ITEM - 1
-        ] || ''
-      ).trim() === source.item &&
-
-      String(
-        row[
-          CATALOG_COLUMNS.SOURCE_CATEGORY - 1
-        ] || ''
-      ).trim() === source.category &&
-
-      String(
-        row[
-          CATALOG_COLUMNS.PRODUCT_ID - 1
-        ] || ''
-      ).trim() === source.productId;
-
-    if (isCurrent) {
-      alreadyCurrent++;
-      return;
-    }
-
-    /*
-     * Update only fields owned by Product Inventory.
-     */
-    row[
-      CATALOG_COLUMNS.RETAILER - 1
-    ] = source.retailer;
-
-    row[
-      CATALOG_COLUMNS.RETAIL_SKU - 1
-    ] = source.retailSku;
-
-    row[
-      CATALOG_COLUMNS.SOURCE_ITEM - 1
-    ] = source.item;
-
-    row[
-      CATALOG_COLUMNS.SOURCE_CATEGORY - 1
-    ] = source.category;
-
-    row[
-      CATALOG_COLUMNS.PRODUCT_ID - 1
-    ] = source.productId;
-
-    changed++;
-  });
-
-  /*
-   * Write Retailer and Retail SKU.
-   */
-  catalogSheet
-    .getRange(
-      2,
-      CATALOG_COLUMNS.RETAILER,
-      catalogData.length,
-      2
-    )
-    .setValues(
-      catalogData.map(function(row) {
-        return row.slice(
-          CATALOG_COLUMNS.RETAILER - 1,
-          CATALOG_COLUMNS.RETAIL_SKU
-        );
-      })
-    );
-
-  /*
-   * Write Source Item and Source Category.
-   */
-  catalogSheet
-    .getRange(
-      2,
-      CATALOG_COLUMNS.SOURCE_ITEM,
-      catalogData.length,
-      2
-    )
-    .setValues(
-      catalogData.map(function(row) {
-        return row.slice(
-          CATALOG_COLUMNS.SOURCE_ITEM - 1,
-          CATALOG_COLUMNS.SOURCE_CATEGORY
-        );
-      })
-    );
-
-  /*
-   * Write Product ID.
-   */
-  catalogSheet
-    .getRange(
-      2,
-      CATALOG_COLUMNS.PRODUCT_ID,
-      catalogData.length,
-      1
-    )
-    .setValues(
-      catalogData.map(function(row) {
-        return [
-          row[
-            CATALOG_COLUMNS.PRODUCT_ID - 1
-          ]
-        ];
-      })
-    );
-
-  console.log(
-    'Product Catalog source refresh complete. ' +
-      'Changed: ' +
-      changed +
-      ' | Already current: ' +
-      alreadyCurrent +
-      ' | No current match: ' +
-      noMatch
-  );
 }
 
-/**
- * Adds Product Inventory keys that are genuinely missing from
- * Product Catalog.
- *
- * Both permanent Product Keys and Match Keys are considered
- * existing identities. Legacy reconciliation must run before
- * this function.
- */
-function syncProductCatalogKeys() {
-  const spreadsheet =
-    SpreadsheetApp.getActiveSpreadsheet();
-
-  const inventorySheet =
-    getInventorySheetOrThrow_(
-      spreadsheet,
-      INVENTORY_CONFIG.PRODUCT_INVENTORY_SHEET
-    );
-
-  const catalogSheet =
-    getInventorySheetOrThrow_(
-      spreadsheet,
-      INVENTORY_CONFIG.PRODUCT_CATALOG_SHEET
-    );
-
-  const inventoryLastRow =
-    getLastDataRowInColumn_(
-      inventorySheet,
-      1
-    );
-
-  if (inventoryLastRow < 2) {
-    console.log(
-      'No Product Inventory records.'
-    );
-    return;
-  }
-
-  const inventoryData = inventorySheet
-    .getRange(
-      2,
-      1,
-      inventoryLastRow - 1,
-      6
-    )
-    .getValues();
-
-  const inventoryByKey = new Map();
-
-  inventoryData.forEach(function(row) {
-    const key =
-      normalizeKey_(row[0]);
-
-    if (!key) {
-      return;
+function catalogIdentityFindings_(rows, map) {
+  const findings = [];
+  const groups = ['PRODUCT KEY', 'PRODUCT ID', 'RETAILER + RETAIL SKU'];
+  const indexes = groups.map(function() { return new Map(); });
+  rows.forEach(function(row, index) {
+    // Formula-only spill rows are not products.
+    if (!['PRODUCT KEY', 'PRODUCT ID', 'SOURCE ITEM', 'DISPLAY NAME'].some(function(h) {
+      return catalogText_(row[map[h]]);
+    })) return;
+    const key = normalizeKey_(row[map['PRODUCT KEY']]);
+    const id = normalizeKey_(row[map['PRODUCT ID']]);
+    const skuId = currentProductId_(row[map['RETAILER']], row[map['RETAIL SKU']]);
+    if (!key) findings.push({ type: 'MISSING PRODUCT KEY', rows: [index + 2] });
+    if (!id && catalogText_(row[map['RETAIL SKU']])) {
+      findings.push({ type: 'MISSING PRODUCT ID', rows: [index + 2] });
     }
-
-    if (inventoryByKey.has(key)) {
-      console.log(
-        'WARNING: duplicate Product Inventory key skipped: ' +
-          key
-      );
-      return;
-    }
-
-    inventoryByKey.set(key, row);
-  });
-
-  const catalogLastRow =
-    getLastDataRowInColumn_(
-      catalogSheet,
-      CATALOG_COLUMNS.PRODUCT_KEY
-    );
-
-  const existingRows =
-    catalogLastRow >= 2
-      ? catalogSheet
-          .getRange(
-            2,
-            CATALOG_COLUMNS.PRODUCT_KEY,
-            catalogLastRow - 1,
-            CATALOG_COLUMNS.MATCH_KEY -
-              CATALOG_COLUMNS.PRODUCT_KEY +
-              1
-          )
-          .getValues()
-      : [];
-
-  const existingKeys = new Set();
-
-  existingRows.forEach(function(row) {
-    const permanentKey =
-      normalizeKey_(row[0]);
-
-    const matchKey =
-      normalizeKey_(row[1]);
-
-    if (permanentKey) {
-      existingKeys.add(permanentKey);
-    }
-
-    if (matchKey) {
-      existingKeys.add(matchKey);
-    }
-  });
-
-  const newKeys =
-    Array.from(
-      inventoryByKey.keys()
-    ).filter(function(key) {
-      return !existingKeys.has(key);
+    [key, id, skuId].forEach(function(value, n) {
+      if (!value) return;
+      if (!indexes[n].has(value)) indexes[n].set(value, []);
+      indexes[n].get(value).push(index + 2);
     });
-
-  if (newKeys.length === 0) {
-    console.log(
-      'No new Product Keys to add.'
-    );
-    return;
-  }
-
-  const newRows =
-    newKeys.map(function(key) {
-      const source =
-        inventoryByKey.get(key);
-
-      const row =
-        new Array(
-          CATALOG_COLUMNS.LAST_SYNCED_HASH
-        ).fill('');
-
-      row[
-        CATALOG_COLUMNS.RETAILER - 1
-      ] = String(source[5] || '').trim();
-
-      row[
-        CATALOG_COLUMNS.RETAIL_SKU - 1
-      ] = String(source[2] || '').trim();
-
-      row[
-        CATALOG_COLUMNS.ENRICHMENT_STATUS - 1
-      ] = 'PENDING';
-
-      row[
-        CATALOG_COLUMNS.SOURCE_ITEM - 1
-      ] = String(source[3] || '').trim();
-
-      row[
-        CATALOG_COLUMNS.SOURCE_CATEGORY - 1
-      ] = String(source[4] || '').trim();
-
-      row[
-        CATALOG_COLUMNS.PRODUCT_KEY - 1
-      ] = String(source[0] || '').trim();
-
-      row[
-        CATALOG_COLUMNS.MATCH_KEY - 1
-      ] = String(source[0] || '').trim();
-
-      row[
-        CATALOG_COLUMNS.PRODUCT_ID - 1
-      ] = String(source[1] || '').trim();
-
-      return row;
+  });
+  indexes.forEach(function(index, n) {
+    index.forEach(function(rows, key) {
+      if (rows.length > 1) findings.push({ type: 'DUPLICATE ' + groups[n], key: key, rows: rows });
     });
-
-  const startRow =
-    Math.max(
-      catalogLastRow + 1,
-      2
-    );
-
-  catalogSheet
-    .getRange(
-      startRow,
-      1,
-      newRows.length,
-      CATALOG_COLUMNS.LAST_SYNCED_HASH
-    )
-    .setValues(newRows);
-
-  console.log(
-    'Added ' +
-      newRows.length +
-      ' new Product Catalog row(s).'
-  );
+  });
+  return findings;
 }
 
-/**
- * Runs the complete Product Catalog maintenance workflow.
- *
- * Scheduled operation: every six hours.
- *
- * The order is critical:
- * - Reconcile legacy rows first.
- * - Add genuinely new products second.
- */
+function planCatalogMaintenance_(sources, rows, map, width) {
+  const problems = catalogIdentityFindings_(rows, map);
+  if (problems.some(function(f) { return f.type.indexOf('DUPLICATE') === 0 || f.type === 'MISSING PRODUCT KEY'; })) {
+    throw new Error('Unsafe catalog identities: ' + JSON.stringify(problems));
+  }
+  const byKey = new Map(), byId = new Map(), bySku = new Map(), byItem = new Map();
+  const add = function(index, identity, rowIndex) {
+    if (!identity) return;
+    if (!index.has(identity)) index.set(identity, []);
+    index.get(identity).push(rowIndex);
+  };
+  rows.forEach(function(row, i) {
+    add(byKey, normalizeKey_(row[map['PRODUCT KEY']]), i);
+    add(byId, normalizeKey_(row[map['PRODUCT ID']]), i);
+    add(bySku, currentProductId_(row[map['RETAILER']], row[map['RETAIL SKU']]), i);
+    add(byItem, catalogSourceIdentity_(row[map['RETAILER']], row[map['SOURCE ITEM']]), i);
+  });
+  const seenKey = new Set(), seenId = new Set(), claimed = new Set();
+  const updates = [], additions = [];
+  sources.forEach(function(source) {
+    const key = normalizeKey_(source.productKey), id = normalizeKey_(source.productId);
+    if (seenKey.has(key) || seenId.has(id)) throw new Error('Duplicate Product Inventory identity: ' + id);
+    seenKey.add(key); seenId.add(id);
+    const direct = new Set([].concat(byKey.get(key) || [], byId.get(id) || [],
+      bySku.get(currentProductId_(source.retailer, source.retailSku)) || []));
+    const fallback = byItem.get(catalogSourceIdentity_(source.retailer, source.item)) || [];
+    if (direct.size > 1 || (!direct.size && fallback.length > 1)) {
+      throw new Error('Ambiguous catalog reconciliation for ' + id + '; no catalog writes applied.');
+    }
+    const rowIndex = direct.size ? Array.from(direct)[0] : fallback[0];
+    if (rowIndex !== undefined) {
+      if (claimed.has(rowIndex)) throw new Error('Multiple source products claim catalog row ' + (rowIndex + 2));
+      claimed.add(rowIndex);
+      const row = rows[rowIndex];
+      const changes = sourceCatalogChanges_(source, row, map);
+      if (changes.length) updates.push({ rowNumber: rowIndex + 2,
+        permanentKey: row[map['PRODUCT KEY']], changes: changes });
+    } else {
+      if (retailerCode_(source.retailer) && source.retailSku && !currentProductId_(source.retailer, source.retailSku)) {
+        throw new Error('Unreliable Retail SKU for new product: ' + id);
+      }
+      additions.push(buildCatalogRow_(source, map, width));
+    }
+  });
+  // Also catch collisions caused by SKU corrections before applying a plan.
+  const projected = rows.map(function(row) { return row.slice(); });
+  updates.forEach(function(update) {
+    update.changes.forEach(function(change) { projected[update.rowNumber - 2][change.column] = change.value; });
+  });
+  const findings = catalogIdentityFindings_(projected.concat(additions), map);
+  if (findings.length) throw new Error('Catalog plan failed identity audit: ' + JSON.stringify(findings));
+  return { updates: updates, additions: additions };
+}
+
+function sourceCatalogChanges_(source, row, map) {
+  const values = { RETAILER: source.retailer, 'RETAIL SKU': source.retailSku,
+    'PRODUCT ID': source.productId, 'SOURCE ITEM': source.item };
+  Object.keys(source.fields || {}).forEach(function(header) {
+    if (!catalogText_(row[map[header]])) values[header] = source.fields[header];
+  });
+  // Categories are customer-facing. Fill missing ones from source, retain curated values.
+  if (!catalogText_(row[map['WEBSITE CATEGORY']])) values['WEBSITE CATEGORY'] = source.category;
+  if (!catalogText_(row[map['WEB SUBCATEGORY']])) values['WEB SUBCATEGORY'] = source.subcategory;
+  return Object.keys(values).filter(function(header) {
+    return catalogText_(row[map[header]]) !== catalogText_(values[header]);
+  }).map(function(header) { return { header: header, column: map[header], value: values[header] }; });
+}
+
+function buildCatalogRow_(source, map, width) {
+  const row = new Array(width).fill('');
+  const fields = { 'DISPLAY NAME': source.item, RETAILER: source.retailer,
+    'RETAIL SKU': source.retailSku, 'WEBSITE CATEGORY': source.category,
+    'WEB SUBCATEGORY': source.subcategory, 'PRODUCT KEY': source.productKey,
+    'PRODUCT ID': source.productId, 'SOURCE ITEM': source.item, 'ENRICHMENT STATUS': 'PENDING' };
+  Object.keys(fields).forEach(function(header) { row[map[header]] = fields[header]; });
+  Object.keys(source.fields || {}).forEach(function(header) { row[map[header]] = source.fields[header]; });
+  return row;
+}
+
+function readCatalogMaintenancePlan_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = getInventorySheetOrThrow_(ss, INVENTORY_CONFIG.PRODUCT_CATALOG_SHEET);
+  getCatalogColumns_(sheet); // Fail on an unexpected schema before writing anything.
+  const catalog = readSheetTable_(sheet, 'PRODUCT KEY');
+  const inventory = readSheetTable_(getInventorySheetOrThrow_(ss, INVENTORY_CONFIG.PRODUCT_INVENTORY_SHEET), 'PRODUCT ID');
+  const plan = planCatalogMaintenance_(inventorySources_(inventory), catalog.rows, catalog.map, catalog.width);
+  return { sheet: sheet, catalog: catalog, plan: plan };
+}
+
+function applyCatalogMaintenancePlan_(context, includeNew) {
+  const sheet = context.sheet, map = context.catalog.map, plan = context.plan;
+  plan.updates.forEach(function(update) {
+    update.changes.forEach(function(change) {
+      sheet.getRange(update.rowNumber, change.column + 1).setValue(change.value);
+    });
+  });
+  if (includeNew && plan.additions.length) {
+    const start = context.catalog.rows.length + 2;
+    const needed = start + plan.additions.length - 1 - sheet.getMaxRows();
+    if (needed > 0) sheet.insertRowsAfter(sheet.getMaxRows(), needed);
+    // Formatting includes the spill column; PASTE_FORMAT cannot overwrite K2 or values.
+    if (start > 2) sheet.getRange(start - 1, 1, 1, context.catalog.width)
+      .copyTo(sheet.getRange(start, 1, plan.additions.length, context.catalog.width),
+        SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+    // Only value writes skip the workbook-owned spill column.
+    const spillColumn = map['AUTO BOX PRICE'];
+    const segments = [[0, spillColumn], [spillColumn + 1, context.catalog.width - spillColumn - 1]];
+    segments.forEach(function(segment) {
+      if (!segment[1]) return;
+      const target = sheet.getRange(start, segment[0] + 1, plan.additions.length, segment[1]);
+      target.setValues(plan.additions.map(function(row) { return row.slice(segment[0], segment[0] + segment[1]); }));
+    });
+    applyNewCatalogValidation_(sheet, start, plan.additions.length, map);
+  }
+  return { updated: plan.updates.length, added: includeNew ? plan.additions.length : 0 };
+}
+
+function applyNewCatalogValidation_(sheet, start, count, map) {
+  // Row 2 is the workbook's formatting template when no existing product precedes us.
+  const formatRow = start > 2 ? start - 1 : 2;
+  ['SELL PRICE ($/SQ FT OR EACH)', 'AUTO BOX PRICE', 'COMPARABLE RETAIL PRICE']
+    .forEach(function(header) {
+      const column = map[header] + 1;
+      const format = sheet.getRange(formatRow, column).getNumberFormat();
+      sheet.getRange(start, column, count, 1).setNumberFormat(format);
+    });
+  ['SQ FT PER UNIT', 'THICKNESS MM', 'WEAR LAYER MIL'].forEach(function(header) {
+      sheet.getRange(start, map[header] + 1, count, 1).setNumberFormat('0.00');
+    });
+  const rules = { 'POST TO WEBSITE': ['Yes', 'No'], 'UNDERLAYMENT ATTACHED': ['Yes', 'No'],
+    'WATER RESISTANCE': ['Waterproof', 'Water Resistant', 'Not Water Resistant', 'Unknown'],
+    'ENRICHMENT STATUS': ['PENDING', 'PROCESSING', 'ENRICHED - VERIFIED', 'NEEDS REVIEW', 'FAILED', 'STANDARD'] };
+  Object.keys(rules).forEach(function(header) {
+    const rule = SpreadsheetApp.newDataValidation().requireValueInList(rules[header], true).setAllowInvalid(false).build();
+    sheet.getRange(start, map[header] + 1, count, 1).setDataValidation(rule);
+  });
+}
+
+// Public handlers retained for existing menus/triggers. One lock and one planner.
+function syncProductCatalogKeys() { return runProductCatalogMaintenance(); }
+function refreshProductCatalogSourceFields() { return runCatalogMaintenance_(false); }
+
 function runProductCatalogMaintenance() {
-  const lock =
-    LockService.getScriptLock();
-
-  /*
-   * Prevent simultaneous scheduled and manual maintenance runs.
-   */
-  try {
-    lock.waitLock(30000);
-  } catch (error) {
-    console.log(
-      'Maintenance skipped because another run is active.'
-    );
-    return;
-  }
-
-  try {
-    console.log(
-      '========== PRODUCT CATALOG MAINTENANCE START =========='
-    );
-
-    /*
-     * Reconnect existing permanent LEG-... catalog rows to
-     * their new RetailerCode-SKU Product Inventory identities.
-     *
-     * This must run before syncProductCatalogKeys() so a
-     * second sparse catalog row is not created.
-     */
-    const legacyResult =
-      reconcileLegacyCatalogRowsAutomatically_();
-
-    console.log(
-      'Legacy reconciliation result: ' +
-        JSON.stringify(legacyResult)
-    );
-
-    /*
-     * Add only Product Inventory keys that remain genuinely
-     * absent after legacy reconciliation.
-     */
-    syncProductCatalogKeys();
-
-    /*
-     * Add missing Auto Box Price formulas.
-     */
-    ensureProductCatalogAutoBoxPriceFormulas_();
-
-    /*
-     * Refresh Product Inventory-owned catalog fields.
-     */
-    refreshProductCatalogSourceFields();
-
-    SpreadsheetApp.flush();
-
-     /*
-     * Final Product Catalog identity audit.
-     * Strict mode causes maintenance to fail if issues remain.
-     */
-    auditProductCatalogDuplicateKeys({
-      throwOnIssues: true
-    });
-
-    console.log(
-      '========== PRODUCT CATALOG MAINTENANCE COMPLETE =========='
-    );
-  } catch (error) {
-    console.error(
-      'PRODUCT CATALOG MAINTENANCE FAILED: ' +
-        error.message
-    );
-
-    throw error;
-  } finally {
-    lock.releaseLock();
-  }
+  return runCatalogMaintenance_(true);
 }
 
-/**
- * Ensures every valid Product Catalog row has its own
- * row-relative Auto Box Price formula.
- *
- * Existing formulas are preserved.
- * Rows without a permanent Product Key are ignored.
- */
+function runCatalogMaintenance_(includeNew) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const context = readCatalogMaintenancePlan_();
+    const summary = applyCatalogMaintenancePlan_(context, includeNew);
+    SpreadsheetApp.flush();
+    auditProductCatalogDuplicateKeys({ throwOnIssues: true });
+    console.log(JSON.stringify(summary));
+    return summary;
+  } finally { lock.releaseLock(); }
+}
+
+// Compatibility for an old manually selected handler: read-only; never writes K2 or its spill.
 function ensureProductCatalogAutoBoxPriceFormulas_() {
-  const spreadsheet =
-    SpreadsheetApp.getActiveSpreadsheet();
-
-  const sheet =
-    getInventorySheetOrThrow_(
-      spreadsheet,
-      INVENTORY_CONFIG.PRODUCT_CATALOG_SHEET
-    );
-
-  const lastRow =
-    getLastDataRowInColumn_(
-      sheet,
-      CATALOG_COLUMNS.PRODUCT_KEY
-    );
-
-  if (lastRow < 2) {
-    console.log(
-      'No Product Catalog rows found for Auto Box Price formulas.'
-    );
-    return;
+  const sheet = getInventorySheetOrThrow_(SpreadsheetApp.getActiveSpreadsheet(), INVENTORY_CONFIG.PRODUCT_CATALOG_SHEET);
+  const columns = getCatalogColumns_(sheet);
+  if (!sheet.getRange(2, columns.AUTO_BOX_PRICE).getFormula()) {
+    throw new Error('AUTO BOX PRICE spill formula is missing. Restore the approved K2 formula manually.');
   }
-
-  const rowCount =
-    lastRow - 1;
-
-  const productKeys = sheet
-    .getRange(
-      2,
-      CATALOG_COLUMNS.PRODUCT_KEY,
-      rowCount,
-      1
-    )
-    .getDisplayValues();
-
-  const boxPriceRange =
-    sheet.getRange(
-      2,
-      CATALOG_COLUMNS.AUTO_BOX_PRICE,
-      rowCount,
-      1
-    );
-
-  const existingFormulas =
-    boxPriceRange.getFormulas();
-
-  let added = 0;
-
-  for (
-    let index = 0;
-    index < rowCount;
-    index++
-  ) {
-    const productKey =
-      String(
-        productKeys[index][0] || ''
-      ).trim();
-
-    if (
-      !productKey ||
-      existingFormulas[index][0]
-    ) {
-      continue;
-    }
-
-    const row = index + 2;
-
-    /*
-     * Auto Box Price calculation:
-     *
-     * Sell Price × Sq Ft Per Unit
-     *
-     * Rounding:
-     * - Whole number remains whole.
-     * - Decimal below .75 rounds to .50.
-     * - Decimal .75 or higher rounds to next whole dollar.
-     */
-    boxPriceRange
-      .getCell(
-        index + 1,
-        1
-      )
-      .setFormula(
-        '=IF(OR(G' +
-          row +
-          '="",H' +
-          row +
-          '=""),"",LET(x,G' +
-          row +
-          '*H' +
-          row +
-          ',w,INT(x),d,x-w,IF(d=0,w,IF(d<0.75,w+0.5,w+1))))'
-      );
-
-    added++;
-  }
-
-  console.log(
-    'Ensured AUTO BOX PRICE formulas for ' +
-      added +
-      ' Product Catalog row(s).'
-  );
+  return 'AUTO BOX PRICE is workbook-managed; no formulas written.';
 }

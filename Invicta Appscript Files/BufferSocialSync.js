@@ -2465,40 +2465,11 @@ function readSocialSourceMap_(
       .getDisplayValues();
 
 
-  const headers =
-    data[0]
-      .map(
-        function(value) {
-
-          return String(
-            value || ''
-          )
-            .trim()
-            .toUpperCase();
-        }
-      );
-
-
+  const headers = buildHeaderMap_(data[0]);
   function col(name) {
-
-    const index =
-      headers.indexOf(
-        name
-      );
-
-
-    if (index < 0) {
-
-      throw new Error(
-        'Website Export missing required header: ' +
-        name
-      );
-    }
-
-
-    return index;
+    if (headers[name] === undefined) throw new Error('Website Export missing required header: ' + name);
+    return headers[name];
   }
-
 
   const c = {
 
@@ -2601,6 +2572,7 @@ function readSocialSourceMap_(
       ).trim();
 
 
+    if (map.has(productKey)) throw new Error('Duplicate Website Export Product Key: ' + productKey);
     map.set(
       productKey,
       {

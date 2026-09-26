@@ -205,24 +205,7 @@ function syncWebsiteExportToAirtableLocked_(
   /*
    * Build header map.
    */
-  const headers =
-    values[0].map(function(value) {
-      return iwaText_(value)
-        .toUpperCase();
-    });
-
-
-  const H = {};
-
-
-  headers.forEach(
-    function(header, index) {
-      if (header) {
-        H[header] = index;
-      }
-    }
-  );
-
+  const H = buildHeaderMap_(values[0]);
 
   /*
    * Required Website Export contract.
@@ -246,6 +229,8 @@ function syncWebsiteExportToAirtableLocked_(
     'STOCK IMAGE URL',
     'POST TO WEBSITE',
     'IN STOCK',
+    'COMPARABLE RETAIL PRICE',
+    'ENRICHMENT STATUS',
     'BOX PRICE',
     'SUBCATEGORY',
     'THICKNESS MM',
@@ -273,6 +258,15 @@ function syncWebsiteExportToAirtableLocked_(
     );
   }
 
+
+  // A duplicate permanent key makes an upsert ambiguous; fail before any HTTP writes.
+  const exportKeys = new Set();
+  values.slice(1).forEach(function(row) {
+    const key = normalizeKey_(row[H['PRODUCT KEY']]);
+    if (!key) return;
+    if (exportKeys.has(key)) throw new Error('Duplicate Website Export Product Key: ' + key);
+    exportKeys.add(key);
+  });
 
   /*
    * Airtable API token.
@@ -322,6 +316,7 @@ function syncWebsiteExportToAirtableLocked_(
 
 
       if (key) {
+        if (existingByKey.has(key)) throw new Error('Duplicate Airtable Product Key: ' + key);
         existingByKey.set(
           key,
           record
@@ -607,6 +602,9 @@ function syncWebsiteExportToAirtableLocked_(
                 ]
               ),
 
+
+            // Existing website/card mapping uses Was Price for comparable retail.
+            'Was Price': iwaNumber_(row[H['COMPARABLE RETAIL PRICE']]),
 
             'Price Basis':
               category === 'Flooring'
