@@ -76,6 +76,36 @@ test("calcRound2(): rounds to at most 2 decimals and trims trailing zeros", () =
   assert.equal(calcRound2(434.695), "434.7");
 });
 
+test("calcPurchaseEstimate(): sufficient inventory reports no shortage", () => {
+  const result = calcPurchaseEstimate(132, { sqFtPerUnit: 20, boxPrice: 40, availableSqFt: 160, price: 2 });
+  assert.equal(result.cases, 7);
+  assert.equal(result.purchased, 140);
+  assert.equal(result.sufficient, true);
+  assert.equal(result.shortageSqFt, null);
+});
+
+test("calcPurchaseEstimate(): insufficient inventory reports exact shortage", () => {
+  const result = calcPurchaseEstimate(132, { sqFtPerUnit: 20, boxPrice: 40, availableSqFt: 68.72, price: 2 });
+  assert.equal(result.purchased, 140);
+  assert.equal(result.sufficient, false);
+  assert.equal(result.shortageSqFt, 71.28);
+});
+
+test("calcPurchaseEstimate(): unknown inventory does not report sufficiency or shortage", () => {
+  const result = calcPurchaseEstimate(132, { sqFtPerUnit: 20, boxPrice: 40, availableSqFt: undefined, price: 2 });
+  assert.equal(result.inventoryKnown, false);
+  assert.equal(result.sufficient, null);
+  assert.equal(result.shortageSqFt, null);
+});
+
+test("calcPurchaseEstimate(): missing case-pack data does not report shortage", () => {
+  const result = calcPurchaseEstimate(132, { boxPrice: 40, availableSqFt: 68.72, price: 2 });
+  assert.equal(result.cases, null);
+  assert.equal(result.purchased, null);
+  assert.equal(result.sufficient, null);
+  assert.equal(result.shortageSqFt, null);
+});
+
 // ---------------------------------------------------------------------
 // calcRecalculate() — the real DOM-reading calculation used by both the
 // desktop sidebar and the mobile drawer calculator markup, via a fake
