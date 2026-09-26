@@ -1,12 +1,21 @@
+
 /**
  * Product catalog enrichment through the Gemini Developer API.
  * Existing content is never overwritten; legacy records are excluded.
  * A stock image URL is written only for an exact, cited result.
  *
+ * Highlights:
+ * - Generated for future eligible products.
+ * - Existing Highlights are never overwritten.
+ * - Minimum three and maximum five highlights.
+ * - Maximum eight words per highlight.
+ * - Highlights must be short factual feature/spec phrases.
+ * - Long highlights are rejected rather than truncated.
+ *
  * Card Specs:
  * - Generated for future eligible products.
  * - Existing Card Specs are never overwritten.
- * * - Maximum three specs.
+ * - Maximum three specs.
  * - Maximum 24 characters per spec.
  */
 
@@ -16,15 +25,31 @@ const ENRICHMENT_CARD_SPEC_COLUMNS_ = Object.freeze({
   CARD_SPEC_3: 35  // AI
 });
 
+/*
+ * HIGHLIGHT RULES
+ *
+ * Keep these constraints here as the authoritative code-side
+ * validation rules. Gemini is instructed to follow the same rules,
+ * but its output is still validated before anything is written.
+ */
+const ENRICHMENT_HIGHLIGHT_RULES_ = Object.freeze({
+  MIN_COUNT: 3,
+  MAX_COUNT: 5,
+  MAX_WORDS: 8
+});
+
+
 function runCatalogEnrichmentTest() {
   return processCatalogEnrichment_(5);
 }
+
 
 function runCatalogEnrichment() {
   return processCatalogEnrichment_(
     ENRICHMENT_CONFIG.BATCH_SIZE
   );
 }
+
 
 function processCatalogEnrichment_(limit) {
   const apiKey = PropertiesService
@@ -182,6 +207,7 @@ function processCatalogEnrichment_(limit) {
   }
 }
 
+
 function isCatalogRowEligibleForEnrichment_(
   values
 ) {
@@ -239,8 +265,8 @@ function isCatalogRowEligibleForEnrichment_(
 
   /*
    * The normal enrichment queue remains unchanged.
-   * This prevents the new Card Spec feature from
-   * reprocessing all existing enriched products.
+   * This prevents the Card Spec / Highlight validation
+   * changes from reprocessing all existing products.
    */
   if (
     !key ||
@@ -272,6 +298,7 @@ function isCatalogRowEligibleForEnrichment_(
 
   return true;
 }
+
 
 function catalogRowToEnrichmentRecord_(
   values,
@@ -357,6 +384,7 @@ function catalogRowToEnrichmentRecord_(
   };
 }
 
+
 function callGeminiProductEnrichment_(
   record,
   apiKey
@@ -430,6 +458,7 @@ function callGeminiProductEnrichment_(
   return result;
 }
 
+
 function buildGeminiEnrichmentPrompt_(
   record
 ) {
@@ -441,8 +470,6 @@ function buildGeminiEnrichmentPrompt_(
     'Do not invent specifications, dimensions, warranty, compatibility, benefits, URLs, or image links.',
     'Never copy the retailer SKU into the manufacturer model field unless the source explicitly identifies it as the model number.',
     'If the exact match cannot be established, use LIKELY or NOT_FOUND and LOW confidence.',
-    'For website_category, choose exactly one approved broad category from: ' + WEBSITE_CATEGORY_VALUES.join(', ') + '.',
-    'If no more specific approved broad category reasonably fits, use Other. Never invent a new top-level website category.',
     '',
     'Retailer: ' + record.retailer,
     'Retail SKU: ' + record.retailSku,
@@ -479,21 +506,24 @@ function buildGeminiEnrichmentPrompt_(
     '  "product_url": "",',
     '  "stock_image_url": "",',
     '  "description": "",',
-    '  "highlights": ["four to six short factual highlights"],',
+    '  "highlights": ["3 to 5 short factual feature phrases"],',
     '  "card_specs": ["", "", ""],',
     '  "confidence": "HIGH|MEDIUM|LOW",',
     '  "notes": ""',
     '}',
     '',
-    'Display name must be a short customer-facing catalog name, not the full retailer listing title.',
-    'Keep display_name concise: normally Brand + product/collection name + essential product type only.',
-    'Do not include carton square footage, plank dimensions, installation wording, retailer name, SKU, or model in display_name unless essential to identify the product.',
-    'Target 35-60 characters for display_name and never exceed 70 characters.',
-    'Description should be two concise factual sentences suitable for a product catalog.',
-    'Return 4 to 6 highlights. Each highlight must be a short scan-friendly spec or feature, not a sentence.',
-    'Keep each highlight to about 2-6 words and no more than 45 characters.',
-    'Good highlight examples: \"100% Waterproof\", \"20 MIL Wear Layer\", \"Attached Underlayment\", \"7 in. x 48 in. Planks\", \"24.03 Sq Ft/Carton\".',
-    'Highlights must be factual, non-repetitive, and must not include price, marketing filler, or explanatory wording.',
+    'Description must be two concise factual sentences suitable for a product catalog.',
+    '',
+    'HIGHLIGHT RULES:',
+    'Return 3 to 5 highlights only.',
+    'Each highlight must contain no more than 8 words.',
+    'Write highlights as short feature or specification phrases, not complete marketing sentences.',
+    'Prefer concrete customer-useful facts such as material, size, technology, compatibility, construction, included components, or important functionality.',
+    'Highlights must be factual, verified, non-repetitive, and must not include price.',
+    'Do not repeat the brand, model, retailer, SKU, or full product name in highlights.',
+    'Do not use promotional wording such as "premium", "best", "powerful", "excellent", or "ideal" unless it is part of a verified formal product designation.',
+    'Do not invent benefits from a specification.',
+    'Examples of acceptable highlights: "Brushless motor", "Anti-rotation safety system", "XR battery and charger included", "IPX7 waterproof construction", "Soft-close drawer slides".',
     '',
     'For card_specs, return up to three of the most useful verified specifications for this exact product.',
     'Each Card Spec must be plain text, no more than 24 characters, and understandable without a complete sentence.',
@@ -505,6 +535,7 @@ function buildGeminiEnrichmentPrompt_(
     'Use an empty string when a Card Spec cannot be verified.'
   ].join('\n');
 }
+
 
 function extractGeminiText_(value) {
   const textParts = [];
@@ -554,6 +585,7 @@ function extractGeminiText_(value) {
     .trim();
 }
 
+
 function extractCitationUrls_(value) {
   const urls = [];
 
@@ -595,6 +627,67 @@ function extractCitationUrls_(value) {
     new Set(urls)
   ).slice(0, 5);
 }
+
+
+/*
+ * HIGHLIGHT RULES
+ *
+ * Gemini is asked to return short highlights, but prompt
+ * instructions alone are not sufficient. Validate them
+ * deterministically before customer-facing content is written.
+ *
+ * Long highlights are rejected rather than truncated because
+ * truncating could alter the meaning of a verified fact.
+ */
+function sanitizeGeminiHighlights_(highlights) {
+  if (!Array.isArray(highlights)) {
+    return [];
+  }
+
+  return highlights
+    .map(function(value) {
+      return String(
+        value || ''
+      )
+        .replace(/\s+/g, ' ')
+        .trim();
+    })
+    .filter(function(value) {
+      if (!value) {
+        return false;
+      }
+
+      const wordCount =
+        value.split(/\s+/).length;
+
+      return (
+        wordCount <=
+        ENRICHMENT_HIGHLIGHT_RULES_.MAX_WORDS
+      );
+    })
+    .filter(
+      function(value, index, array) {
+        const normalized =
+          value.toUpperCase();
+
+        return (
+          array.findIndex(
+            function(candidate) {
+              return (
+                candidate.toUpperCase() ===
+                normalized
+              );
+            }
+          ) === index
+        );
+      }
+    )
+    .slice(
+      0,
+      ENRICHMENT_HIGHLIGHT_RULES_.MAX_COUNT
+    );
+}
+
 
 function parseGeminiJson_(text) {
   const cleaned = String(text || '')
@@ -669,39 +762,16 @@ function parseGeminiJson_(text) {
     result.confidence = 'LOW';
   }
 
-  result.website_category =
-    normalizeWebsiteCategory_(
-      result.website_category
-    );
-
-  if (
-    !Array.isArray(
+  /*
+   * HIGHLIGHT RULES
+   *
+   * Reject oversized highlights instead of trusting Gemini's
+   * interpretation of "concise".
+   */
+  result.highlights =
+    sanitizeGeminiHighlights_(
       result.highlights
-    )
-  ) {
-    result.highlights = [];
-  }
-
-  result.display_name = String(result.display_name || '').trim();
-
-  if (result.display_name.length > 70) {
-    result.display_name = '';
-  }
-
-  result.highlights = result.highlights
-    .map(function(value) {
-      return String(value || '').trim();
-    })
-    .filter(function(value) {
-      return value && value.length <= 45;
-    })
-    .filter(function(value, index, array) {
-      const normalized = value.toUpperCase();
-      return array.findIndex(function(candidate) {
-        return candidate.toUpperCase() === normalized;
-      }) === index;
-    })
-    .slice(0, 6);
+    );
 
   if (
     !Array.isArray(
@@ -750,21 +820,6 @@ function parseGeminiJson_(text) {
   return result;
 }
 
-function normalizeWebsiteCategory_(value) {
-  const text = String(value || '').trim();
-
-  if (!text) {
-    return '';
-  }
-
-  const match = WEBSITE_CATEGORY_VALUES.filter(
-    function(category) {
-      return category.toLowerCase() === text.toLowerCase();
-    }
-  )[0];
-
-  return match || '';
-}
 
 function applyCatalogEnrichmentResult_(
   sheet,
@@ -806,19 +861,24 @@ function applyCatalogEnrichmentResult_(
    * when Gemini establishes an exact,
    * high-confidence, cited match with enough
    * substantive content.
+   *
+   * HIGHLIGHT RULES:
+   * Sanitization has already happened in
+   * parseGeminiJson_. At least three valid short
+   * highlights must survive validation.
    */
   const verified =
     result.match_status === 'EXACT' &&
     result.confidence === 'HIGH' &&
     hasCitation &&
-    result.website_category &&
     String(
       result.description || ''
     ).trim() &&
     Array.isArray(
       result.highlights
     ) &&
-    result.highlights.length >= 4;
+    result.highlights.length >=
+      ENRICHMENT_HIGHLIGHT_RULES_.MIN_COUNT;
 
   if (verified) {
     const fieldMap = [
@@ -993,7 +1053,9 @@ function applyCatalogEnrichmentResult_(
     noteParts.push(
       'Customer-facing fields were not written because ' +
         'the result was not an exact, high-confidence, ' +
-        'cited match.'
+        'cited match with at least ' +
+        ENRICHMENT_HIGHLIGHT_RULES_.MIN_COUNT +
+        ' valid short highlights.'
     );
   }
 
@@ -1013,6 +1075,7 @@ function applyCatalogEnrichmentResult_(
 
   return finalStatus;
 }
+
 
 function isSameComparableValue_(
   firstValue,
@@ -1043,6 +1106,7 @@ function isSameComparableValue_(
   );
 }
 
+
 function isSafeImageUrl_(value) {
   const url = String(
     value || ''
@@ -1071,6 +1135,7 @@ function isSafeImageUrl_(value) {
 
   return true;
 }
+
 
 function appendCatalogNote_(
   sheet,
@@ -1102,3 +1167,4 @@ function appendCatalogNote_(
       : cleanNewNote
   );
 }
+

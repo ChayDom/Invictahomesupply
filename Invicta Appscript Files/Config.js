@@ -10,34 +10,6 @@ const INVENTORY_CONFIG = Object.freeze({
   PRODUCT_ID_COLUMN: 22
 });
 
-
-
-/**
- * Approved broad website categories. Keep product-specific detail in
- * Display Name / Subcategory rather than inventing new top-level categories.
- */
-const WEBSITE_CATEGORY_VALUES = Object.freeze([
-  'Flooring',
-  'Water Heaters',
-  'Appliances',
-  'Plumbing & Bath',
-  'Lawn & Outdoor',
-  'Tools',
-  'Electrical & Lighting',
-  'Electronics & Smart Home',
-  'Paint & Supplies',
-  'Building Materials',
-  'Doors & Windows',
-  'Heating & Cooling',
-  'Home & Furniture',
-  'Cleaning & Household',
-  'Health & Personal Care',
-  'Automotive',
-  'Sports & Fitness',
-  'Toys & Collectibles',
-  'Other'
-]);
-
 const CATALOG_COLUMNS = Object.freeze({
   DISPLAY_NAME: 1,
   WEBSITE_CATEGORY: 2,

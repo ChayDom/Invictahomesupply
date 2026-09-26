@@ -2,8 +2,9 @@
  * Spreadsheet menu and read-only administrative checks.
  */
 function onOpen() {
-  SpreadsheetApp.getUi()
-    .createMenu('Inventory Tools')
+  const ui = SpreadsheetApp.getUi();
+
+  ui.createMenu('Inventory Tools')
     .addItem(
       'Run Product Catalog Maintenance',
       'runProductCatalogMaintenance'
@@ -17,8 +18,20 @@ function onOpen() {
       'Run Legacy Identity Repair',
       'repairAndUpgradeLegacyCatalogRows'
     )
+    .addSeparator()
+    .addSubMenu(
+      ui.createMenu('Social Media')
+        .addItem('Sync Social Queue', 'syncSocialQueueFromCatalog')
+        .addItem('Generate 1 Caption (Test)', 'generateOneSocialCaptionTest')
+        .addItem('Generate Social Captions', 'generateSocialCaptions')
+        .addSeparator()
+        .addItem('Test Buffer Connection', 'testBufferConnection')
+        .addItem('Discover Buffer Channels', 'setupBufferChannels')
+        .addItem('Send Ready Posts to Buffer', 'sendReadySocialPostsToBuffer')
+    )
     .addToUi();
 }
+
 
 /**
  * Read-only Product Catalog identity audit.
@@ -29,6 +42,11 @@ function onOpen() {
  * - Product ID
  * - Retailer + Retail SKU
  * - Missing identity values
+ *
+ * Important legacy rule:
+ * A genuine legacy row may temporarily have no Product ID when it also
+ * has no real Retail SKU yet. That is an allowed legacy state and should
+ * not fail Product Catalog maintenance.
  *
  * This function does not modify the spreadsheet.
  */
@@ -48,15 +66,15 @@ function auditProductCatalogDuplicateKeys(options) {
   );
 
   if (lastRow < 2) {
-  const message = 'Product Catalog is empty.';
-  console.log(message);
+    const message = 'Product Catalog is empty.';
+    console.log(message);
 
-  if (throwOnIssues) {
-    throw new Error(message);
+    if (throwOnIssues) {
+      throw new Error(message);
+    }
+
+    return [];
   }
-
-  return [];
-}
 
   const data = catalogSheet
     .getRange(
@@ -75,6 +93,14 @@ function auditProductCatalogDuplicateKeys(options) {
   const missingProductKeyRows = [];
   const missingMatchKeyRows = [];
   const missingProductIdRows = [];
+
+  /*
+   * Informational only.
+   *
+   * These are legitimate legacy rows that still do not have a real
+   * Retail SKU, so they cannot yet have a current Product ID.
+   */
+  const legacyWithoutProductIdRows = [];
 
   data.forEach(function(row, index) {
     const sheetRow = index + 2;
@@ -103,6 +129,28 @@ function auditProductCatalogDuplicateKeys(options) {
       .trim()
       .toUpperCase();
 
+    /*
+     * A row is considered legacy when either its permanent Product Key
+     * or its current Match Key still uses one of the supported legacy
+     * identity formats.
+     */
+    const isLegacyIdentity =
+      String(productKey || '')
+        .toUpperCase()
+        .startsWith('LEG-') ||
+      String(productKey || '')
+        .toUpperCase()
+        .startsWith('LEGACY|') ||
+      String(matchKey || '')
+        .toUpperCase()
+        .startsWith('LEG-') ||
+      String(matchKey || '')
+        .toUpperCase()
+        .startsWith('LEGACY|');
+
+    /*
+     * Permanent Product Key.
+     */
     if (!productKey) {
       missingProductKeyRows.push(sheetRow);
     } else {
@@ -113,6 +161,9 @@ function auditProductCatalogDuplicateKeys(options) {
       );
     }
 
+    /*
+     * Match Key.
+     */
     if (!matchKey) {
       missingMatchKeyRows.push(sheetRow);
     } else {
@@ -123,8 +174,33 @@ function auditProductCatalogDuplicateKeys(options) {
       );
     }
 
+    /*
+     * Product ID.
+     *
+     * Allowed:
+     *   legacy identity
+     *   + no Retail SKU
+     *   + no Product ID
+     *
+     * Not allowed:
+     *   current/non-legacy identity with no Product ID
+     *   OR
+     *   legacy row that already has a Retail SKU but still has no
+     *   Product ID
+     */
     if (!productId) {
-      missingProductIdRows.push(sheetRow);
+      if (
+        isLegacyIdentity &&
+        !retailSku
+      ) {
+        legacyWithoutProductIdRows.push(
+          sheetRow
+        );
+      } else {
+        missingProductIdRows.push(
+          sheetRow
+        );
+      }
     } else {
       addCatalogAuditRow_(
         rowsByProductId,
@@ -133,6 +209,9 @@ function auditProductCatalogDuplicateKeys(options) {
       );
     }
 
+    /*
+     * Retailer + Retail SKU identity.
+     */
     if (retailer && retailSku) {
       addCatalogAuditRow_(
         rowsByRetailerSku,
@@ -192,6 +271,17 @@ function auditProductCatalogDuplicateKeys(options) {
     });
   }
 
+  /*
+   * Legitimate legacy rows should still be visible in the execution log,
+   * but they are informational and do not count as audit findings.
+   */
+  if (legacyWithoutProductIdRows.length > 0) {
+    console.log(
+      'INFO: Legacy Product Catalog rows awaiting Retail SKU/Product ID: ' +
+      legacyWithoutProductIdRows.join(', ')
+    );
+  }
+
   if (findings.length === 0) {
     console.log(
       'Product Catalog identity audit: CLEAN. ' +
@@ -200,7 +290,9 @@ function auditProductCatalogDuplicateKeys(options) {
       ' | Duplicate Match Keys: 0' +
       ' | Duplicate Product IDs: 0' +
       ' | Duplicate Retailer/SKU identities: 0' +
-      ' | Missing identity values: 0'
+      ' | Invalid missing identity values: 0' +
+      ' | Legacy rows awaiting Product ID: ' +
+      legacyWithoutProductIdRows.length
     );
   } else {
     console.log(
@@ -217,9 +309,16 @@ function auditProductCatalogDuplicateKeys(options) {
         entry.rows.join(', ')
       );
     });
+
+    if (legacyWithoutProductIdRows.length > 0) {
+      console.log(
+        'INFO: Allowed legacy rows without Product ID: ' +
+        legacyWithoutProductIdRows.join(', ')
+      );
+    }
   }
 
-   if (findings.length > 0 && throwOnIssues) {
+  if (findings.length > 0 && throwOnIssues) {
     throw new Error(
       'Product Catalog identity audit failed with ' +
       findings.length +
@@ -241,6 +340,7 @@ function addCatalogAuditRow_(map, key, sheetRow) {
 
   map.get(key).push(sheetRow);
 }
+
 
 /**
  * Adds duplicate identity groups to the audit findings.
