@@ -1623,6 +1623,9 @@ if (
 
       try {
 
+        // Re-read under the existing ScriptLock. UI edits do not take that lock.
+        assertSocialSendRowUnchanged_(queue, rowNumber, row);
+
         /*
          * FACEBOOK
          */
@@ -1639,7 +1642,8 @@ if (
 
 
           const fbPost =
-            createBufferImagePost_(
+            createOrReconcileSocialPost_(
+              queue, rowNumber, row,
               apiKey,
               fbChannelId,
               fbText,
@@ -1680,7 +1684,8 @@ if (
 
 
           const igPost =
-            createBufferImagePost_(
+            createOrReconcileSocialPost_(
+              queue, rowNumber, row,
               apiKey,
               igChannelId,
               igText,
@@ -1745,8 +1750,8 @@ if (
       } catch (error) {
 
         /*
-         * A successful channel ID remains
-         * stored so retry will not duplicate it.
+         * Durable intent lives in the existing ID cell's note, BEFORE create.
+         * Error is the workbook's supported review state; never blind-retry.
          */
         queue
           .getRange(
@@ -1766,7 +1771,7 @@ if (
               .ERROR
           )
           .setValue(
-            'Buffer send failed: ' +
+            'Buffer RECONCILE required (do not clear ID-cell notes): ' +
             String(
               error.message ||
               error
@@ -2202,8 +2207,212 @@ function validateSocialWriterResult_(
 }
 
 
+/*
+ * Buffer's documented CreatePostInput has no native idempotency key. The
+ * existing FB/IG ID cells own both receipt (value) and durable intent (note).
+ * Never remove these notes to retry. Unknown outcomes require reconciliation,
+ * and absence from a remote listing is NOT proof a timed-out create failed.
+ * Existing Error/Queued states preserve the strict workbook dropdown/schema.
+ */
+function socialOperationKey_(payload) {
+  return Utilities.base64EncodeWebSafe(Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256, JSON.stringify(payload), Utilities.Charset.UTF_8
+  )).replace(/=+$/g, '');
+}
+
+function socialRowFingerprint_(row) {
+  // Include all approved input, not mutable operational receipt/status cells.
+  return socialOperationKey_(row.slice(0, 12).concat([row[17]]).map(function(v) {
+    return String(v == null ? '' : v);
+  }));
+}
+
+function assertSocialSendRowUnchanged_(queue, rowNumber, expected) {
+  const current = queue.getRange(rowNumber, 1, 1, 19).getValues()[0];
+  if (socialRowFingerprint_(current) !== socialRowFingerprint_(expected)) {
+    throw new Error('Queue row was edited/moved; review approval before retry.');
+  }
+  const key = String(expected[0] || '').trim();
+  const keys = queue.getRange(2, 1, queue.getLastRow() - 1, 1).getValues();
+  if (!key || keys.filter(function(r) { return String(r[0] || '').trim() === key; }).length !== 1) {
+    throw new Error('Missing or duplicate Social Queue Product Key.');
+  }
+  [14, 15].forEach(function(column) {
+    const intent = readSocialBufferIntent_(queue.getRange(rowNumber, column));
+    if (intent && intent.rowFingerprint !== socialRowFingerprint_(expected)) {
+      throw new Error('Approved row differs from durable Buffer intent; reconcile manually.');
+    }
+  });
+  if (String(current[12] || '').trim() !== 'Ready' &&
+      !(String(current[12] || '').trim() === 'Error' &&
+        [14,15].some(function(column) { return !!queue.getRange(rowNumber,column).getNote(); }))) {
+    throw new Error('Queue approval/status changed; remote create blocked.');
+  }
+  return current;
+}
+
+function readSocialBufferIntent_(cell) {
+  const note = cell.getNote();
+  if (!note) return null;
+  let intent;
+  try { intent = JSON.parse(note); } catch (_) { throw new Error('Unrecognized Buffer ID-cell note; review required.'); }
+  if (intent.kind !== 'INVICTA_BUFFER_INTENT_V1' || !intent.payload ||
+      intent.operationKey !== socialOperationKey_(intent.payload) ||
+      !intent.rowFingerprint || !['PUBLISHING', 'ACKNOWLEDGED'].includes(intent.state) ||
+      !Number.isFinite(Date.parse(intent.startedAt)) ||
+      (intent.state === 'ACKNOWLEDGED' && !intent.remoteId)) {
+    throw new Error('Malformed Buffer intent; review required.');
+  }
+  return intent;
+}
+
+function readBufferPostsForReconciliation_(apiKey, channelIds) {
+  const org = PropertiesService.getScriptProperties().getProperty(SOCIAL_CONFIG_.BUFFER_ORG_PROPERTY);
+  if (!org) throw new Error('Missing BUFFER_ORGANIZATION_ID; cannot reconcile safely.');
+  const posts = [], seenIds = new Set(), seenCursors = new Set();
+  let cursor = null;
+  for (let page = 0; page < 20; page++) {
+    const query = 'query InvictaReconcile { posts(first:50' +
+      (cursor ? ',after:' + JSON.stringify(cursor) : '') +
+      ',input:{organizationId:' + JSON.stringify(org) + ',filter:{channelIds:' +
+      JSON.stringify(channelIds) + ',status:[draft,error,needs_approval,scheduled,sending,sent]}}) {' +
+      ' edges { node { id text channelId status createdAt assets { source } } }' +
+      ' pageInfo { hasNextPage endCursor } } }';
+    const result = bufferGraphql_(apiKey, query, {}).posts;
+    if (!result || !Array.isArray(result.edges) || !result.pageInfo ||
+        typeof result.pageInfo.hasNextPage !== 'boolean') throw new Error('Incomplete Buffer reconciliation response.');
+    result.edges.forEach(function(edge) {
+      const post = edge && edge.node;
+      if (!post || !post.id || !post.channelId || !Array.isArray(post.assets)) {
+        throw new Error('Malformed Buffer post; cannot prove reconciliation.');
+      }
+      if (!seenIds.has(post.id)) { seenIds.add(post.id); posts.push(post); }
+    });
+    if (!result.pageInfo.hasNextPage) return posts;
+    cursor = result.pageInfo.endCursor;
+    if (!cursor || seenCursors.has(cursor)) throw new Error('Invalid Buffer pagination; review required.');
+    seenCursors.add(cursor);
+  }
+  throw new Error('Buffer reconciliation exceeded bounded pagination; no create permitted.');
+}
+
+function matchingSocialBufferPosts_(posts, payload) {
+  return posts.filter(function(post) {
+    return String(post.channelId) === payload.channelId && String(post.text || '') === payload.text &&
+      post.assets.length === 1 && String(post.assets[0].source || '') === payload.mediaUrl;
+  });
+}
+
+function saveSocialBufferReceipt_(cell, intent, id) {
+  const receipt = Object.assign({}, intent, {state:'ACKNOWLEDGED', remoteId:String(id)});
+  // Save the receipt in the durable journal first. A failed value write remains recoverable.
+  cell.setNote(JSON.stringify(receipt));
+  SpreadsheetApp.flush();
+  cell.setValue(String(id));
+  SpreadsheetApp.flush();
+  if (String(cell.getValue()) !== String(id)) throw new Error('Buffer receipt write did not persist.');
+}
+
+function createOrReconcileSocialPost_(queue, rowNumber, row, apiKey, channelId, text, mediaUrl, service) {
+  assertSocialSendRowUnchanged_(queue, rowNumber, row);
+  const column = service === 'facebook' ? 14 : 15;
+  const cell = queue.getRange(rowNumber, column);
+  const payload = {productKey:String(row[0]).trim(), channelId:String(channelId),
+    text:text, mediaUrl:mediaUrl, sourceHash:String(row[17] || '')};
+  if (!/^https:\/\//i.test(mediaUrl) || !text.trim() || !payload.sourceHash || !payload.channelId) {
+    throw new Error('Malformed approved Buffer payload.');
+  }
+  let intent = readSocialBufferIntent_(cell);
+  if (intent && intent.operationKey !== socialOperationKey_(payload)) {
+    throw new Error('Buffer payload/channel changed; do not reuse an old operation.');
+  }
+  const matches = matchingSocialBufferPosts_(readBufferPostsForReconciliation_(apiKey, [channelId]), payload);
+  if (matches.length > 1) throw new Error('Multiple matching Buffer posts; owner review required.');
+  if (matches.length === 1) {
+    if (intent && intent.remoteId && String(intent.remoteId) !== String(matches[0].id)) {
+      throw new Error('Buffer receipt identity conflict; owner review required.');
+    }
+    intent = intent || {kind:'INVICTA_BUFFER_INTENT_V1', payload:payload,
+      operationKey:socialOperationKey_(payload), rowFingerprint:socialRowFingerprint_(row),
+      state:'PUBLISHING', startedAt:new Date().toISOString()};
+    assertSocialSendRowUnchanged_(queue, rowNumber, row);
+    saveSocialBufferReceipt_(cell, intent, matches[0].id);
+    return {id:matches[0].id, reconciled:true};
+  }
+  if (intent || /Buffer (send failed|RECONCILE|PUBLISHING)/i.test(String(row[18] || ''))) {
+    throw new Error('Uncertain previous create has no provable remote match; manual review, NOT another create.');
+  }
+  assertSocialSendRowUnchanged_(queue, rowNumber, row);
+  intent = {kind:'INVICTA_BUFFER_INTENT_V1', payload:payload,
+    operationKey:socialOperationKey_(payload), rowFingerprint:socialRowFingerprint_(row),
+    state:'PUBLISHING', startedAt:new Date().toISOString()};
+  cell.setNote(JSON.stringify(intent));
+  queue.getRange(rowNumber, 13).setValue('Error');
+  queue.getRange(rowNumber, 19).setValue('Buffer PUBLISHING — durable intent saved; reconcile before retry.');
+  SpreadsheetApp.flush();
+  if (cell.getNote() !== JSON.stringify(intent) || queue.getRange(rowNumber,13).getValue() !== 'Error') {
+    throw new Error('Publishing intent did not persist; remote create blocked.');
+  }
+  assertSocialSendRowUnchanged_(queue, rowNumber, row);
+  const post = createBufferImagePost_(apiKey, channelId, text, mediaUrl, service);
+  assertSocialSendRowUnchanged_(queue, rowNumber, row);
+  saveSocialBufferReceipt_(cell, intent, post.id);
+  return post;
+}
+
+/** Read-only production audit: never calls a Buffer mutation or changes queue rows. */
+function auditSocialBufferQueue() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) throw new Error('Another maintenance/social run is active.');
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const channels = [props.getProperty(SOCIAL_CONFIG_.BUFFER_FB_CHANNEL_PROPERTY),
+      props.getProperty(SOCIAL_CONFIG_.BUFFER_IG_CHANNEL_PROPERTY)];
+    const apiKey = props.getProperty(SOCIAL_CONFIG_.BUFFER_API_KEY_PROPERTY);
+    if (!apiKey || channels.some(function(x) { return !x; })) throw new Error('Buffer configuration incomplete.');
+    const queue = getSocialQueueSheetOrThrow_(SpreadsheetApp.getActiveSpreadsheet());
+    assertSocialQueueHeaders_(queue);
+    const posts = readBufferPostsForReconciliation_(apiKey, channels);
+    const rows = queue.getLastRow() > 1 ? queue.getRange(2,1,queue.getLastRow()-1,19).getValues() : [];
+    const summary = {rows:0, statuses:{}, rowsWithIds:0, remotePosts:posts.length,
+      ready:[], review:[], duplicates:[]};
+    const groups = new Map();
+    posts.forEach(function(post) {
+      const fingerprint = socialOperationKey_([post.channelId,post.text,post.assets.map(function(a){return a.source;})]);
+      if (!groups.has(fingerprint)) groups.set(fingerprint,[]);
+      groups.get(fingerprint).push(post.id);
+    });
+    groups.forEach(function(ids) { if (ids.length > 1) summary.duplicates.push(ids); });
+    rows.forEach(function(row, index) {
+      if (!row[0]) return;
+      summary.rows++;
+      const status = String(row[12] || '').trim();
+      summary.statuses[status] = (summary.statuses[status] || 0) + 1;
+      if (row[13] || row[14]) summary.rowsWithIds++;
+      const evidence = {productKey:String(row[0]), rowNumber:index+2, status:status, channels:[]};
+      ['facebook','instagram'].forEach(function(service, side) {
+        const caption = String(row[side ? 10 : 9] || '').trim();
+        const tags = String(row[11] || '').trim();
+        const text = caption + (tags ? '\n\n' + tags : '');
+        const matches = matchingSocialBufferPosts_(posts, {channelId:channels[side],text:text,
+          mediaUrl:String(row[4] || '').trim()});
+        const savedId = String(row[13+side] || '').trim();
+        evidence.channels.push({service:service, savedId:savedId,
+          savedIdFound:!!savedId && posts.some(function(p){return p.id===savedId && p.channelId===channels[side];}),
+          matches:matches.map(function(p){return {id:p.id,status:p.status};})});
+      });
+      if (status === 'Ready') summary.ready.push(evidence);
+      if (/Buffer (send failed|RECONCILE|PUBLISHING)/i.test(String(row[18] || '')) ||
+          evidence.channels.some(function(c){return (c.savedId && !c.savedIdFound) || c.matches.length>1;}) ||
+          (status==='Queued' && (!row[13] || !row[14]))) summary.review.push(evidence);
+    });
+    console.log('Read-only Buffer queue audit: ' + JSON.stringify(summary));
+    return summary;
+  } finally { lock.releaseLock(); }
+}
+
 /**
- * Creates one Buffer image post.
+ * Creates one Buffer image post. Only the guarded sender calls this for real queue rows.
  */
 function createBufferImagePost_(
   apiKey,
