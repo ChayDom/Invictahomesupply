@@ -29,7 +29,7 @@ function fixture(){
     }
     assert.match(query,/mutation CreatePost/);events.push('create');
     const input=vars.input,id='post-'+(remote.length+1);
-    remote.push({id,text:input.text,channelId:input.channelId,status:'scheduled',createdAt:new Date().toISOString(),
+    remote.push({id,text:input.text,channelId:input.channelId,status:input.saveToDraft?'draft':'scheduled',createdAt:new Date().toISOString(),
       assets:[{source:input.assets[0].image.url}]});
     t.onCreate?.(remote.at(-1));
     return {createPost:{post:{id,dueAt:new Date().toISOString()}}};
@@ -102,5 +102,16 @@ test('read-only production audit never changes queue or creates a post',()=>{
   const t=fixture(),before=plain(t.queue.data);const a=t.ctx.auditSocialBufferQueue();
   assert.equal(a.rows,1);assert.equal(a.ready.length,1);assert.deepEqual(plain(t.queue.data),before);
   assert.equal(t.queue.writes.length,0);assert.equal(t.notes.size,0);assert.equal(t.remote.length,0);
+});
+test('controlled draft-mode ID loss/retry keeps one draft and never queues/publishes it',()=>{
+  const t=fixture(),row=t.row.slice();
+  const send=()=>t.ctx.createOrReconcileSocialPost_(t.queue,2,row,'test-only','fb','FB synthetic caption\n\n#Test',row[4],'facebook',{saveToDraft:true});
+  const a=send();assert.equal(t.remote.length,1);assert.equal(t.remote[0].status,'draft');
+  t.row[13]='';t.resetReady();const b=send();assert.equal(a.id,b.id);assert.equal(t.remote.length,1);
+  assert.equal(t.remote[0].status,'draft');assert.equal(t.row[12],'Ready');
+});
+test('normal sender never treats an existing remote draft as an already queued receipt',()=>{
+  const t=fixture();t.remote.push({id:'draft',channelId:'fb',status:'draft',text:'FB synthetic caption\n\n#Test',assets:[{source:t.row[4]}]});
+  t.run();assert.equal(t.events.filter(x=>x==='create').length,0);assert.equal(t.row[12],'Error');assert.equal(t.row[13],'');
 });
 console.log(`${pass} passed, ${fail} failed`);process.exitCode=fail?1:0;

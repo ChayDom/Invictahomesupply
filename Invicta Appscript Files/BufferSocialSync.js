@@ -2313,12 +2313,14 @@ function saveSocialBufferReceipt_(cell, intent, id) {
   if (String(cell.getValue()) !== String(id)) throw new Error('Buffer receipt write did not persist.');
 }
 
-function createOrReconcileSocialPost_(queue, rowNumber, row, apiKey, channelId, text, mediaUrl, service) {
+function createOrReconcileSocialPost_(queue, rowNumber, row, apiKey, channelId, text, mediaUrl, service, options) {
   assertSocialSendRowUnchanged_(queue, rowNumber, row);
   const column = service === 'facebook' ? 14 : 15;
   const cell = queue.getRange(rowNumber, column);
   const payload = {productKey:String(row[0]).trim(), channelId:String(channelId),
     text:text, mediaUrl:mediaUrl, sourceHash:String(row[17] || '')};
+  // Controlled acceptance may create a non-publishing draft; normal sender never passes this.
+  if (options && options.saveToDraft === true) payload.saveToDraft = true;
   if (!/^https:\/\//i.test(mediaUrl) || !text.trim() || !payload.sourceHash || !payload.channelId) {
     throw new Error('Malformed approved Buffer payload.');
   }
@@ -2329,6 +2331,12 @@ function createOrReconcileSocialPost_(queue, rowNumber, row, apiKey, channelId, 
   const matches = matchingSocialBufferPosts_(readBufferPostsForReconciliation_(apiKey, [channelId]), payload);
   if (matches.length > 1) throw new Error('Multiple matching Buffer posts; owner review required.');
   if (matches.length === 1) {
+    if (!payload.saveToDraft && matches[0].status === 'draft') {
+      throw new Error('Matching Buffer draft is not a queued post; owner review required.');
+    }
+    if (payload.saveToDraft && matches[0].status !== 'draft') {
+      throw new Error('Draft acceptance found a non-draft; no mutation permitted.');
+    }
     if (intent && intent.remoteId && String(intent.remoteId) !== String(matches[0].id)) {
       throw new Error('Buffer receipt identity conflict; owner review required.');
     }
@@ -2354,7 +2362,7 @@ function createOrReconcileSocialPost_(queue, rowNumber, row, apiKey, channelId, 
     throw new Error('Publishing intent did not persist; remote create blocked.');
   }
   assertSocialSendRowUnchanged_(queue, rowNumber, row);
-  const post = createBufferImagePost_(apiKey, channelId, text, mediaUrl, service);
+  const post = createBufferImagePost_(apiKey, channelId, text, mediaUrl, service, options);
   assertSocialSendRowUnchanged_(queue, rowNumber, row);
   saveSocialBufferReceipt_(cell, intent, post.id);
   return post;
@@ -2412,14 +2420,15 @@ function auditSocialBufferQueue() {
 }
 
 /**
- * Creates one Buffer image post. Only the guarded sender calls this for real queue rows.
+   * Creates one Buffer image post. Only the guarded sender calls this for real queue rows.
  */
 function createBufferImagePost_(
   apiKey,
   channelId,
   text,
   mediaUrl,
-  service
+  service,
+  options
 ) {
 
   const input = {
@@ -2467,6 +2476,7 @@ function createBufferImagePost_(
   source:
     'invicta-google-sheets'
 };
+  if (options && options.saveToDraft === true) input.saveToDraft = true;
 
   const query = [
 
