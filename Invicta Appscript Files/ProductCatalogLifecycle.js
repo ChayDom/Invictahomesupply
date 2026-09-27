@@ -106,6 +106,7 @@ function runSoldOutCatalogCleanup(options) {
 
 function cleanupSoldOutCatalogLocked_(opts) {
   if (opts.apply && !catalogCleanupEnabled_()) throw new Error('Catalog lifecycle cleanup is disabled.');
+  if (!opts.apply) return previewSoldOutCatalogLocked_(opts);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   iwaApprovedConfiguration_();
   const catalogSheet = getInventorySheetOrThrow_(ss, INVENTORY_CONFIG.PRODUCT_CATALOG_SHEET);
@@ -213,6 +214,114 @@ function cleanupSoldOutCatalogLocked_(opts) {
       console.error('Catalog cleanup retained/retriable: ' + key + ': ' + String(error.message || error));
     }
   });
+  return summary;
+}
+
+// Preview is a complete read-only snapshot. Apply deliberately keeps its
+// original fresh source/archive/Airtable checks immediately before deletion.
+function previewSoldOutCatalogLocked_(opts) {
+  const started = Date.now();
+  const stageMs = {};
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  iwaApprovedConfiguration_();
+  const catalogSheet = getInventorySheetOrThrow_(ss, INVENTORY_CONFIG.PRODUCT_CATALOG_SHEET);
+  getCatalogColumns_(catalogSheet);
+  const catalog = readSheetTable_(catalogSheet, 'PRODUCT KEY');
+  if (catalogIdentityFindings_(catalog.rows, catalog.map).length) throw new Error('Unsafe catalog identities; cleanup aborted.');
+  stageMs.catalogReadAndIdentity = Date.now() - started;
+  const archive = readCatalogArchive_(ss); // Validate every snapshot hash, including completed history.
+  stageMs.archiveReadAndHash = Date.now() - started - stageMs.catalogReadAndIdentity;
+  const evidence = indexCatalogSourceEvidence_(readCatalogSourceEvidence_(ss));
+  stageMs.sourceAndInventoryReadAndIndex = Date.now() - started - stageMs.catalogReadAndIdentity - stageMs.archiveReadAndHash;
+  const token = PropertiesService.getScriptProperties().getProperty(IWA_SYNC_HARDENED.TOKEN_PROPERTY);
+  if (!token) throw new Error('Missing Airtable token.');
+  iwaRequest_.callCount_ = 0;
+  const records = iwaFetchAll_(token, ['Product Key', 'Sold Out Since', 'Available Sq Ft', 'Quantity Available']);
+  stageMs.airtableFetch = Date.now() - started - stageMs.catalogReadAndIdentity -
+    stageMs.archiveReadAndHash - stageMs.sourceAndInventoryReadAndIndex;
+  const remoteByKey = new Map();
+  records.forEach(function(record) {
+    const key = normalizeKey_((record.fields || {})['Product Key']);
+    if (!key || remoteByKey.has(key)) throw new Error('Unsafe Airtable Product Keys; cleanup aborted.');
+    remoteByKey.set(key, record);
+  });
+  const catalogByKey = new Map();
+  catalog.rows.forEach(function(row) {
+    const key = normalizeKey_(row[catalog.map['PRODUCT KEY']]);
+    if (key) catalogByKey.set(key, row);
+  });
+  const archiveByKey = new Map();
+  archive.rows.forEach(function(row) {
+    const key = normalizeKey_(row[archive.map['PRODUCT KEY']]);
+    if (key) archiveByKey.set(key, row);
+  });
+  const requested = opts.productKeys ? new Set(opts.productKeys.map(normalizeKey_)) : null;
+  const keys = new Set(catalogByKey.keys());
+  archiveByKey.forEach(function(row, key) {
+    if (['ARCHIVED', 'AIRTABLE REMOVED'].indexOf(row[archive.map['CLEANUP STATE']]) >= 0) keys.add(key);
+  });
+  const now = Date.now();
+  const summary = { eligible: [], archived: 0, removed: 0, failures: [],
+    eligibleDetails: [], rejected: [],
+    counts: { active: catalogByKey.size, confirmedPositive: 0, confirmedZero: 0,
+      unknown: 0, withSoldOutSince: 0, expired: 0, rejected: 0 },
+    metrics: { airtableApiCalls: 0, elapsedMs: 0, complete: false, stageMs: stageMs } };
+  keys.forEach(function(key) {
+    if (!key || (requested && !requested.has(key))) return;
+    try {
+      const snapshot = catalogByKey.get(key);
+      const archivedRow = archiveByKey.get(key);
+      const state = archivedRow ? catalogText_(archivedRow[archive.map['CLEANUP STATE']]) : '';
+      const get = function(h) { return snapshot ? snapshot[catalog.map[h]] : archivedRow[archive.map[h]]; };
+      const stock = catalogConfirmedStock_(ss, get, evidence);
+      if (snapshot) {
+        if (stock.state === 'IN STOCK') summary.counts.confirmedPositive++;
+        else if (stock.state === 'CONFIRMED ZERO') summary.counts.confirmedZero++;
+        else summary.counts.unknown++;
+      }
+      const record = remoteByKey.get(key);
+      const fields = record ? record.fields : {};
+      const savedSince = archivedRow ? catalogArchiveValue_(archivedRow[archive.map['SOLD OUT SINCE']]) : undefined;
+      const sinceValue = record ? fields['Sold Out Since'] : savedSince;
+      const since = typeof sinceValue === 'string' ? Date.parse(sinceValue) : NaN;
+      if (snapshot && sinceValue !== '' && sinceValue != null) summary.counts.withSoldOutSince++;
+      if (snapshot && Number.isFinite(since) && now >= since + CATALOG_RETENTION_MS_) summary.counts.expired++;
+      let reason = '';
+      if (state === 'COMPLETE') reason = 'ARCHIVE COMPLETE';
+      else if (state !== 'AIRTABLE REMOVED') {
+        const zero = stock.quantity === 0 && (record
+          ? catalogLifecycleStock_(get('WEBSITE CATEGORY') === 'Flooring' ? fields['Available Sq Ft'] : undefined,
+              fields['Quantity Available']) === 0
+          : state === 'ARCHIVED');
+        if (!zero) reason = stock.state === 'UNKNOWN' ? 'UNKNOWN SOURCE OR INVENTORY' :
+          stock.state === 'IN STOCK' ? 'POSITIVE SOURCE' : 'NO CONFIRMED ZERO REMOTE';
+        else if (!Number.isFinite(since)) reason = 'MISSING OR INVALID SOLD OUT SINCE';
+        else if (now < since + CATALOG_RETENTION_MS_) reason = 'TEN DAY RETENTION NOT ELAPSED';
+        else if (!snapshot) reason = 'CATALOG MISSING BEFORE AIRTABLE REMOVAL';
+      }
+      if (reason) {
+        summary.rejected.push({ productKey: key, reason: reason });
+        summary.counts.rejected++;
+        return;
+      }
+      summary.eligible.push(key);
+      summary.eligibleDetails.push({ productKey: key, displayName: get('DISPLAY NAME'),
+        reason: state === 'AIRTABLE REMOVED' ? 'Verified archive journal awaiting catalog completion' :
+          'Confirmed zero and ten-day retention elapsed',
+        remoteIdentity: record ? 'MATCHED' : 'MISSING — APPLY MUST RECHECK' });
+    } catch (error) {
+      summary.failures.push({ productKey: key, error: String(error.message || error) });
+      summary.counts.rejected++;
+    }
+  });
+  summary.metrics.airtableApiCalls = iwaRequest_.callCount_ || 0;
+  summary.metrics.elapsedMs = Date.now() - started;
+  stageMs.indexAndMatch = summary.metrics.elapsedMs - stageMs.catalogReadAndIdentity -
+    stageMs.archiveReadAndHash - stageMs.sourceAndInventoryReadAndIndex - stageMs.airtableFetch;
+  summary.metrics.complete = true;
+  console.log('Cleanup preview (read-only): ' + JSON.stringify({ counts: summary.counts,
+    eligible: summary.eligibleDetails, failures: summary.failures,
+    metrics: summary.metrics }));
   return summary;
 }
 
