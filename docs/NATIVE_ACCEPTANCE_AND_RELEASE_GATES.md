@@ -198,6 +198,10 @@ function contexts, and absence of every nonallowlisted credential key. It builds
 using versioned config and deploys a draft alias, never --prod, then verifies
 candidate manifest. Stage marker skips analytics, CSP blocks it, robots/noindex
 remain. Verify manifest asset hashes and operational paths404 after deployment.
+HTML carries a candidate meta tag because Netlify post-processes links/forms;
+verify that tag and browser behavior rather than claiming byte-identical served
+HTML. All non-HTML public assets must match their manifest hashes exactly.
+`_headers` is hashed as a deployment control, not a publicly served asset.
 
 Production-site branch/preview builds are refused by the build script until
 separately hardened. Existing production Netlify credentials/settings are not

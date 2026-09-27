@@ -202,7 +202,7 @@ test("collapsed desktop cards align but expanding details does not stretch sibli
   const heights=await cards.evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().height));
   expect(Math.max(...heights)-Math.min(...heights)).toBeLessThanOrEqual(1);
   await cards.first().locator("summary").click();
-  expect(await page.locator("#catalog-grid").evaluate(n=>getComputedStyle(n).alignItems)).toBe("start");
+  await expect(page.locator("#catalog-grid")).toHaveCSS("align-items","start");
 });
 test("quote to multi-room calculator preserves customer fields and avoids double waste",async({page})=>{
   await start(page,"/shop.html?cat=Flooring");
