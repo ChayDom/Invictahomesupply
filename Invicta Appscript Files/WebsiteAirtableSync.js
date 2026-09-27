@@ -3,14 +3,14 @@
  *
  * Publishes only:
  *   POST TO WEBSITE = Yes
- *   AND
- *   IN STOCK = TRUE for non-flooring; flooring retains zero/unknown inventory.
+ *   Zero/unknown inventory remains published until controlled archive cleanup.
  *
  * Core rules:
  * - Product Key is the permanent Airtable identity.
  * - Existing Airtable records that become ineligible are unpublished,
  *   never deleted.
- * - Non-flooring operational Status is preserved; flooring Status follows inventory.
+ * - Inventory determines sold-out/unknown status for every merchandise category.
+ * - Positive non-flooring Reserved/Draft operational holds remain preserved.
  * - Sold Out Since is a stable Airtable datetime keyed by permanent Product Key.
  * - Existing Date Added is preserved.
  * - New non-flooring records default to Status = In Stock.
@@ -162,6 +162,9 @@ function syncWebsiteExportToAirtableLocked_(
 
   const spreadsheet =
     SpreadsheetApp.getActiveSpreadsheet();
+
+  const retiredKeys = archivedCatalogKeys_(spreadsheet);
+  const removedKeys = archivedCatalogKeys_(spreadsheet, true);
 
 
   const sheet =
@@ -399,6 +402,12 @@ function syncWebsiteExportToAirtableLocked_(
           return;
         }
 
+        // A pending journal may have already deleted its remote record when an
+        // acknowledgement was interrupted. Never recreate that permanent key.
+        // Still allow an existing pending record to report restock/uncertainty.
+        if (removedKeys.has(normalizeKey_(key)) ||
+            (retiredKeys.has(normalizeKey_(key)) && !existingByKey.has(key))) return;
+
 
         /*
          * Controlled/manual run.
@@ -421,12 +430,6 @@ function syncWebsiteExportToAirtableLocked_(
           );
 
 
-        const inStock =
-          iwaBool_(
-            row[H['IN STOCK']]
-          );
-
-
         /*
          * Not currently eligible.
          *
@@ -434,8 +437,7 @@ function syncWebsiteExportToAirtableLocked_(
          * Existing published Airtable record will
          * later be considered for unpublishing.
          */
-        const flooring = iwaText_(row[H['CATEGORY']]).toLowerCase() === 'flooring';
-        if (!post || (!flooring && !inStock)) {
+        if (!post) {
           return;
         }
 
@@ -527,18 +529,9 @@ function syncWebsiteExportToAirtableLocked_(
 
 
           /*
-           * Preserve non-flooring Airtable operational Status.
-           *
-           * Existing values such as:
-           * - In Stock
-           * - Reserved
-           * - Sold Out
-           * - Draft
-           *
-           * must not be overwritten by this sync.
-           *
-           * Only genuinely new records default
-           * to "In Stock".
+           * Preserve deliberate Reserved/Draft holds for positive non-flooring
+           * stock only. Zero/unknown inventory always follows the lifecycle;
+           * stale Sold Out labels cannot override a confirmed restock.
            */
           const status =
             existingRecord
@@ -552,10 +545,8 @@ function syncWebsiteExportToAirtableLocked_(
                 )
               : 'In Stock';
 
-          const lifecycle = category === 'Flooring'
-            ? iwaFlooringLifecycle_(row[H['AVAILABLE SQ FT']], row[H['QUANTITY AVAILABLE']],
-                existingFields['Sold Out Since'], observedAt)
-            : null;
+          const lifecycle = iwaFlooringLifecycle_(category === 'Flooring' ? row[H['AVAILABLE SQ FT']] : undefined,
+            row[H['QUANTITY AVAILABLE']], existingFields['Sold Out Since'], observedAt);
 
 
           /*
@@ -726,7 +717,8 @@ function syncWebsiteExportToAirtableLocked_(
 
 
             'Status':
-              lifecycle ? lifecycle.status : status,
+              category !== 'Flooring' && lifecycle.status === 'In Stock' && /^(Reserved|Draft)$/.test(status)
+                ? status : lifecycle.status,
 
 
             'Date Added':
@@ -1292,7 +1284,7 @@ function iwaRequest_(
   const url =
     'https://api.airtable.com/v0/' +
     encodeURIComponent(
-      IWA_SYNC_HARDENED.BASE_ID
+      PropertiesService.getScriptProperties().getProperty('AIRTABLE_BASE_ID') || IWA_SYNC_HARDENED.BASE_ID
     ) +
     '/' +
     encodeURIComponent(

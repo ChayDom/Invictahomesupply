@@ -2437,6 +2437,8 @@ function readSocialSourceMap_(
   exportSheet
 ) {
 
+  const retiredKeys = archivedCatalogKeys_(SpreadsheetApp.getActiveSpreadsheet());
+
   const lastRow =
     exportSheet.getLastRow();
 
@@ -2546,7 +2548,7 @@ function readSocialSourceMap_(
       ).trim();
 
 
-    if (!productKey) {
+    if (!productKey || retiredKeys.has(normalizeKey_(productKey))) {
       continue;
     }
 

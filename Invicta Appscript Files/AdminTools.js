@@ -10,6 +10,8 @@ function onOpen() {
       'runProductCatalogMaintenance'
     )
     .addSeparator()
+    .addItem('Preview Sold-Out Catalog Cleanup', 'runSoldOutCatalogCleanup')
+    .addSeparator()
     .addItem(
       'Audit Product Catalog Duplicates',
       'auditProductCatalogDuplicateKeys'

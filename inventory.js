@@ -33,9 +33,11 @@
    category rather than being excluded from the site; see
    LEGACY_CATEGORY_RULES/hasFlooringAttributes.
 
-   Flooring availability follows confirmed inventory rather than stale Status.
-   Sold Out Since controls ten-day browsing retention, without removing direct
-   product access. Non-flooring retains its existing Status-first behavior.
+   Merchandise availability follows confirmed inventory rather than stale Status.
+   Sold Out Since controls ten-day browsing retention; controlled backend cleanup
+   removes expired active records, never browser-side deletion. Before cleanup,
+   direct product access remains available. Positive-stock non-flooring
+   Reserved/Draft holds remain intact.
 
    Flooring is the one category with real structured comparison fields
    (Thickness MM, Wear Layer MIL, Underlayment Attached, Water
@@ -61,8 +63,8 @@ window.AIRTABLE_CONFIG = {
   cacheMinutes: 15,
 };
 
-// v7 carries persisted Sold Out Since and inventory-authoritative flooring status.
-const CACHE_KEY = "invicta_inventory_cache_v7";
+// v8 invalidates old non-flooring status mappings after the merchandise lifecycle upgrade.
+const CACHE_KEY = "invicta_inventory_cache_v8";
 const INVENTORY_ENDPOINT = "/api/inventory";
 // fetchInventory() previously had no bounded timeout at all — a hung
 // Airtable/Netlify Function request left the shop page's loading state
@@ -213,16 +215,15 @@ function resolveSellUnit(f, webCategory) {
   return webCategory === "Flooring" ? "sq ft" : "each";
 }
 
-// Flooring numeric inventory wins over stale Status; non-flooring retains
-// operational Status-first behavior and its existing missing-stock default.
+// Confirmed stock drives the lifecycle in every category. Preserve deliberate
+// non-flooring Reserved/Draft holds only while inventory is positive.
 function resolveStatusLabel(f) {
-  if (resolveWebCategory(f) === "Flooring") {
-    const stock = flooringStockQuantity(f["Available Sq Ft"], f["Quantity Available"]);
-    return stock === null ? "Contact for Availability" : stock === 0 ? "Sold Out" : "In Stock";
-  }
+  const flooring = resolveWebCategory(f) === "Flooring";
+  const stock = flooringStockQuantity(flooring ? f["Available Sq Ft"] : undefined, f["Quantity Available"]);
+  if (stock === null) return "Contact for Availability";
+  if (stock === 0) return "Sold Out";
   const legacyStatus = (f["Status"] || "").trim();
-  if (legacyStatus) return legacyStatus;
-  if (typeof f["Quantity Available"] === "number") return f["Quantity Available"] > 0 ? "In Stock" : "Out of Stock";
+  if (!flooring && /^(Reserved|Draft)$/.test(legacyStatus)) return legacyStatus;
   return "In Stock";
 }
 
@@ -241,8 +242,7 @@ function flooringStockQuantity(availableSqFt, qtyAvailable) {
 
 const SOLD_OUT_RETENTION_MS = 10 * 24 * 60 * 60 * 1000;
 function isVisibleInBrowse(item, now = Date.now()) {
-  if (item.webCategory !== "Flooring") return true;
-  if (flooringStockQuantity(item.availableSqFt, item.qtyAvailable) !== 0) return true;
+  if (flooringStockQuantity(item.webCategory === "Flooring" ? item.availableSqFt : undefined, item.qtyAvailable) !== 0) return true;
   const since = typeof item.soldOutSince === "string" ? Date.parse(item.soldOutSince) : NaN;
   // Missing/invalid backend time fails open; never invent a browser timestamp.
   return !Number.isFinite(since) || now < since + SOLD_OUT_RETENTION_MS;
@@ -3119,8 +3119,8 @@ async function initInventory() {
 // This timer only rerenders; all lifecycle timestamps remain backend-owned.
 function scheduleBrowseExpiry(items) {
   const now = Date.now();
-  const future = items.filter(i => i.webCategory === "Flooring" &&
-      flooringStockQuantity(i.availableSqFt, i.qtyAvailable) === 0 && typeof i.soldOutSince === "string")
+  const future = items.filter(i =>
+      flooringStockQuantity(i.webCategory === "Flooring" ? i.availableSqFt : undefined, i.qtyAvailable) === 0 && typeof i.soldOutSince === "string")
     .map(i => Date.parse(i.soldOutSince) + SOLD_OUT_RETENTION_MS).filter(t => t > now);
   if (!future.length) return;
   setTimeout(() => {

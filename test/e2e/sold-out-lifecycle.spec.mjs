@@ -25,7 +25,7 @@ test('cached and already-open browse crosses exact boundary without resetting ti
  await page.goto('/shop.html?cat=Flooring');await expect(page.locator('#catalog-grid .product-card')).toHaveCount(3);
  await page.clock.fastForward(1000);await expect(page.locator('#catalog-grid .product-card')).toHaveCount(2);
  await page.reload();await expect(page.locator('#catalog-grid .product-card')).toHaveCount(2);
- const cached=await page.evaluate(()=>JSON.parse(localStorage.getItem('invicta_inventory_cache_v7')));
+ const cached=await page.evaluate(()=>JSON.parse(localStorage.getItem('invicta_inventory_cache_v8')));
  expect(cached.data.find(i=>i.productKey==='STAGE-ZERO').soldOutSince).toBe(since);
  await page.click('#flooring-calc-full-link');await expect(page.locator('#calc-product-select')).not.toContainText('TEST Zero Oak');
 });
@@ -36,12 +36,25 @@ test('positive/unknown status ignores stale labels; expired stock excluded from 
  await expect(unknown).toContainText('Contact for Availability');await page.goto('/index.html');
  await expect(page.locator('#new-arrivals-grid')).not.toContainText('TEST Zero Oak');
 });
-test('restock response reappears using same record and Product Key; other categories unaffected',async({page})=>{
+test('restock preserves identity; positive non-flooring Reserved hold remains',async({page})=>{
  await page.clock.install({time:boundary+1});const body=fixture();body.records[0].fields['Available Sq Ft']=60;body.records[0].fields['Quantity Available']=3;body.records[0].fields['Sold Out Since']=null;
+ body.records[3].fields['Quantity Available']=3;
  await mockInventory(page,{body});await page.goto('/shop.html?cat=Flooring');await expect(page.locator('#catalog-grid .product-card')).toHaveCount(3);
  await expect(page.locator('.product-card').filter({hasText:'TEST Zero Oak'})).not.toContainText('Sold Out');
  await page.goto('/shop.html?cat=Tools');await expect(page.locator('.product-card').filter({hasText:'TEST Drill'})).toContainText('Reserved');
  await expect(page.locator('#flooring-fulfillment-notice')).toBeHidden();
+});
+
+test('non-flooring zero expires; backend-removed product is not found; new acquisition may be NEW',async({page})=>{
+ await page.clock.install({time:boundary});await mockInventory(page,{body:fixture()});
+ await page.goto('/shop.html?cat=Tools');await expect(page.locator('.product-card').filter({hasText:'TEST Drill'})).toHaveCount(0);
+ const body=fixture();body.records=body.records.filter(r=>r.id!=='rec-zero');
+ body.records.push({id:'rec-new-acquisition',fields:{...fixture().records[0].fields,'Product Key':'ACQ-NEW',
+   Name:'TEST Repurchased Oak','Available Sq Ft':100,'Quantity Available':5,'Sold Out Since':null,'Date Added':new Date(boundary).toISOString()}});
+ await page.unroute('**/api/inventory');await mockInventory(page,{body});
+ await page.evaluate(()=>localStorage.clear());await page.goto('/product.html?id=STAGE-ZERO');
+ await expect(page.locator('body')).toContainText(/not found/i);
+ await page.goto('/shop.html?cat=Flooring');await expect(page.locator('.product-card').filter({hasText:'TEST Repurchased Oak'}).locator('.badge-new')).toHaveText('New');
 });
 for(const width of [390,1440])test(`sold out and unknown accessibility ${width}px and exact fulfillment FAQ`,async({page})=>{
  await page.setViewportSize({width,height:1000});await page.clock.setFixedTime(boundary-86400000);

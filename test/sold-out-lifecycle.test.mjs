@@ -32,8 +32,9 @@ test('known quantity without square footage shows actual boxes, never Contact or
  assert.equal(i.statusLabel,'In Stock');assert.equal(ctx.flooringAvailabilitySummary(i),'5 boxes available');
  assert.equal(ctx.flooringAvailabilitySummary(item({'Available Sq Ft':null,'Quantity Available':0})),'Sold Out');
 });
-test('non-flooring status and browsing do not acquire flooring lifecycle',()=>{
- const i=item({Category:'Tools',Status:'Reserved'});assert.equal(i.statusLabel,'Reserved');assert.equal(ctx.isVisibleInBrowse(i,boundary+1),true);
+test('non-flooring zero shares lifecycle; positive Reserved hold remains',()=>{
+ const i=item({Category:'Tools',Status:'Reserved'});assert.equal(i.statusLabel,'Sold Out');assert.equal(ctx.isVisibleInBrowse(i,boundary),false);
+ const positive=item({Category:'Tools',Status:'Reserved','Quantity Available':3});assert.equal(positive.statusLabel,'Reserved');assert.equal(ctx.isVisibleInBrowse(positive,boundary),true);
 });
 test('browse expiry never mutates persisted item or removes direct identity',()=>{
  const i=item(),before=JSON.stringify(i);ctx.isVisibleInBrowse(i,boundary);assert.equal(JSON.stringify(i),before);

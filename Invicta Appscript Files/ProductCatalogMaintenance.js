@@ -29,6 +29,7 @@ function inventorySources_(table) {
           }
         });
       return { retailer: retailer, retailSku: retailSku, productId: productId, fields: fields,
+        quantityAvailable: table.map['QUANTITY AVAILABLE'] !== undefined ? row[table.map['QUANTITY AVAILABLE']] : undefined,
         productKey: productKey, item: item,
         category: value(row, 'WEBSITE CATEGORY') || value(row, 'CATEGORY'),
         subcategory: value(row, 'WEB SUBCATEGORY') || value(row, 'SUBCATEGORY') };
@@ -150,7 +151,8 @@ function readCatalogMaintenancePlan_() {
   getCatalogColumns_(sheet); // Fail on an unexpected schema before writing anything.
   const catalog = readSheetTable_(sheet, 'PRODUCT KEY');
   const inventory = readSheetTable_(getInventorySheetOrThrow_(ss, INVENTORY_CONFIG.PRODUCT_INVENTORY_SHEET), 'PRODUCT ID');
-  const plan = planCatalogMaintenance_(inventorySources_(inventory), catalog.rows, catalog.map, catalog.width);
+  const sources = catalogSourcesForLifecycle_(inventorySources_(inventory), catalog, readCatalogArchive_(ss));
+  const plan = planCatalogMaintenance_(sources, catalog.rows, catalog.map, catalog.width);
   return { sheet: sheet, catalog: catalog, plan: plan };
 }
 
@@ -215,6 +217,10 @@ function runCatalogMaintenance_(includeNew) {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
+    if (catalogCleanupEnabled_()) {
+      const cleanup = cleanupSoldOutCatalogLocked_({ apply: true });
+      console.log(JSON.stringify({ cleanup: cleanup }));
+    }
     const context = readCatalogMaintenancePlan_();
     const summary = applyCatalogMaintenancePlan_(context, includeNew);
     SpreadsheetApp.flush();

@@ -125,7 +125,7 @@ function runtime(catalogRows = [], invRows = [], headers = catalogHeaders) {
     UrlFetchApp:{fetch(){throw new Error('Live requests forbidden in tests');}},
     ScriptApp:{getProjectTriggers(){throw new Error('Triggers forbidden in tests');}}
   });
-  for(const name of ['Config','ProductCatalogMaintenance','LegacyRepair','AdminTools',
+  for(const name of ['Config','ProductCatalogLifecycle','ProductCatalogMaintenance','LegacyRepair','AdminTools',
     'CatalogEnrichment','EnrichmentAdmin','WebsiteAirtableSync','BufferSocialSync']) {
     vm.runInContext(fs.readFileSync(path.join(scripts,name+'.js'),'utf8'),ctx,{filename:name+'.js'});
   }
@@ -511,9 +511,9 @@ test('explicit publication opt-out still unpublishes without deleting; non-floor
   const t=lifecycleSync({'POST TO WEBSITE':'No'},existing);t.run();assert.equal(existing.fields['Post to Website'],false);assert.equal(t.records.length,1);
   const other=lifecycleSync({CATEGORY:'Tools','IN STOCK':true,'QUANTITY AVAILABLE':3},
     {id:'rec-tool',fields:{'Product Key':'LEG-HD-001518',Status:'Reserved'}});
-  other.run();assert.equal(other.records[0].fields.Status,'Reserved');assert.equal(other.records[0].fields['Sold Out Since'],undefined);
+  other.run();assert.equal(other.records[0].fields.Status,'Reserved');assert.equal(other.records[0].fields['Sold Out Since'],null);
   const out=lifecycleSync({CATEGORY:'Tools','IN STOCK':false}, {id:'rec-tool',fields:{'Product Key':'LEG-HD-001518','Post to Website':true}});
-  out.run();assert.equal(out.records[0].fields['Post to Website'],false);
+  out.run();assert.equal(out.records[0].fields['Post to Website'],true);assert.equal(out.records[0].fields.Status,'Sold Out');
 });
 test('zero-stock export remains ineligible for automatic Social Queue despite website retention',()=>{
   const t=lifecycleSync();const headers=plain(vm.runInContext('SOCIAL_REQUIRED_HEADERS_',t.ctx));
