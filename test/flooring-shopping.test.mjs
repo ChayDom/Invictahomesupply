@@ -61,7 +61,7 @@ test("quote payload carries base area without applying waste twice",()=>{
   assert.equal(fields["boxes-needed"],55);assert.equal(fields["actual-coverage"],1105.5);
   assert.equal(fields["estimated-material-cost"],"1713.80");assert.equal(fields["inventory-status"],"Sufficient");
   assert.equal(fields["retail-sku"],"SKU-22");assert.equal(fields["pickup-location"],"McKinney, TX");
-  assert.match(fields.fulfillment,/no individual parcel shipping/);
+  assert.match(fields.fulfillment,/We do not currently ship individual flooring orders/);
 });
 test("quote serialization matches display precision without changing calculation precision",()=>{
   const state={projectSqFt:450,wastePercentage:10};
@@ -83,9 +83,9 @@ test("input state is keyed by permanent identity, independent of SKU corrections
   assert.equal(context.flooringProjectKey(base),context.flooringProjectKey({...base,retailSku:"CORRECTED"}));
   assert.notEqual(context.flooringProjectKey(base),context.flooringProjectKey({...base,productKey:"other"}));
 });
-test("flooring pickup, delivery and freight are separate policy concepts",()=>{
-  const p=context.fulfillmentForItem(base);assert.equal(p.shipping,"unavailable");assert.equal(p.localDelivery,"contact");assert.equal(p.freight,"contact-large-orders");
-  const html=context.flooringFulfillmentMarkup(base,true);assert.match(html,/Local Pickup Only/);assert.match(html,/may be available/);assert.match(html,/discuss freight options/);
+test("flooring pickup and paid local delivery do not advertise shipping",()=>{
+  const p=context.fulfillmentForItem(base);assert.equal(p.shipping,"unavailable");assert.equal(p.localDelivery,"additional-fee");assert.equal(p.freight,undefined);
+  const html=context.flooringFulfillmentMarkup(base,true);assert.match(html,/Local Pickup Only/);assert.match(html,/Local delivery is available for an additional fee\. Contact us for a delivery quote\./);assert.doesNotMatch(html,/freight|pallet|may be available/i);
 });
 test("non-flooring has no flooring shipping restriction or calculator",()=>{
   const regular={...base,webCategory:"Appliances"};assert.equal(context.fulfillmentForItem(regular),null);
@@ -101,7 +101,7 @@ test("missing selling price prevents comparable retail claim",()=>assert.equal(c
 test("low stock still shows actual square feet",()=>assert.match(context.flooringAvailabilitySummary({...base,qtyAvailable:1,availableSqFt:20.1}),/20.1 sq ft available/));
 test("unknown and zero quantities have distinct customer-facing wording",()=>{
   assert.equal(context.flooringAvailabilitySummary({...base,availableSqFt:null}),"Contact for Availability");
-  assert.match(context.flooringAvailabilitySummary({...base,availableSqFt:0}),/Out of Stock/);
+  assert.match(context.flooringAvailabilitySummary({...base,availableSqFt:0}),/Sold Out/);
 });
 test("dynamic facets support 22 MIL and 6.5 mm without hardcoded product choices",()=>{
   assert.equal(context.facetWearLayerOptions([{wearLayerMil:22}])[0],22);

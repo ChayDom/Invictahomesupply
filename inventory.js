@@ -18,7 +18,8 @@
      Underlayment Attached (Yes/No), Water Resistance, Details, Highlights,
      Card Spec 1, Card Spec 2, Card Spec 3, Product URL, Photos (attachment,
      may be empty/absent), Reference Image URL (single-URL fallback), Post
-     to Website (server-side gate only), Date Added. There is no separate
+     to Website (server-side gate only), Date Added, Sold Out Since (datetime).
+     Add the lifecycle field to production before release. There is no separate
      "In Stock" boolean field — confirmed against the live schema — so it
      isn't read here.
 
@@ -32,13 +33,9 @@
    category rather than being excluded from the site; see
    LEGACY_CATEGORY_RULES/hasFlooringAttributes.
 
-   Availability prefers the `Status` text (which can carry a specific
-   "Reserved"/"Sold Out" label the badge/pill will show verbatim), then
-   `Quantity Available > 0` — see resolveStatusLabel()/isAvailable().
-   Not-in-stock items are never hidden here, only shown with a disabled
-   pill instead of the Text button; per the discussed Apps Script export
-   rule (Post to Website = Yes AND Quantity Available > 0) most such rows
-   won't reach this site at all, but the fallback costs nothing.
+   Flooring availability follows confirmed inventory rather than stale Status.
+   Sold Out Since controls ten-day browsing retention, without removing direct
+   product access. Non-flooring retains its existing Status-first behavior.
 
    Flooring is the one category with real structured comparison fields
    (Thickness MM, Wear Layer MIL, Underlayment Attached, Water
@@ -64,10 +61,8 @@ window.AIRTABLE_CONFIG = {
   cacheMinutes: 15,
 };
 
-// Bumped to v6: cached items now also carry photoCards/photoThumbs —
-// a stale v5 cache wouldn't have those fields and would render broken
-// <img> tags until it expired on its own.
-const CACHE_KEY = "invicta_inventory_cache_v6";
+// v7 carries persisted Sold Out Since and inventory-authoritative flooring status.
+const CACHE_KEY = "invicta_inventory_cache_v7";
 const INVENTORY_ENDPOINT = "/api/inventory";
 // fetchInventory() previously had no bounded timeout at all — a hung
 // Airtable/Netlify Function request left the shop page's loading state
@@ -218,28 +213,39 @@ function resolveSellUnit(f, webCategory) {
   return webCategory === "Flooring" ? "sq ft" : "each";
 }
 
-// Availability/status label, most-specific source first: the `Status`
-// text (which can carry "Reserved"/"Sold Out" — shown verbatim on the
-// badge/pill instead of a generic label when available), then
-// Quantity Available > 0. Nothing present defaults to "In Stock" rather
-// than hiding the item. (There is no separate "In Stock" boolean field
-// in Airtable — confirmed against the live schema — so this doesn't
-// check for one.)
+// Flooring numeric inventory wins over stale Status; non-flooring retains
+// operational Status-first behavior and its existing missing-stock default.
 function resolveStatusLabel(f) {
+  if (resolveWebCategory(f) === "Flooring") {
+    const stock = flooringStockQuantity(f["Available Sq Ft"], f["Quantity Available"]);
+    return stock === null ? "Contact for Availability" : stock === 0 ? "Sold Out" : "In Stock";
+  }
   const legacyStatus = (f["Status"] || "").trim();
   if (legacyStatus) return legacyStatus;
-  if (resolveWebCategory(f) === "Flooring") {
-    if (typeof f["Available Sq Ft"] === "number" && Number.isFinite(f["Available Sq Ft"])) {
-      return f["Available Sq Ft"] > 0 ? "In Stock" : "Out of Stock";
-    }
-    if (typeof f["Quantity Available"] !== "number") return "Contact for Availability";
-  }
   if (typeof f["Quantity Available"] === "number") return f["Quantity Available"] > 0 ? "In Stock" : "Out of Stock";
   return "In Stock";
 }
 
 function isAvailable(item) {
   return item.statusLabel === "In Stock";
+}
+
+// Missing, negative and non-numeric inventory is not zero. Explicit square
+// footage is authoritative; box quantity can confirm stock when it is absent.
+function flooringStockQuantity(availableSqFt, qtyAvailable) {
+  for (const value of [availableSqFt, qtyAvailable]) {
+    if (typeof value === "number" && Number.isFinite(value) && value >= 0) return value;
+  }
+  return null;
+}
+
+const SOLD_OUT_RETENTION_MS = 10 * 24 * 60 * 60 * 1000;
+function isVisibleInBrowse(item, now = Date.now()) {
+  if (item.webCategory !== "Flooring") return true;
+  if (flooringStockQuantity(item.availableSqFt, item.qtyAvailable) !== 0) return true;
+  const since = typeof item.soldOutSince === "string" ? Date.parse(item.soldOutSince) : NaN;
+  // Missing/invalid backend time fails open; never invent a browser timestamp.
+  return !Number.isFinite(since) || now < since + SOLD_OUT_RETENTION_MS;
 }
 
 // Genuine floor-covering materials only — the positive allowlist
@@ -286,22 +292,24 @@ function isFlooringMaterial(item) {
     QUOTE_ELIGIBLE_FLOORING_SUBCATEGORIES_NORMALIZED.includes(normalizeForCompare(item.webSubcategory));
 }
 
-// UI policy, not invented Airtable fields. Keep pickup, delivery, freight and parcel
-// shipping distinct so a future verified per-product policy can replace this default.
+// Flooring-only fulfillment policy; other categories retain their own behavior.
 function fulfillmentForItem(item) {
   return item?.webCategory === "Flooring" ? {
-    pickup: "available", pickupLocation: "McKinney, TX", localDelivery: "contact",
-    freight: "contact-large-orders", shipping: "unavailable"
+    pickup: "available", pickupLocation: "McKinney, TX", localDelivery: "additional-fee",
+    shipping: "unavailable"
   } : null;
 }
+
+const FLOORING_PICKUP_COPY = "Flooring is currently available for local pickup in McKinney, TX. We do not currently ship individual flooring orders.";
+const FLOORING_DELIVERY_COPY = "Local delivery is available for an additional fee. Contact us for a delivery quote.";
 
 function flooringFulfillmentMarkup(item, detailed = false) {
   const policy = fulfillmentForItem(item);
   if (!policy) return "";
   return detailed ? `<div class="flooring-fulfillment">
     <strong>Local Pickup Only &bull; ${policy.pickupLocation}</strong>
-    <p>Flooring is currently available for local pickup in McKinney, TX. We do not currently ship individual flooring orders.</p>
-    <p>Local delivery may be available — contact us for a quote. Need a large commercial or pallet-size order? Contact us to discuss freight options.</p>
+    <p>${FLOORING_PICKUP_COPY}</p>
+    <p>${FLOORING_DELIVERY_COPY}</p>
   </div>` : `<p class="flooring-pickup">Local Pickup Only &bull; ${policy.pickupLocation}</p>`;
 }
 
@@ -482,6 +490,7 @@ function mapAirtableRecord(id, f) {
     cardSpec3: (f["Card Spec 3"] || "").toString().trim(),
     productUrl: f["Product URL"] || "",
     statusLabel: resolveStatusLabel(f),
+    soldOutSince: f["Sold Out Since"] || null,
     photos,
     photoCards,
     photoThumbs,
@@ -768,8 +777,13 @@ function flooringAvailabilityLabel(item) {
 function flooringAvailabilitySummary(item) {
   const available = calcNumber(item.availableSqFt);
   const boxes = boxesAvailable(item);
-  if (available === null || available < 0) return "Contact for Availability";
-  if (available === 0) return "Out of Stock · 0 sq ft available";
+  if (available === null || available < 0) {
+    const quantity = flooringStockQuantity(null, item.qtyAvailable);
+    if (quantity === null) return "Contact for Availability";
+    if (quantity === 0) return "Sold Out";
+    return item.sellUnit === "box" ? boxAvailabilityText(quantity) : `${sqFtAvailable(quantity)} ${escapeHtml(item.sellUnit || "units")} available`;
+  }
+  if (available === 0) return "Sold Out · 0 sq ft available";
   if (boxes === 1 || boxes === 2) return `<span class="contractor-avail-lines"><strong class="contractor-avail-sqft">${sqFtAvailable(available)} sq ft available</strong><span class="contractor-avail-boxes">${flooringAvailabilityLabel(item)}</span></span>`;
   return flooringAvailabilityLabel(item);
 }
@@ -835,13 +849,7 @@ function photoBlock(item) {
   </a>${thumbs}`;
 }
 
-// Out-of-stock items are never hidden here — they're shown with a
-// disabled status pill instead of the Text button (see actionButtons
-// below), labeled with whatever specific status is known ("Reserved",
-// "Sold Out", ...) or a generic "Out of Stock" if not. In practice most
-// such rows likely won't reach this site at all once the Apps Script
-// export rule (Post to Website = Yes AND Quantity Available > 0) is in
-// place, but this costs nothing.
+// Browse visibility is separate from badge rendering. Sold Out/unknown wins over New.
 function statusBadge(item) {
   if (!isAvailable(item)) {
     const cls = /reserved/i.test(item.statusLabel) ? "badge-reserved" : "badge-sold";
@@ -1706,7 +1714,7 @@ function renderShopCatalog() {
   // zero here means "this category has nothing published," the specific
   // case CATALOG_MESSAGES.emptyCategory is for; a filter/search narrowing
   // an otherwise non-empty category to zero gets emptyFiltered instead.
-  const wholeCategory = shopItems.filter(i => currentCategory === "all" || i.webCategory === currentCategory);
+  const wholeCategory = shopItems.filter(i => isVisibleInBrowse(i) && (currentCategory === "all" || i.webCategory === currentCategory));
   const inCategory = wholeCategory.filter(i => searchMatches(i, query));
 
   let filtered = inCategory;
@@ -1852,7 +1860,7 @@ function categoryProductCountLabel(count) {
 function categoryCounts() {
   const counts = {};
   WEB_CATEGORIES.forEach(name => { counts[name] = 0; });
-  shopItems.forEach(i => { if (counts[i.webCategory] !== undefined) counts[i.webCategory]++; });
+  shopItems.filter(i => isVisibleInBrowse(i)).forEach(i => { if (counts[i.webCategory] !== undefined) counts[i.webCategory]++; });
   return counts;
 }
 
@@ -1873,7 +1881,7 @@ function updateShopShortcutBar(counts) {
 function renderCategoryBrowser(counts) {
   const list = document.getElementById("category-browser-list");
   if (!list) return;
-  const totalCount = shopItems.length;
+  const totalCount = shopItems.filter(i => isVisibleInBrowse(i)).length;
   const rows = [`<button type="button" class="category-browser-item" data-filter="all" role="listitem">
       <span class="category-browser-item-name">All Products</span>
       <span class="category-browser-item-count">${totalCount}</span>
@@ -2158,7 +2166,7 @@ function quoteProjectFields(item, state) {
     "available-sqft": inventory !== null && inventory >= 0 ? inventory : "",
     "inventory-status": estimate?.sufficient === true ? "Sufficient" : estimate?.sufficient === false ? "Insufficient" : "Unknown",
     "inventory-shortage-sqft": estimate?.shortageSqFt == null ? "" : Number(calcRound2(estimate.shortageSqFt)),
-    "fulfillment": policy ? "Local Pickup Only; delivery contact for availability; no individual parcel shipping; freight contact for large orders" : "Contact for fulfillment",
+    "fulfillment": policy ? `Local Pickup Only • ${policy.pickupLocation}. ${FLOORING_PICKUP_COPY} ${FLOORING_DELIVERY_COPY}` : "Contact for fulfillment",
     "pickup-location": policy?.pickupLocation || ""
   };
 }
@@ -2584,7 +2592,7 @@ function calcProjectSummaryMarkup(projectSqFt, wastePercentage, product) {
   return `<dl class="project-results">${entries.map(([label,value])=>`<div><dt>${label}</dt><dd>${value}</dd></div>`).join("")}</dl>
     <p class="project-inventory-message">${message}</p>
     ${result.costComputed ? '<p class="project-estimate-note">Approximate material price derived from the square-foot price; confirm the box price before purchase.</p>' : ""}
-    <p class="project-estimate-note">Material only. Taxes, installation, delivery and freight are not included. Final stock and pricing require confirmation.</p>`;
+    <p class="project-estimate-note">Material only. Taxes, installation and delivery are not included. Final stock and pricing require confirmation.</p>`;
 }
 
 function calcRenderPurchaseSummary(recommended) {
@@ -2620,7 +2628,8 @@ function openCalculatorModal(fromQuote, selectedProduct = null, triggerEl = null
   const productSelect = document.getElementById("calc-product-select");
   if (productSelect) {
     productSelect.innerHTML = '<option value="">Area estimate only — choose flooring (optional)</option>' + Object.values(itemsById)
-      .filter(isFlooringMaterial).map(item=>`<option value="${escapeAttr(item.id)}">${escapeHtml(item.name)}</option>`).join("");
+      .filter(item => isFlooringMaterial(item) && (isVisibleInBrowse(item) || item.id === calcProduct?.id))
+      .map(item=>`<option value="${escapeAttr(item.id)}">${escapeHtml(item.name)}</option>`).join("");
     productSelect.value = calcProduct?.id || "";
     productSelect.disabled = calcOpenedFromQuote;
   }
@@ -3073,6 +3082,7 @@ function bindProductProjectCalculator(item) {
 
 async function initInventory() {
   const { items, error } = await fetchInventory();
+  const browseItems = items.filter(item => isVisibleInBrowse(item));
   lastFetchError = error;
 
   // Get a Quote / Check Availability modals: shared across every page
@@ -3090,10 +3100,10 @@ async function initInventory() {
 
   // Home page: New This Week + hero/stat-strip dynamic content
   if (document.getElementById("new-arrivals-grid")) {
-    renderGrid(pickNewArrivals(items, 4), "new-arrivals-grid", CATALOG_MESSAGES.emptyCategory);
+    renderGrid(pickNewArrivals(browseItems, 4), "new-arrivals-grid", CATALOG_MESSAGES.emptyCategory);
   }
   if (document.getElementById("hero-price")) {
-    updateHomepageDynamicContent(items);
+    updateHomepageDynamicContent(browseItems);
   }
 
   // Product detail page
@@ -3101,6 +3111,25 @@ async function initInventory() {
     initProductDetail(items);
     bindCalculatorModal();
   }
+
+  scheduleBrowseExpiry(items);
+}
+
+// Open tabs must cross the same exact boundary as reloads/cached responses.
+// This timer only rerenders; all lifecycle timestamps remain backend-owned.
+function scheduleBrowseExpiry(items) {
+  const now = Date.now();
+  const future = items.filter(i => i.webCategory === "Flooring" &&
+      flooringStockQuantity(i.availableSqFt, i.qtyAvailable) === 0 && typeof i.soldOutSince === "string")
+    .map(i => Date.parse(i.soldOutSince) + SOLD_OUT_RETENTION_MS).filter(t => t > now);
+  if (!future.length) return;
+  setTimeout(() => {
+    const visible = items.filter(i => isVisibleInBrowse(i));
+    if (document.getElementById("catalog-grid")) { updateCategoryTabCounts(); renderShopCatalog(); }
+    if (document.getElementById("new-arrivals-grid")) renderGrid(pickNewArrivals(visible, 4), "new-arrivals-grid", CATALOG_MESSAGES.emptyCategory);
+    if (document.getElementById("hero-price")) updateHomepageDynamicContent(visible);
+    scheduleBrowseExpiry(items);
+  }, Math.min(Math.max(1, Math.min(...future) - now), 2147483647));
 }
 
 document.addEventListener("DOMContentLoaded", initInventory);

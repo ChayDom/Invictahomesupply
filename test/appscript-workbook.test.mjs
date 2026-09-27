@@ -456,6 +456,71 @@ test('reconciled export contract sends the same permanent key to Airtable after 
   assert.equal(ctx.syncWebsiteExportToAirtable({productKeys:['LEG-HD-001518']}).unchanged,1);
   assert.equal(payloads.length,0);
 });
+function lifecycleSync(fields={},existing=null) {
+  const {ctx,sheets}=runtime();
+  const source={ 'PRODUCT KEY':'LEG-HD-001518','DISPLAY NAME':'Synthetic oak',CATEGORY:'Flooring',
+    'POST TO WEBSITE':'Yes','IN STOCK':false,'AVAILABLE SQ FT':0,'QUANTITY AVAILABLE':0,...fields };
+  sheets['Website Export']=new Sheet('Website Export',exportHeaders,[row(exportHeaders,source)]);
+  const records=existing ? [existing] : [];
+  const payloads=[];
+  ctx.iwaFetchAll_=()=>records;
+  ctx.iwaRequest_=(_token,method,_suffix,payload)=>{
+    assert.equal(method,'patch');payloads.push(plain(payload));
+    for(const r of payload.records) {
+      if(r.fields['Product Key']) {
+        assert.deepEqual(plain(payload.performUpsert.fieldsToMergeOn),['Product Key']);
+        let record=records.find(x=>x.fields['Product Key']===r.fields['Product Key']);
+        if(!record){record={id:'rec-same',fields:{}};records.push(record);}
+        Object.assign(record.fields,r.fields);
+      } else Object.assign(records.find(x=>x.id===r.id).fields,r.fields);
+    }
+    return {};
+  };
+  return {ctx,sheets,records,payloads,run:()=>ctx.syncWebsiteExportToAirtable({})};
+}
+test('confirmed zero is retained, stamped once, and repeated sync performs no write',()=>{
+  const t=lifecycleSync();assert.equal(t.run().created,1);
+  const record=t.records[0],stamp=record.fields['Sold Out Since'];
+  assert.ok(Number.isFinite(Date.parse(stamp)));assert.equal(record.fields.Status,'Sold Out');
+  assert.equal(record.fields['Post to Website'],true);
+  t.payloads.length=0;assert.equal(t.run().unchanged,1);assert.equal(t.payloads.length,0);
+  assert.equal(record.fields['Sold Out Since'],stamp);assert.equal(t.records.length,1);
+});
+test('existing sold-out record gets first observation, never Date Added as historical backdate',()=>{
+  const t=lifecycleSync({}, {id:'rec-history',fields:{'Product Key':'LEG-HD-001518',Status:'Sold Out','Date Added':'2020-01-01'}});
+  t.run();const r=t.records[0];assert.equal(r.id,'rec-history');assert.equal(r.fields['Date Added'],'2020-01-01');
+  assert.ok(Date.parse(r.fields['Sold Out Since'])>Date.parse('2026-01-01'));
+});
+test('restock and corrected SKU update same key/record, clear timestamp, and later zero starts new period',()=>{
+  const old='2026-01-01T00:00:00.000Z';
+  const t=lifecycleSync({'AVAILABLE SQ FT':200,'QUANTITY AVAILABLE':10,'RETAIL SKU':'corrected'},
+    {id:'rec-stable',fields:{'Product Key':'LEG-HD-001518',Status:'Sold Out','Sold Out Since':old}});
+  t.run();const r=t.records[0];assert.equal(r.fields.Status,'In Stock');assert.equal(r.fields['Sold Out Since'],null);
+  assert.equal(r.id,'rec-stable');assert.equal(r.fields['Retail SKU'],'corrected');
+  const data=t.sheets['Website Export'].data[1];data[exportHeaders.indexOf('AVAILABLE SQ FT')]=0;data[exportHeaders.indexOf('QUANTITY AVAILABLE')]=0;
+  t.run();assert.equal(r.fields.Status,'Sold Out');assert.notEqual(r.fields['Sold Out Since'],old);assert.equal(t.records.length,1);
+});
+for(const unknown of ['',null,undefined,'   ',false,'uncertain',-1,NaN,Infinity])test('unknown inventory '+String(unknown)+' clears the active lifecycle without unpublishing',()=>{
+  const t=lifecycleSync({'AVAILABLE SQ FT':unknown,'QUANTITY AVAILABLE':unknown},
+    {id:'rec-stable',fields:{'Product Key':'LEG-HD-001518','Sold Out Since':'2020-01-01T00:00:00.000Z',Status:'In Stock'}});
+  t.run();assert.equal(t.records[0].fields.Status,'Contact for Availability');
+  assert.equal(t.records[0].fields['Sold Out Since'],null);assert.equal(t.records[0].fields['Post to Website'],true);
+});
+test('explicit publication opt-out still unpublishes without deleting; non-flooring gate/status unchanged',()=>{
+  const existing={id:'rec-stable',fields:{'Product Key':'LEG-HD-001518','Post to Website':true,Status:'Reserved'}};
+  const t=lifecycleSync({'POST TO WEBSITE':'No'},existing);t.run();assert.equal(existing.fields['Post to Website'],false);assert.equal(t.records.length,1);
+  const other=lifecycleSync({CATEGORY:'Tools','IN STOCK':true,'QUANTITY AVAILABLE':3},
+    {id:'rec-tool',fields:{'Product Key':'LEG-HD-001518',Status:'Reserved'}});
+  other.run();assert.equal(other.records[0].fields.Status,'Reserved');assert.equal(other.records[0].fields['Sold Out Since'],undefined);
+  const out=lifecycleSync({CATEGORY:'Tools','IN STOCK':false}, {id:'rec-tool',fields:{'Product Key':'LEG-HD-001518','Post to Website':true}});
+  out.run();assert.equal(out.records[0].fields['Post to Website'],false);
+});
+test('zero-stock export remains ineligible for automatic Social Queue despite website retention',()=>{
+  const t=lifecycleSync();const headers=plain(vm.runInContext('SOCIAL_REQUIRED_HEADERS_',t.ctx));
+  t.sheets['Social Queue']=new Sheet('Social Queue',headers);
+  assert.equal(t.ctx.syncSocialQueueFromCatalog().added,0);
+});
+
 test('Airtable refuses duplicate export or Airtable keys before writes',()=>{
   const {ctx,catalog,inventory,sheets}=runtime([], [sourceRow()]);
   ctx.runProductCatalogMaintenance();

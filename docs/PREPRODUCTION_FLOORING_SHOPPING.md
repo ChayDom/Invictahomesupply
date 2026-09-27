@@ -33,8 +33,10 @@ checkpoint, including permanent identity, K2 ownership, formatting and enrichmen
 - Quote inputs are retained by permanent Product Key, not mutable SKU.
 - Quotes carry base area separately from waste-adjusted area, avoiding double waste.
 - Static Netlify quote-request registration includes every added submission field.
-- Flooring alone gets McKinney pickup-only, conditional local-delivery inquiries,
-  no individual parcel shipping, and contact-only large-order freight language.
+- Flooring alone gets McKinney pickup-only and local delivery for an additional
+  fee with a delivery quote; individual flooring orders are not shipped.
+- Sold-out retention uses the persisted Airtable Sold Out Since datetime; see
+  SOLD_OUT_LIFECYCLE.md for the scoped sync and export release prerequisites.
 - Comparable retail displays only for finite positive prices above selling price.
 - Existing dynamic facets, price sorting, mobile drawer and Contractor View remain.
 - Search includes retail SKU and customer-facing structured specs, not Product Key.
@@ -80,7 +82,7 @@ Then correct Retail SKU and verify the same catalog row and Product Key, changed
 Product ID, no duplicate and the same Airtable record and website product URL.
 
 Passing mocked tests does not complete this workbook/form/provider acceptance.
-Estimates do not reserve stock and exclude taxes, installation, delivery and freight.
+Estimates do not reserve stock and exclude taxes, installation and delivery.
 Per-product fulfillment is deliberately a replaceable UI policy, not invented data.
 Existing inventory caching can delay availability updates; final stock requires
 human confirmation. Missing specs suppress facets according to existing rules.

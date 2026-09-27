@@ -229,7 +229,9 @@ Airtable sync must keep requiring **all** of:
 
 - `Post to Website = TRUE`
 - Available inventory greater than 0 (the discussed rule: `Post to Website
-  = Yes AND Quantity Available > 0`)
+  = Yes AND Quantity Available > 0`) for non-flooring. The approved flooring
+  lifecycle retains published confirmed-zero rows for ten days and unknown rows
+  as Contact for Availability; see [lifecycle prerequisites](docs/SOLD_OUT_LIFECYCLE.md).
 - `Price` (Website Price) filled in
 - Image approved/available
 - Enrichment status is not `NEEDS REVIEW`

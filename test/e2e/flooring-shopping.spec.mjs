@@ -26,8 +26,8 @@ test("flooring cards, Contractor View and detail show pickup and real comparable
   await card.getByRole("link",{name:"Calculate My Project"}).click();
   await expect(page.locator("#project-sqft")).toBeFocused();
   await expect(page.locator(".flooring-fulfillment")).toContainText("We do not currently ship individual flooring orders");
-  await expect(page.locator(".flooring-fulfillment")).toContainText("Local delivery may be available");
-  await expect(page.locator(".flooring-fulfillment")).toContainText("discuss freight options");
+  await expect(page.locator(".flooring-fulfillment")).toContainText("Local delivery is available for an additional fee. Contact us for a delivery quote.");
+  await expect(page.locator("body")).not.toContainText(/freight|pallet/i);
 });
 for(const [waste,recommended,boxes,coverage,cost] of [
   [0,"1,000 sq ft","50","1,005 sq ft","$1,558.00"],
@@ -79,7 +79,7 @@ test("quote submission carries full calculated project and fulfillment",async({p
     "recommended-sqft":"1100","boxes-needed":"55","actual-coverage":"1105.5",
     "estimated-material-cost":"1713.80","available-sqft":"7185","inventory-status":"Sufficient",
     "box-price":"$31.16","pickup-location":"McKinney, TX","cost-basis":"Catalog Box Price"
-  });expect(submissions[0].fulfillment).toContain("no individual parcel shipping");
+  });expect(submissions[0].fulfillment).toContain("We do not currently ship individual flooring orders");
 });
 test("editing quote area refreshes all hidden project fields",async({page})=>{
   await start(page);await page.fill("#project-sqft","1000");await page.selectOption("#project-waste","5");
@@ -174,7 +174,7 @@ test("unknown stock remains contactable and known zero is clearly out of stock",
   await page.click("#availability-modal-close");
   body.records[2].fields["Available Sq Ft"]=0;await mockInventory(page,{body});
   await page.evaluate(()=>localStorage.clear());await page.reload();
-  await expect(page.locator(".product-price")).toContainText("Out of Stock");
+  await expect(page.locator(".product-price")).toContainText("Sold Out");
   await page.fill("#project-sqft","100");await expect(page.locator("#project-results")).toContainText("Not enough inventory");
 });
 test("mobile Flooring Calculator entry and filter drawer remain usable",async({page})=>{

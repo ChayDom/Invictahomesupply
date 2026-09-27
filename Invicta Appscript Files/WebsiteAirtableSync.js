@@ -4,15 +4,16 @@
  * Publishes only:
  *   POST TO WEBSITE = Yes
  *   AND
- *   IN STOCK = TRUE
+ *   IN STOCK = TRUE for non-flooring; flooring retains zero/unknown inventory.
  *
  * Core rules:
  * - Product Key is the permanent Airtable identity.
  * - Existing Airtable records that become ineligible are unpublished,
  *   never deleted.
- * - Existing Airtable Status is preserved.
+ * - Non-flooring operational Status is preserved; flooring Status follows inventory.
+ * - Sold Out Since is a stable Airtable datetime keyed by permanent Product Key.
  * - Existing Date Added is preserved.
- * - New records default to Status = In Stock.
+ * - New non-flooring records default to Status = In Stock.
  * - Only NEW or CHANGED records are written to Airtable.
  * - Unchanged records are skipped to reduce Airtable API usage.
  * - One invalid Website Export row does not abort the entire sync.
@@ -333,6 +334,8 @@ function syncWebsiteExportToAirtableLocked_(
       'yyyy-MM-dd'
     );
 
+  const observedAt = new Date().toISOString();
+
 
   /*
    * Only records in this array will be written.
@@ -431,7 +434,8 @@ function syncWebsiteExportToAirtableLocked_(
          * Existing published Airtable record will
          * later be considered for unpublishing.
          */
-        if (!post || !inStock) {
+        const flooring = iwaText_(row[H['CATEGORY']]).toLowerCase() === 'flooring';
+        if (!post || (!flooring && !inStock)) {
           return;
         }
 
@@ -523,7 +527,7 @@ function syncWebsiteExportToAirtableLocked_(
 
 
           /*
-           * Preserve Airtable operational Status.
+           * Preserve non-flooring Airtable operational Status.
            *
            * Existing values such as:
            * - In Stock
@@ -547,6 +551,11 @@ function syncWebsiteExportToAirtableLocked_(
                   'In Stock'
                 )
               : 'In Stock';
+
+          const lifecycle = category === 'Flooring'
+            ? iwaFlooringLifecycle_(row[H['AVAILABLE SQ FT']], row[H['QUANTITY AVAILABLE']],
+                existingFields['Sold Out Since'], observedAt)
+            : null;
 
 
           /*
@@ -717,7 +726,7 @@ function syncWebsiteExportToAirtableLocked_(
 
 
             'Status':
-              status,
+              lifecycle ? lifecycle.status : status,
 
 
             'Date Added':
@@ -757,6 +766,8 @@ function syncWebsiteExportToAirtableLocked_(
             'Water Resistance':
               waterResult.value
           };
+
+          if (lifecycle) desiredFields['Sold Out Since'] = lifecycle.soldOutSince;
 
 
           /*
@@ -1614,14 +1625,24 @@ function iwaNullableText_(value) {
 }
 
 
-/**
- * Convert Sheet value to number.
- *
- * Blank/non-numeric values become null.
- */
+// The only transition writer. Never infer zero from IN STOCK=false or a missing
+// export row. Unknown ends the confirmed-zero period; restock clears it too.
+function iwaFlooringLifecycle_(availableSqFt, quantity, previousSince, observedAt) {
+  const values = [iwaNumber_(availableSqFt), iwaNumber_(quantity)];
+  const stock = values.find(function(value) { return value !== null && value >= 0; });
+  if (stock === undefined) return { status: 'Contact for Availability', soldOutSince: null };
+  if (stock > 0) return { status: 'In Stock', soldOutSince: null };
+  const previous = typeof previousSince === 'string' ? Date.parse(previousSince) : NaN;
+  return {
+    status: 'Sold Out',
+    soldOutSince: Number.isFinite(previous) ? previousSince : observedAt
+  };
+}
+
 function iwaNumber_(value) {
   if (
-    value === '' ||
+    (typeof value === 'string' && value.trim() === '') ||
+    (typeof value !== 'string' && typeof value !== 'number') ||
     value === null ||
     value === undefined
   ) {

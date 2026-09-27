@@ -135,7 +135,7 @@ await test("fetchInventory(): a successful response maps records into items and 
   assert.equal(error, null);
   assert.equal(items.length, 1);
   assert.equal(items[0].name, "Test Item");
-  assert.ok(store["invicta_inventory_cache_v6"], "expected the result to be cached");
+  assert.ok(store["invicta_inventory_cache_v7"], "expected the result to be cached");
 });
 
 await test("fetchInventory(): an empty inventory response (records: []) succeeds with an empty items array, not an error", async () => {
@@ -205,7 +205,7 @@ await test("fetchInventory(): an aborted fetch (simulating the timeout firing) r
 
 await test("fetchInventory(): a valid, fresh cache short-circuits the network entirely", async () => {
   resetStore();
-  store["invicta_inventory_cache_v6"] = JSON.stringify({ data: [{ id: "cached1", name: "Cached Item" }], ts: Date.now() });
+  store["invicta_inventory_cache_v7"] = JSON.stringify({ data: [{ id: "cached1", name: "Cached Item" }], ts: Date.now() });
   let fetchCalled = false;
   globalThis.fetch = async () => { fetchCalled = true; return { ok: true, status: 200, json: async () => ({ records: [] }) }; };
   const { items, error } = await fetchInventory();
@@ -217,7 +217,7 @@ await test("fetchInventory(): a valid, fresh cache short-circuits the network en
 await test("fetchInventory(): an expired cache is not used as the immediate result, but IS used as a fallback if the fresh fetch then fails", async () => {
   resetStore();
   const oldTs = Date.now() - 999 * 60 * 1000; // far older than cacheMinutes
-  store["invicta_inventory_cache_v6"] = JSON.stringify({ data: [{ id: "stale1", name: "Stale Item" }], ts: oldTs });
+  store["invicta_inventory_cache_v7"] = JSON.stringify({ data: [{ id: "stale1", name: "Stale Item" }], ts: oldTs });
   globalThis.fetch = fakeFetchRejects();
   const { items, error, stale } = await fetchInventory();
   assert.equal(items[0].name, "Stale Item");
@@ -227,7 +227,7 @@ await test("fetchInventory(): an expired cache is not used as the immediate resu
 
 await test("fetchInventory(): malformed cached JSON is swallowed and treated as no cache, falling through to a fresh fetch", async () => {
   resetStore();
-  store["invicta_inventory_cache_v6"] = "{not valid json";
+  store["invicta_inventory_cache_v7"] = "{not valid json";
   globalThis.fetch = fakeFetchOk({ records: [fakeRecord("rec1", { Name: "Fresh Item", Category: "Tools" })] });
   const { items, error } = await fetchInventory();
   assert.equal(error, null);
