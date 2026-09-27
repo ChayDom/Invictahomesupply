@@ -1226,7 +1226,7 @@ function iwaComparable_(value) {
 /**
  * Read all Airtable Website Products.
  */
-function iwaFetchAll_(token) {
+function iwaFetchAll_(token, fields) {
   const all = [];
 
   let offset = '';
@@ -1238,13 +1238,16 @@ function iwaFetchAll_(token) {
         ? '?pageSize=100&offset=' +
           encodeURIComponent(offset)
         : '?pageSize=100';
+    const selected = fields && fields.length ? fields.map(function(field) {
+      return '&fields%5B%5D=' + encodeURIComponent(field);
+    }).join('') : '';
 
 
     const result =
       iwaRequest_(
         token,
         'get',
-        suffix
+        suffix + selected
       );
 
 

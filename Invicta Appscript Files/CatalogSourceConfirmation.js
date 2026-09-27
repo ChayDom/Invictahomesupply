@@ -17,12 +17,41 @@ function readCatalogSourceEvidence_(ss) {
   return table;
 }
 
+// Optional read-only index for whole-catalog previews. The shared stock rules
+// below remain authoritative; callers without an index keep their old path.
+function indexCatalogSourceEvidence_(table) {
+  const byRetailer = new Map();
+  table.rows.forEach(function(row) {
+    const map = table.map;
+    const retailer = retailerCode_(row[map.RETAILER]) || normalizeKey_(row[map.RETAILER]);
+    if (!byRetailer.has(retailer)) byRetailer.set(retailer, { byId: new Map(), byItem: new Map() });
+    const group = byRetailer.get(retailer);
+    const skuId = currentProductId_(row[map.RETAILER], row[map['RETAIL SKU']]);
+    const stored = normalizeKey_(row[map['PRODUCT ID']]);
+    const entry = { row: row, id: skuId || stored, stored: stored,
+      conflict: !!(skuId && stored && !/^(LEG-|LEGACY\|)/.test(stored) && skuId !== stored) };
+    [entry.id, entry.stored].filter(function(value, i, values) { return values.indexOf(value) === i; })
+      .forEach(function(value) {
+        if (!group.byId.has(value)) group.byId.set(value, []);
+        group.byId.get(value).push(entry);
+      });
+    const item = catalogSourceIdentity_(row[map.RETAILER], row[map.ITEM]);
+    if (!group.byItem.has(item)) group.byItem.set(item, []);
+    group.byItem.get(item).push(entry);
+  });
+  table.previewIndex = { byRetailer: byRetailer,
+    positiveIds: new Set(table.positiveInventory.map(function(entry) { return entry.id; })),
+    positiveItems: new Set(table.positiveInventory.map(function(entry) { return entry.item; })) };
+  return table;
+}
+
 function catalogConfirmedStock_(ss, get, evidence) {
   const table = evidence || readCatalogSourceEvidence_(ss), map = table.map;
   const retailer = retailerCode_(get('RETAILER')) || normalizeKey_(get('RETAILER'));
   const id = normalizeKey_(get('PRODUCT ID'));
   const item = catalogSourceIdentity_(get('RETAILER'), get('SOURCE ITEM'));
-  const candidates = table.rows.filter(function(row) {
+  const group = table.previewIndex && table.previewIndex.byRetailer.get(retailer);
+  const candidates = table.previewIndex ? null : table.rows.filter(function(row) {
     return (retailerCode_(row[map.RETAILER]) || normalizeKey_(row[map.RETAILER])) === retailer;
   }).map(function(row) {
     const skuId = currentProductId_(row[map.RETAILER], row[map['RETAIL SKU']]);
@@ -30,11 +59,13 @@ function catalogConfirmedStock_(ss, get, evidence) {
     return { row: row, id: skuId || stored, stored: stored,
       conflict: !!(skuId && stored && !/^(LEG-|LEGACY\|)/.test(stored) && skuId !== stored) };
   });
-  let matches = candidates.filter(function(entry) { return entry.id === id || entry.stored === id; });
+  let matches = table.previewIndex ? (group && group.byId.get(id) || []) :
+    candidates.filter(function(entry) { return entry.id === id || entry.stored === id; });
   if (!matches.length && item) {
-    matches = candidates.filter(function(entry) {
-      return catalogSourceIdentity_(entry.row[map.RETAILER], entry.row[map.ITEM]) === item;
-    });
+    matches = table.previewIndex ? (group && group.byItem.get(item) || []) :
+      candidates.filter(function(entry) {
+        return catalogSourceIdentity_(entry.row[map.RETAILER], entry.row[map.ITEM]) === item;
+      });
     if (new Set(matches.map(function(entry) { return entry.id; })).size !== 1) {
       return { state: 'UNKNOWN', quantity: '', reason: 'Missing or ambiguous source identity' };
     }
@@ -52,7 +83,9 @@ function catalogConfirmedStock_(ss, get, evidence) {
   // A known positive row safely proves stock exists, but incomplete aggregation
   // must not publish a fabricated exact available quantity/material sufficiency.
   if (unreliable) return { state: 'UNKNOWN', quantity: '', reason: 'Unreliable matching balance; no exact total' };
-  if (total === 0 && table.positiveInventory.some(function(entry) { return entry.id === id || entry.item === item; })) {
+  if (total === 0 && (table.previewIndex
+    ? table.previewIndex.positiveIds.has(id) || table.previewIndex.positiveItems.has(item)
+    : table.positiveInventory.some(function(entry) { return entry.id === id || entry.item === item; }))) {
     return { state: 'UNKNOWN', quantity: '', reason: 'Positive inventory contradicts zero source; reconcile before lifecycle' };
   }
   return { state: total > 0 ? 'IN STOCK' : 'CONFIRMED ZERO', quantity: total,
