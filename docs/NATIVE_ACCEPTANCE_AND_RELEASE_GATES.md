@@ -89,11 +89,18 @@ Legitimate backdated purchases require intentional review before merchandising.
    U2:AC2 are permanent-key lookups of Catalog K,G,R,S,T,U,V,W,X respectively:
    e.g. U2 `=MAP(A2:A,LAMBDA(k,IF(k="","",XLOOKUP(k,'Product Catalog'!AA:AA,'Product Catalog'!K:K,""))))`.
    Repeat replacing K with G,R,S,T,U,V,W,X for V:AC. Check no collisions or #REF.
-7. For a later separately approved source hookup, evidence A1 is a bounded,
-   blank-preserving mirror of the full Master Sheet, not Current Inventory:
-   `=LET(data,IMPORTRANGE("APPROVED_SOURCE_WORKBOOK_ID","'Master Sheet'!A1:AB4038"),ARRAYFORMULA(IF(LEN(data)=0,"",data)))`.
-   Confirm full source extent and permission/freshness; adjust the bound before
-   it truncates new rows. Preserve all source rows, including zero and uncertain.
+7. For a later separately approved source hookup, evidence A1 uses the maintained
+   `test/fixtures/source-evidence.formula`, replacing only the approved workbook ID.
+   One open-ended `Master Sheet!A1:Y` import selects ITEM, RETAILER, RETAIL SKU,
+   PRODUCT ID, BUY QUANTITY, BALANCE, BUY DATE (columns 1,25,4,24,6,12,5).
+   Blank-preserving normalization precedes FILTER; only rows whose seven fields
+   are all empty are removed. Zero, blank balances, invalid values and duplicate
+   purchase rows remain intact. No QUERY type inference or numeric coercion.
+   Source/destination row numbers are not identities. Native FILTER spill growth
+   must be tested beyond the destination's physical extent as well as the former
+   source boundary. Keep spill area empty. Confirm permission/freshness and watch
+   native errors/Google's import-size and spreadsheet-cell limits as volume grows;
+   this removes the application row ceiling, not platform resource limits.
    This instruction is NOT permission to install a production formula now.
 
 ## Exact staging Script Properties
