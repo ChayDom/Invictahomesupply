@@ -1,0 +1,1 @@
+=LET(data,IMPORTRANGE("APPROVED_SOURCE_WORKBOOK_ID","'Master Sheet'!A1:Y"),picked,CHOOSECOLS(data,1,25,4,24,6,12,5),clean,ARRAYFORMULA(IF(LEN(picked)=0,"",picked)),FILTER(clean,BYROW(clean,LAMBDA(r,SUM(ARRAYFORMULA(LEN(r)))>0))))
