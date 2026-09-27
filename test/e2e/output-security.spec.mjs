@@ -88,7 +88,7 @@ test.describe("Output security: adversarial Airtable content", () => {
   test("the malicious name renders as literal, visible text — not markup", async ({ page }) => {
     await page.goto("/shop.html");
     const card = page.locator(".product-card").filter({ has: page.locator('[data-availability-id="recXSS001"], [data-quote-id="recXSS001"]') });
-    const heading = card.locator("h4");
+    const heading = card.locator(".product-card-title");
     // No live <script>/<img> child was actually created from the payload.
     await expect(heading.locator("script")).toHaveCount(0);
     await expect(heading.locator("img")).toHaveCount(0);
@@ -130,7 +130,7 @@ test.describe("Output security: adversarial Airtable content", () => {
   test("legitimate Unicode/punctuation-heavy product data still renders correctly, unescaped-looking, on the shop grid", async ({ page }) => {
     await page.goto("/shop.html?cat=Flooring");
     const card = page.locator(".product-card").filter({ hasText: "Legacy Oak" });
-    const text = await card.locator("h4").textContent();
+    const text = await card.locator(".product-card-title").textContent();
     expect(text).toBe(`Legacy Oak & "Rustic" 'Vintage' <Plank> — 8mm café résumé`);
   });
 

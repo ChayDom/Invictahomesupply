@@ -65,6 +65,7 @@
      intro paragraph were pure repetition of what the nav link and page
      <title> already say. This heading is still here for screen readers/
      document outline, just not taking up visible space. -->
+<main id="main-content">
 <h1 class="visually-hidden">Browse our inventory</h1>
 
 <section class="section shop-section" style="padding-top:20px;">
@@ -117,7 +118,7 @@
        separate pill-button row duplicating these for Contractor View
        anymore — one filter UI drives both Card View and Contractor View. -->
   <div class="shop-layout">
-    <aside class="shop-sidebar" id="shop-sidebar">
+    <section class="shop-sidebar" id="shop-sidebar" aria-label="Inventory filters">
       <div class="sidebar-mobile-head">
         <span>Filters</span>
         <button type="button" class="sidebar-close-btn" id="sidebar-close-btn" aria-label="Close filters">&times;</button>
@@ -133,7 +134,7 @@
            short enough not to scroll at all. -->
       <div class="sidebar-scroll">
       <div class="sidebar-calc-card" id="sidebar-calc-card" hidden>
-        <h3>Flooring calculator</h3>
+        <h2>Flooring calculator</h2>
         <div class="flooring-calc-row">
           <input type="number" id="flooring-calc-sqft" min="0" step="any" placeholder="Room sq ft" aria-label="Room square footage, for a quick estimate">
           <button type="button" class="btn btn-dark btn-small" id="flooring-calc-btn">Calculate</button>
@@ -144,7 +145,7 @@
       </div>
 
       <div class="sidebar-filters-head">
-        <h3>Filters</h3>
+        <h2>Filters</h2>
         <button type="button" class="clear-all-btn" id="clear-all-filters-btn">Clear all</button>
       </div>
 
@@ -208,7 +209,7 @@
         <button type="button" class="btn btn-outline" id="sidebar-clear-btn-mobile">Clear all</button>
         <button type="button" class="btn btn-dark" id="sidebar-apply-btn-mobile">Show results</button>
       </div>
-    </aside>
+    </section>
     <div class="shop-sidebar-backdrop" id="shop-sidebar-backdrop" hidden></div>
 
     <div class="shop-results">
@@ -274,6 +275,7 @@
 
       <!-- Removable chips for whichever filters are currently active —
            empty/hidden when none are. -->
+      <h2 class="visually-hidden">Products</h2>
       <div class="active-filter-chips" id="active-filter-chips" hidden></div>
       <div id="flooring-fulfillment-notice" class="flooring-category-notice" hidden>Flooring is currently available for local pickup in McKinney, TX. We do not ship individual flooring orders. Local delivery may be available — contact us for a quote.</div>
 
@@ -556,14 +558,15 @@
   <input type="text" name="bot-field">
 </form>
 
+</main>
 <footer class="site-footer">
   <div class="footer-grid">
     <div>
-      <h4>Invicta Home Supply</h4>
+      <h2>Invicta Home Supply</h2>
       <p>Brand-new flooring and home improvement products at below-retail prices. Local pickup in McKinney, TX and DFW delivery available.</p>
     </div>
     <div>
-      <h4>Inventory</h4>
+      <h2>Inventory</h2>
       <a href="/shop?cat=Flooring">Flooring</a>
       <a href="/shop?cat=Water+Heaters">Water Heaters</a>
       <a href="/shop?cat=Appliances">Appliances</a>
@@ -574,7 +577,7 @@
       <a href="/shop">Browse All Categories</a>
     </div>
     <div>
-      <h4>Company</h4>
+      <h2>Company</h2>
       <a href="about.html">About</a>
       <a href="contact.html">Visit &amp; Pickup</a>
       <a href="contact.html#faq">Frequently Asked</a>
@@ -582,7 +585,7 @@
       <a href="/#inventory-updates">Weekly inventory updates — Subscribe</a>
     </div>
     <div>
-      <h4>Contact</h4>
+      <h2>Contact</h2>
       <a href="tel:" data-tel-link><span data-phone></span></a>
       <a href="mailto:" data-mail-link><span data-email></span></a>
       <a href="#" data-fb-link>Facebook</a>

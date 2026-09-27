@@ -67,7 +67,7 @@ test.describe("Shop page", () => {
   test("5. sort changes the rendered order of results", async ({ page }) => {
     await page.goto("/shop.html?cat=Appliances");
     await page.selectOption("#sort-select", "price-asc");
-    const names = await page.locator(".product-card h4").allTextContents();
+    const names = await page.locator(".product-card-title").allTextContents();
     expect(names[0]).toContain("Gas Range"); // $649, cheaper than the $899 fridge
   });
 

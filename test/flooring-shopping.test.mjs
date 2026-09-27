@@ -63,6 +63,18 @@ test("quote payload carries base area without applying waste twice",()=>{
   assert.equal(fields["retail-sku"],"SKU-22");assert.equal(fields["pickup-location"],"McKinney, TX");
   assert.match(fields.fulfillment,/no individual parcel shipping/);
 });
+test("quote serialization matches display precision without changing calculation precision",()=>{
+  const state={projectSqFt:450,wastePercentage:10};
+  const estimate=context.calcProjectEstimate(450,10,base);
+  const fields=context.quoteProjectFields(base,state);
+  assert.equal(String(fields["recommended-sqft"]),"495");
+  assert.equal(String(fields["recommended-sqft"]),context.calcRound2(estimate.recommended));
+  assert.equal(estimate.recommended,450*1.1);
+  const fractional=context.quoteProjectFields(base,{projectSqFt:146.6666666667,wastePercentage:5});
+  assert.equal(String(fractional["project-sqft"]),"146.67");
+  assert.equal(String(fractional["recommended-sqft"]),"154");
+});
+
 test("unknown quote stock and pack do not carry false shortage",()=>{
   const fields=context.quoteProjectFields({...base,availableSqFt:null,sqFtPerUnit:null},{projectSqFt:100,wastePercentage:5});
   assert.equal(fields["inventory-status"],"Unknown");assert.equal(fields["inventory-shortage-sqft"],"");assert.equal(fields["boxes-needed"],"");

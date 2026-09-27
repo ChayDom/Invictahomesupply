@@ -125,7 +125,7 @@ header.site-header {
   align-items: baseline;
   gap: 0.3em;
 }
-.brand-sub { color: var(--amber); font-style: italic; }
+.brand-sub { color: var(--amber-dark); font-style: italic; }
 
 nav.primary-nav {
   display: flex;
@@ -261,6 +261,10 @@ nav.primary-nav a.active {
   color: var(--charcoal);
 }
 .btn-outline:hover { background: var(--charcoal); color: var(--cream); }
+/* Read-only stock status, not a disabled interactive control. Keep it
+   subdued but readable; active CTA hover/focus states are unchanged. */
+.btn-outline.product-status,
+.btn-outline.product-status:hover { color: #666; background: transparent; border-color: #777; cursor: default; }
 
 .btn-small { padding: 9px 18px; font-size: 0.72rem; }
 
@@ -781,7 +785,7 @@ nav.primary-nav a.active {
   color: var(--amber-dark);
 }
 
-.product-info h4 {
+.product-info .product-card-title {
   font-size: 1rem;
   line-height: 1.6;
   margin: 0;
@@ -801,8 +805,8 @@ nav.primary-nav a.active {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.product-info h4 a { color: inherit; }
-.product-info h4 a:hover { color: var(--amber-dark); }
+.product-info .product-card-title a { color: inherit; }
+.product-info .product-card-title a:hover { color: var(--amber-dark); }
 
 .product-price {
   display: flex;
@@ -907,7 +911,7 @@ nav.primary-nav a.active {
   padding: 14px 16px;
 }
 .sidebar-calc-card[hidden] { display: none; }
-.sidebar-calc-card h3 {
+.sidebar-calc-card h2 {
   font-size: 0.92rem;
   margin: 0 0 10px;
 }
@@ -928,7 +932,7 @@ nav.primary-nav a.active {
   border-top: 1px solid var(--line);
 }
 .sidebar-scroll > .sidebar-calc-card + .sidebar-filters-head { margin-top: 2px; }
-.sidebar-filters-head h3 {
+.sidebar-filters-head h2 {
   font-size: 0.92rem;
   margin: 0;
 }
@@ -1713,6 +1717,7 @@ nav.primary-nav a.active {
   font-family: 'Zilla Slab', serif;
 }
 .step p { color: var(--text-muted); font-size: 0.92rem; }
+#how-it-works .step h3 { font-size: 1rem; }
 /* Open, uncarded icon treatment for About page's "Why Choose Invicta"
    (a simple orange line icon above each title) — distinct from
    .step .num's numbered-circle style the homepage's "How it works"
@@ -1823,7 +1828,7 @@ footer.site-footer {
   max-width: var(--max-width);
   margin: 0 auto 40px;
 }
-.footer-grid h4 {
+.footer-grid h4, .footer-grid h2 {
   color: var(--cream);
   font-size: 0.85rem;
   text-transform: uppercase;
@@ -1917,6 +1922,7 @@ footer.site-footer {
     border-top: 1px solid var(--charcoal-soft);
   }
   .footer-grid h4 { margin-bottom: 10px; }
+  .footer-grid h2 { margin-bottom: 10px; }
   .footer-grid p, .footer-grid a { font-size: 0.82rem; margin-bottom: 6px; }
 }
 
@@ -2024,7 +2030,8 @@ footer.site-footer {
      cut selected options like "Price: High to Low" down to unreadable
      fragments ("Price: Hi..."). A full-width select needs neither. */
   .results-toolbar .sort-control { order: 6; flex: 1 1 100%; margin-left: 0; }
-  .sort-control label { display: none; }
+  /* Visually compact, but retain the real label in the accessibility tree. */
+  .sort-control label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
   .sort-control select { width: 100%; padding: 8px 12px; font-size: 0.8rem; }
 
   .active-filter-chips { margin-bottom: 12px; gap: 6px; }
@@ -2071,10 +2078,10 @@ footer.site-footer {
   .product-grid { grid-template-columns: 1fr; }
   /* .product-grid is a single column here, so there's no sibling card
      in the same row left to align with — the reserved 3-line title
-     height (see .product-info h4) only exists to keep prices/buttons
+     height (see .product-card-title) only exists to keep prices/buttons
      lined up across a row and just wastes space on a short title once
      that row no longer exists. */
-  .product-info h4 { min-height: 0; }
+  .product-info .product-card-title { min-height: 0; }
   /* .brand has flex-shrink:0 (deliberately, so the desktop row never
      crushes the logo below its own content width — see .brand's own
      comment) — on narrow viewports that same protection means the

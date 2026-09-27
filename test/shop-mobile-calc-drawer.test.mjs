@@ -87,7 +87,7 @@ test("desktop (outside the 880px drawer breakpoint) still shows the sidebar quic
 
 test("shop.html: the sidebar quick-calc card (#sidebar-calc-card) and its 'Calculate multiple rooms' link are unchanged, still inside .sidebar-scroll", () => {
   assert.match(shopSrc, /<div class="sidebar-scroll">\s*<div class="sidebar-calc-card" id="sidebar-calc-card" hidden>/);
-  assert.match(shopSrc, /<h3>Flooring calculator<\/h3>/);
+  assert.match(shopSrc, /<h2>Flooring calculator<\/h2>/);
   assert.match(shopSrc, /id="flooring-calc-full-link">Calculate multiple rooms<\/button>/);
 });
 

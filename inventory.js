@@ -891,7 +891,7 @@ function smsHrefForItem(item) {
 // Us link's visibility is breakpoint-dependent, via CSS.
 function actionButtons(item) {
   if (!canInquire(item)) {
-    return `${calculateProjectLink(item)}<span class="btn btn-outline btn-small btn-block" style="opacity:.5; cursor:default;">${escapeHtml(item.statusLabel)}</span>`;
+    return `${calculateProjectLink(item)}<span class="btn btn-outline btn-small btn-block product-status">${escapeHtml(item.statusLabel)}</span>`;
   }
   const textUs = `<a href="${smsHrefForItem(item)}" class="btn btn-outline btn-small btn-block text-us-secondary">Text Us</a>`;
   if (!isQuoteEligibleFlooring(item)) {
@@ -1021,7 +1021,7 @@ function productCard(item) {
     </div>
     <div class="product-info">
       <span class="product-cat">${categoryLabel}</span>
-      <h4><a href="${productDetailHref(item)}">${escapeHtml(item.name)}</a></h4>
+      <h3 class="product-card-title"><a href="${productDetailHref(item)}">${escapeHtml(item.name)}</a></h3>
       ${chips.length ? `<div class="spec-chips">${chips.map(c => `<span class="spec-chip">${escapeHtml(c)}</span>`).join("")}</div>` : ""}
       ${priceBlock(item)}
       ${flooringFulfillmentMarkup(item)}
@@ -1121,7 +1121,7 @@ function canInquire(item) {
 }
 function contractorRowCta(item) {
   if (!canInquire(item)) {
-    return `${calculateProjectLink(item)}<span class="btn btn-outline btn-small" style="opacity:.5; cursor:default;">${escapeHtml(item.statusLabel)}</span>`;
+    return `${calculateProjectLink(item)}<span class="btn btn-outline btn-small product-status">${escapeHtml(item.statusLabel)}</span>`;
   }
   const primary = isQuoteEligibleFlooring(item)
     ? `<button type="button" class="btn btn-dark btn-small" data-quote-id="${escapeAttr(item.id)}">Get a Quote</button>`
@@ -1150,7 +1150,7 @@ function renderContractorTable(items, emptyMessage = CATALOG_MESSAGES.emptyFilte
     return `<tr>
       <td class="contractor-product-cell">
         <div class="contractor-product-layout">
-        <a class="contractor-product-photo" href="${productDetailHref(item)}">${photoImg}</a>
+        <a class="contractor-product-photo" href="${productDetailHref(item)}" aria-label="View details for ${escapeAttr(item.name)}">${photoImg}</a>
         <div>
           <a class="contractor-product-name" href="${productDetailHref(item)}">${escapeHtml(item.name)}</a>
           ${flooringFulfillmentMarkup(item)}
@@ -1187,7 +1187,7 @@ function renderContractorMobileCards(items, emptyMessage = CATALOG_MESSAGES.empt
     const href = productDetailHref(item);
     const photoImg = photo ? `<img src="${escapeAttr(sanitizeImageUrl(photo))}" alt="" loading="lazy" width="64" height="64">` : "";
     return `<div class="contractor-card">
-      <a class="contractor-card-photo" href="${href}">${photoImg}</a>
+      <a class="contractor-card-photo" href="${href}" aria-label="View details for ${escapeAttr(item.name)}">${photoImg}</a>
       <div class="contractor-card-body">
         <a class="contractor-card-name" href="${href}">${escapeHtml(item.name)}</a>
         ${flooringFulfillmentMarkup(item)}
@@ -2144,18 +2144,20 @@ function quoteProjectFields(item, state) {
   const estimate = state ? calcProjectEstimate(state.projectSqFt, state.wastePercentage, item) : null;
   const inventory = calcNumber(item.availableSqFt);
   const policy = fulfillmentForItem(item);
+  // Match displayed precision at the payload boundary only. Raw estimates
+  // retain full precision for whole-case rounding and inventory comparisons.
   return {
     "retail-sku": item.retailSku || "",
-    "project-sqft": estimate?.valid ? estimate.projectSqFt : "",
-    "waste-percent": estimate?.valid ? estimate.wastePercentage : "",
-    "recommended-sqft": estimate?.valid ? estimate.recommended : "",
+    "project-sqft": estimate?.valid ? Number(calcRound2(estimate.projectSqFt)) : "",
+    "waste-percent": estimate?.valid ? Number(calcRound2(estimate.wastePercentage)) : "",
+    "recommended-sqft": estimate?.valid ? Number(calcRound2(estimate.recommended)) : "",
     "boxes-needed": estimate?.cases ?? "",
-    "actual-coverage": estimate?.purchased ?? "",
+    "actual-coverage": estimate?.purchased == null ? "" : Number(calcRound2(estimate.purchased)),
     "estimated-material-cost": estimate?.cost == null ? "" : estimate.cost.toFixed(2),
     "cost-basis": estimate?.cost == null ? "Confirmation required" : estimate.costComputed ? "Estimated from square-foot price" : "Catalog Box Price",
     "available-sqft": inventory !== null && inventory >= 0 ? inventory : "",
     "inventory-status": estimate?.sufficient === true ? "Sufficient" : estimate?.sufficient === false ? "Insufficient" : "Unknown",
-    "inventory-shortage-sqft": estimate?.shortageSqFt ?? "",
+    "inventory-shortage-sqft": estimate?.shortageSqFt == null ? "" : Number(calcRound2(estimate.shortageSqFt)),
     "fulfillment": policy ? "Local Pickup Only; delivery contact for availability; no individual parcel shipping; freight contact for large orders" : "Contact for fulfillment",
     "pickup-location": policy?.pickupLocation || ""
   };
@@ -2433,7 +2435,7 @@ function calcParseFeetInches(feetRaw, inchesRaw) {
 
 // Rounds to at most 2 decimal places for display, trimming trailing zeros
 // (100 -> "100", 138.6 -> "138.6", 434.69 -> "434.69") — never rounds the
-// values used in the underlying math, only what's shown on screen.
+// values used in the underlying math, only display and quote serialization.
 function calcRound2(n) {
   if (!Number.isFinite(n)) return "0";
   if (Math.abs(n) > Number.MAX_VALUE / 100) return n.toString();
@@ -2996,7 +2998,7 @@ function initProductDetail(items) {
             ? (isQuoteEligibleFlooring(item)
                 ? `<a href="#project-calculator" class="btn btn-outline">Back to project estimate</a>`
                 : `<button type="button" class="btn btn-dark" data-availability-id="${escapeAttr(item.id)}">Check Availability</button>`)
-            : `<span class="btn btn-outline" style="opacity:.5; cursor:default;">${escapeHtml(item.statusLabel)}</span>`}
+            : `<span class="btn btn-outline product-status">${escapeHtml(item.statusLabel)}</span>`}
           ${canInquire(item) ? `<a href="${smsHrefForItem(item)}" class="btn btn-outline text-us-secondary">Text Us</a>` : ""}
           <a href="tel:" data-tel-link class="btn btn-outline product-detail-call">Call</a>
           <a href="${backHref}" class="btn btn-outline">Back to inventory</a>
