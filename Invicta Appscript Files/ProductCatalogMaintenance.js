@@ -173,7 +173,7 @@ function applyCatalogMaintenancePlan_(context, includeNew) {
         SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
     // Only value writes skip the workbook-owned spill column.
     const spillColumn = map['AUTO BOX PRICE'];
-    const segments = [[0, spillColumn], [spillColumn + 1, context.catalog.width - spillColumn - 1]];
+    const segments = catalogNonspillSegments_(context.catalog.width, spillColumn);
     segments.forEach(function(segment) {
       if (!segment[1]) return;
       const target = sheet.getRange(start, segment[0] + 1, plan.additions.length, segment[1]);
@@ -190,7 +190,11 @@ function applyNewCatalogValidation_(sheet, start, count, map) {
   ['SELL PRICE ($/SQ FT OR EACH)', 'AUTO BOX PRICE', 'COMPARABLE RETAIL PRICE']
     .forEach(function(header) {
       const column = map[header] + 1;
-      const format = sheet.getRange(formatRow, column).getNumberFormat();
+      const candidates = [sheet.getRange(formatRow, column).getNumberFormat(),
+        sheet.getRange(2, column).getNumberFormat(),
+        sheet.getRange(formatRow, map['AUTO BOX PRICE'] + 1).getNumberFormat(),
+        sheet.getRange(2, map['AUTO BOX PRICE'] + 1).getNumberFormat()];
+      const format = candidates.find(catalogCurrencyFormat_) || '$0.00';
       sheet.getRange(start, column, count, 1).setNumberFormat(format);
     });
   ['SQ FT PER UNIT', 'THICKNESS MM', 'WEAR LAYER MIL'].forEach(function(header) {
@@ -203,6 +207,15 @@ function applyNewCatalogValidation_(sheet, start, count, map) {
     const rule = SpreadsheetApp.newDataValidation().requireValueInList(rules[header], true).setAllowInvalid(false).build();
     sheet.getRange(start, map[header] + 1, count, 1).setDataValidation(rule);
   });
+}
+
+function catalogCurrencyFormat_(format) {
+  return typeof format === 'string' && /[$€£¥]|USD|EUR|GBP/i.test(format) && /[0#]/.test(format);
+}
+
+// Zero-based offset / positive width pairs shared by append and cleanup.
+function catalogNonspillSegments_(width, spill) {
+  return [[0, spill], [spill + 1, width - spill - 1]].filter(function(segment) { return segment[1] > 0; });
 }
 
 // Public handlers retained for existing menus/triggers. One lock and one planner.

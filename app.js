@@ -19,7 +19,7 @@
   const hostname = window.location && window.location.hostname
     ? window.location.hostname
     : "";
-  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0") {
+  if (window.__INVICTA_STAGING__ || hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0") {
     return;
   }
 

@@ -23,6 +23,9 @@ function readCatalogArchive_(ss) {
     if (!key && row.some(function(v) { return v !== '' && v != null; })) throw new Error('Archive row missing permanent Product Key.');
     if (key && ['ARCHIVED', 'AIRTABLE REMOVED', 'COMPLETE', 'CANCELLED'].indexOf(row[table.map['CLEANUP STATE']]) < 0) throw new Error('Invalid archive cleanup state: ' + key);
     if (key && keys.has(key)) throw new Error('Duplicate archive Product Key: ' + key);
+    if (key && row[table.map['SNAPSHOT HASH']] !== catalogArchiveHash_(row, table.map)) {
+      throw new Error('Archive Snapshot Hash mismatch: ' + key + '. Restore from a verified backup; never silently rehash history.');
+    }
     if (key) keys.add(key);
   });
   return { sheet: sheet, rows: table.rows, map: table.map };
@@ -75,6 +78,10 @@ function catalogSourcesForLifecycle_(sources, catalog, archive) {
     }
     if (matches.some(function(row) { return row[archive.map['CLEANUP STATE']] !== 'COMPLETE'; })) return [];
     if (!(typeof source.quantityAvailable === 'number' && Number.isFinite(source.quantityAvailable) && source.quantityAvailable > 0)) return [];
+    if (!catalogSourceHasLaterPurchase_(SpreadsheetApp.getActiveSpreadsheet(), source, matches, archive.map)) {
+      console.warn('Archived SKU positive without confident later purchase; manual review: ' + source.productId);
+      return [];
+    }
     let key;
     do { key = 'ACQ-' + Utilities.getUuid().toUpperCase(); } while (used.has(normalizeKey_(key)));
     used.add(normalizeKey_(key));
@@ -100,13 +107,12 @@ function runSoldOutCatalogCleanup(options) {
 function cleanupSoldOutCatalogLocked_(opts) {
   if (opts.apply && !catalogCleanupEnabled_()) throw new Error('Catalog lifecycle cleanup is disabled.');
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  iwaApprovedConfiguration_();
   const catalogSheet = getInventorySheetOrThrow_(ss, INVENTORY_CONFIG.PRODUCT_CATALOG_SHEET);
   getCatalogColumns_(catalogSheet);
   let catalog = readSheetTable_(catalogSheet, 'PRODUCT KEY');
   if (catalogIdentityFindings_(catalog.rows, catalog.map).length) throw new Error('Unsafe catalog identities; cleanup aborted.');
-  const inventorySheet = getInventorySheetOrThrow_(ss, INVENTORY_CONFIG.PRODUCT_INVENTORY_SHEET);
-  const inventory = readSheetTable_(inventorySheet, 'PRODUCT ID');
-  requireHeaders_(inventory.map, ['QUANTITY AVAILABLE'], 'Product Inventory cleanup');
+  readCatalogSourceEvidence_(ss);
   const token = PropertiesService.getScriptProperties().getProperty(IWA_SYNC_HARDENED.TOKEN_PROPERTY);
   if (!token) throw new Error('Missing Airtable token.');
   let records = iwaFetchAll_(token), archive = readCatalogArchive_(ss);
@@ -134,15 +140,10 @@ function cleanupSoldOutCatalogLocked_(opts) {
       const snapshot = catalog.rows.find(function(row) { return normalizeKey_(row[cm['PRODUCT KEY']]) === key; });
       const get = function(h) { return snapshot ? snapshot[cm[h]] : archivedRow[archive.map[h]]; };
       if (state === 'COMPLETE') return;
-      const sourceRows = inventory.rows.filter(function(row) {
-        const sourceId = currentProductId_(row[inventory.map['RETAILER']], row[inventory.map['RETAIL SKU']]) || normalizeKey_(row[inventory.map['PRODUCT ID']]);
-        return sourceId === normalizeKey_(get('PRODUCT ID')) ||
-          normalizeKey_(row[inventory.map['PRODUCT KEY']]) === key;
-      });
-      const quantity = sourceRows.length === 1 ? sourceRows[0][inventory.map['QUANTITY AVAILABLE']] : undefined;
+      const quantity = catalogConfirmedStock_(ss, get).quantity;
       const record = records.find(function(r) { return normalizeKey_(r.fields['Product Key']) === key; });
       const f = record ? record.fields : {};
-      const savedSince = archivedRow ? archivedRow[archive.map['SOLD OUT SINCE']] : undefined;
+      const savedSince = archivedRow ? catalogArchiveValue_(archivedRow[archive.map['SOLD OUT SINCE']]) : undefined;
       const sinceValue = record ? f['Sold Out Since'] : savedSince;
       const since = typeof sinceValue === 'string' ? Date.parse(sinceValue) : NaN;
       if (state !== 'AIRTABLE REMOVED') {
@@ -175,11 +176,7 @@ function cleanupSoldOutCatalogLocked_(opts) {
       if (state !== 'AIRTABLE REMOVED') {
         // Re-read immediately before deletion to catch restock/uncertainty in a
         // source sheet that can recalculate independently of ScriptLock.
-        const fresh = readSheetTable_(inventorySheet, 'PRODUCT ID');
-        const freshRow = fresh.rows.filter(function(row) {
-          return (currentProductId_(row[fresh.map['RETAILER']], row[fresh.map['RETAIL SKU']]) || normalizeKey_(row[fresh.map['PRODUCT ID']])) === normalizeKey_(get('PRODUCT ID'));
-        });
-        if (freshRow.length !== 1 || freshRow[0][fresh.map['QUANTITY AVAILABLE']] !== 0) throw new Error('Inventory changed before cleanup; retained for retry.');
+        if (catalogConfirmedStock_(ss, get).quantity !== 0) throw new Error('Inventory changed before cleanup; retained for retry.');
         const current = iwaFetchAll_(token).filter(function(r) { return normalizeKey_(r.fields['Product Key']) === key; });
         if (current.length > 1) throw new Error('Duplicate Airtable cleanup identity.');
         if (current.length) {
@@ -202,8 +199,9 @@ function cleanupSoldOutCatalogLocked_(opts) {
       if (matches.length > 1) throw new Error('Duplicate active key before catalog removal.');
       if (matches.length) {
         const spill = catalog.map['AUTO BOX PRICE'];
-        catalogSheet.getRange(matches[0].number, 1, 1, spill).clearContent();
-        catalogSheet.getRange(matches[0].number, spill + 2, 1, catalog.width - spill - 1).clearContent();
+        catalogNonspillSegments_(catalog.width, spill).forEach(function(segment) {
+          catalogSheet.getRange(matches[0].number, segment[0] + 1, 1, segment[1]).clearContent();
+        });
       }
       SpreadsheetApp.flush();
       const remaining = readSheetTable_(catalogSheet, 'PRODUCT KEY');
@@ -233,7 +231,7 @@ function writeCatalogArchive_(ss, archive, values, replaceKey) {
   archive.sheet.getRange(row, 1, 1, ordered.length).setValues([ordered]);
   SpreadsheetApp.flush();
   const stored = archive.sheet.getRange(row, 1, 1, ordered.length).getValues()[0];
-  if (ordered.some(function(v, i) { return String(v) !== String(stored[i]); })) throw new Error('Archive write readback mismatch.');
+  if (ordered.some(function(v, i) { return String(catalogArchiveValue_(v)) !== String(catalogArchiveValue_(stored[i])); })) throw new Error('Archive write readback mismatch.');
   return readCatalogArchive_(ss);
 }
 
@@ -251,9 +249,17 @@ function verifyCatalogArchive_(archive, key) {
 function catalogArchiveHash_(row, map) {
   const payload = CATALOG_ARCHIVE_HEADERS_.filter(function(h) {
     return ['REMOVED AT', 'CLEANUP STATE', 'SNAPSHOT HASH'].indexOf(h) < 0;
-  }).map(function(h) { return row[map[h]]; });
+  }).map(function(h) {
+    const value = row[map[h]];
+    // Native Sheets may return dates as Date objects; hash the same UTC ISO value.
+    return catalogArchiveValue_(value);
+  });
   return Utilities.base64EncodeWebSafe(Utilities.computeDigest(
     Utilities.DigestAlgorithm.SHA_256, JSON.stringify(payload), Utilities.Charset.UTF_8));
+}
+
+function catalogArchiveValue_(value) {
+  return value instanceof Date ? value.toISOString() : value;
 }
 
 function setCatalogArchiveState_(archive, key, state, removedAt) {

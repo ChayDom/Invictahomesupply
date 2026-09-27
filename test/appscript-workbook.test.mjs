@@ -106,7 +106,7 @@ function runtime(catalogRows = [], invRows = [], headers = catalogHeaders) {
   const ctx = vm.createContext({
     console: {log(){},warn(){},error(){}},
     SpreadsheetApp: {
-      getActiveSpreadsheet: () => ({getSheetByName:name=>sheets[name]}),
+      getActiveSpreadsheet: () => ({getId:()=> 'isolated-test-workbook',getSheetByName:name=>sheets[name]}),
       flush(){}, CopyPasteType:{PASTE_FORMAT:'format'},
       newDataValidation: () => ({
         requireValueInList(values){this.values=values;return this;},
@@ -115,7 +115,7 @@ function runtime(catalogRows = [], invRows = [], headers = catalogHeaders) {
       })
     },
     LockService:{getScriptLock:()=>lock},
-    PropertiesService:{getScriptProperties:()=>({getProperty:()=> 'mock-token'})},
+    PropertiesService:{getScriptProperties:()=>({getProperty:n=> ({GEMINI_API_KEY:'mock-token',AIRTABLE_TOKEN:'mock-token',AIRTABLE_BASE_ID:'appLzUBCXBMzrgVx1',AIRTABLE_ENVIRONMENT:'staging',AIRTABLE_WORKBOOK_ID:'isolated-test-workbook'})[n] || null})},
     Utilities: {
       sleep(){},formatDate:()=> '2026-09-26',
       DigestAlgorithm:{SHA_256:'sha256'},Charset:{UTF_8:'utf8'},
@@ -125,10 +125,13 @@ function runtime(catalogRows = [], invRows = [], headers = catalogHeaders) {
     UrlFetchApp:{fetch(){throw new Error('Live requests forbidden in tests');}},
     ScriptApp:{getProjectTriggers(){throw new Error('Triggers forbidden in tests');}}
   });
-  for(const name of ['Config','ProductCatalogLifecycle','ProductCatalogMaintenance','LegacyRepair','AdminTools',
+  for(const name of ['Config','CatalogSourceConfirmation','ProductCatalogLifecycle','ProductCatalogMaintenance','LegacyRepair','AdminTools',
     'CatalogEnrichment','EnrichmentAdmin','WebsiteAirtableSync','BufferSocialSync']) {
     vm.runInContext(fs.readFileSync(path.join(scripts,name+'.js'),'utf8'),ctx,{filename:name+'.js'});
   }
+  // Direct Export mapping unit tests isolate refresh; real source/view integration
+  // is covered without this stub by the lifecycle/remediation suites.
+  ctx.refreshCatalogLifecycleInventory_=()=>{};
   return {ctx,catalog,inventory,sheets};
 }
 const sourceFields = {
@@ -564,6 +567,32 @@ test('Social Queue sync uses current export and preserves approvals, media, Buff
   ctx.syncSocialQueueFromCatalog();
   assert.equal(value(queue,'SOCIAL STATUS'),'Needs Copy');
   assert.equal(value(queue,'FACEBOOK CAPTION'),'Human caption');
+});
+for(const headers of [catalogHeaders,catalogHeaders.slice().reverse()]) {
+  for(const capacity of [2,50]) test('bad J General/L Text inherits K currency; physical capacity '+capacity+' reordered '+(headers!==catalogHeaders),()=>{
+    const {ctx,catalog}=runtime([row(headers,legacyFields({'SOURCE ITEM':'Template product'}))],[sourceRow()],headers);
+    catalog.maxRows=capacity;
+    catalog.getRange(2,headers.indexOf('SELL PRICE ($/SQ FT OR EACH)')+1).setNumberFormat('General');
+    catalog.getRange(2,headers.indexOf('COMPARABLE RETAIL PRICE')+1).setNumberFormat('@');
+    catalog.getRange(2,headers.indexOf('AUTO BOX PRICE')+1).setNumberFormat('$0.000');
+    const formula=catalog.formula;ctx.runProductCatalogMaintenance();
+    for(const h of ['SELL PRICE ($/SQ FT OR EACH)','AUTO BOX PRICE','COMPARABLE RETAIL PRICE']) assert.equal(catalog.getRange(3,headers.indexOf(h)+1).getNumberFormat(),'$0.000');
+    assert.equal(catalog.formula,formula);
+  });
+}
+test('row-2 currency fallback survives inconsistent previous product template',()=>{
+  const {ctx,catalog}=runtime([row(catalogHeaders,legacyFields({'SOURCE ITEM':'One'})),row(catalogHeaders,legacyFields({'PRODUCT KEY':'LEG-HD-2','PRODUCT ID':'LEG-HD-2','SOURCE ITEM':'Two'}))],[sourceRow()]);
+  for(const c of [10,11,12])catalog.getRange(3,c).setNumberFormat(c===12?'@':'General');
+  ctx.runProductCatalogMaintenance();for(const c of [10,11,12])assert.equal(catalog.getRange(4,c).getNumberFormat(),'$#,##0.00');
+});
+test('queue re-reads under shared lock and never overwrites PROCESSING',()=>{
+  const {ctx,catalog}=runtime([row(catalogHeaders,legacyFields({'PRODUCT KEY':'HD-1001234567','SOURCE ITEM':'Synthetic','ENRICHMENT STATUS':'PENDING'}))]);
+  const events=[];ctx.LockService.getScriptLock=()=>({waitLock(){events.push('lock');catalog.data[1][24]='PROCESSING';},releaseLock(){events.push('release');}});
+  assert.equal(ctx.queueMissingCatalogEnrichment(),0);assert.equal(value(catalog,'ENRICHMENT STATUS'),'PROCESSING');assert.deepEqual(events,['lock','release']);
+});
+test('queue releases lock on schema error',()=>{
+  const {ctx,catalog}=runtime();let released=false;ctx.LockService.getScriptLock=()=>({waitLock(){},releaseLock(){released=true;}});
+  catalog.data[0][0]='BROKEN';assert.throws(()=>ctx.queueMissingCatalogEnrichment());assert.equal(released,true);
 });
 if(failed) { console.error(failed+' test(s) failed.'); process.exit(1); }
 console.log('All Apps Script workbook tests passed.');

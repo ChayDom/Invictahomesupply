@@ -30,11 +30,12 @@ export class Sheet {
   insertRowsAfter(_,n){this.maxRows+=n;}
   getDataRange(){return this.getRange(1,1,this.data.length,this.getLastColumn());}
   getRange(r,c,n=1,m=1) {
+    assert.ok([r,c,n,m].every(v=>Number.isInteger(v)&&v>0),'positive dimensions');
     assert.ok(r+n-1<=this.maxRows);
     const sheet=this;
     const read=()=>Array.from({length:n},(_,i)=>Array.from({length:m},(_,j)=>sheet.data[r+i-1]?.[c+j-1]??''));
     const write=(values,method)=>{
-      assert.ok(['Product Catalog','Product Catalog Archive','Social Queue'].includes(sheet.name),'history sheets are read-only');
+      assert.ok(['Product Catalog','Product Catalog Archive','Social Queue','Lifecycle Inventory'].includes(sheet.name),'history sheets are read-only');
       if(sheet.name==='Product Catalog') {
         const spill=sheet.data[0].indexOf('AUTO BOX PRICE')+1;
         assert.ok(c>spill||c+m-1<spill,'never write/clear K');
@@ -71,15 +72,19 @@ export function createRuntime({now=Date.parse('2026-09-26T12:00:00Z'),key='STAGE
   const catalog=new Sheet('Product Catalog',catalogHeaders,[row(catalogHeaders,fields)]);
   const inventory=new Sheet('Product Inventory',inventoryHeaders,[row(inventoryHeaders,source)]);
   const sheets={'Product Catalog':catalog,'Product Inventory':inventory,
+    'Inventory Source Evidence':new Sheet('Inventory Source Evidence',
+      ['ITEM','RETAILER','RETAIL SKU','PRODUCT ID','BUY QUANTITY','BALANCE','BUY DATE'],
+      [[source.ITEM,source.RETAILER,source['RETAIL SKU'],source['PRODUCT ID'],20,quantity,'2026-09-01T00:00:00Z']]),
     'Website Export':new Sheet('Website Export',exportHeaders),
     'Current Inventory':new Sheet('Current Inventory',['Batch ID','Purchased','Sold'],[['history',20,20]]),
     'Product Catalog Backup 2026-09-26':new Sheet('Product Catalog Backup 2026-09-26',['History'],[['untouched']])};
-  const properties={AIRTABLE_TOKEN:'test-only',AIRTABLE_BASE_ID:'staging-only',CATALOG_LIFECYCLE_CLEANUP_ENABLED:'true'};
+  const properties={AIRTABLE_TOKEN:'test-only',AIRTABLE_BASE_ID:'appLzUBCXBMzrgVx1',
+    AIRTABLE_ENVIRONMENT:'staging',AIRTABLE_WORKBOOK_ID:'isolated-test-workbook',CATALOG_LIFECYCLE_CLEANUP_ENABLED:'true'};
   const events=[];let clock=now,uuid=0,records=remote?[{id:'rec-synthetic',createdTime:new Date(now).toISOString(),fields:{
     'Product Key':key,'Quantity Available':quantity,'Available Sq Ft':stock??(typeof quantity==='number'?quantity*20:null),
     Status:'Sold Out','Sold Out Since':since===undefined?new Date(now-864000000).toISOString():since,'Post to Website':true}}]:[];
   class Clock extends Date {constructor(...args){super(...(args.length?args:[clock]));} static now(){return clock;}}
-  const ss={getSheetByName:n=>sheets[n],insertSheet:n=>sheets[n]=new Sheet(n)};
+  const ss={getId:()=> 'isolated-test-workbook',getSheetByName:n=>sheets[n],insertSheet:n=>sheets[n]=new Sheet(n)};
   const ctx=vm.createContext({Date:Clock,console:{log(){},warn(){},error(){}},
     SpreadsheetApp:{getActiveSpreadsheet:()=>ss,flush(){},CopyPasteType:{PASTE_FORMAT:'format'},
       newDataValidation:()=>({requireValueInList(){return this;},setAllowInvalid(){return this;},build(){return {};}})},
@@ -90,7 +95,7 @@ export function createRuntime({now=Date.parse('2026-09-26T12:00:00Z'),key='STAGE
       computeDigest:(_,s)=>Array.from(crypto.createHash('sha256').update(s).digest()),
       base64EncodeWebSafe:b=>Buffer.from(b).toString('base64url')},
     UrlFetchApp:{fetch(){throw Error('Live requests forbidden');}},ScriptApp:{getProjectTriggers(){throw Error('Triggers forbidden');}}});
-  for(const name of ['Config','ProductCatalogLifecycle','ProductCatalogMaintenance','LegacyRepair','AdminTools',
+  for(const name of ['Config','CatalogSourceConfirmation','ProductCatalogLifecycle','ProductCatalogMaintenance','LegacyRepair','AdminTools',
     'CatalogEnrichment','EnrichmentAdmin','WebsiteAirtableSync','BufferSocialSync']) {
     vm.runInContext(fs.readFileSync(new URL('../../Invicta Appscript Files/'+name+'.js',import.meta.url),'utf8'),ctx,{filename:name+'.js'});
   }
@@ -113,13 +118,13 @@ export function createRuntime({now=Date.parse('2026-09-26T12:00:00Z'),key='STAGE
     });return {records:result};
   };
   function refreshExport() {
-    // Formula contract model: active Product ID join, no qty>0 filter, current
-    // permanent key + pack coverage. This does NOT execute the Sheets engine.
+    // Formula contract model: catalog permanent-key join to source confirmation.
+    // This does NOT execute the native Sheets engine.
     const cm=ctx.buildHeaderMap_(catalog.data[0]),im=ctx.buildHeaderMap_(inventory.data[0]);
-    sheets['Website Export'].data=[exportHeaders, ...inventory.data.slice(1).flatMap(i=>{
-      const c=catalog.data.slice(1).find(c=>c[cm['PRODUCT KEY']]&&c[cm['PRODUCT ID']]===i[im['PRODUCT KEY']]);
-      if(!c)return [];
-      const g=h=>c[cm[h]],q=i[im['QUANTITY AVAILABLE']],pack=g('SQ FT PER UNIT');
+    ctx.refreshCatalogLifecycleInventory_(ss);
+    sheets['Website Export'].data=[exportHeaders, ...catalog.data.slice(1).flatMap(c=>{
+      if(!c[cm['PRODUCT KEY']])return [];
+      const g=h=>c[cm[h]],q=ctx.catalogConfirmedStock_(ss,g).quantity,pack=g('SQ FT PER UNIT');
       return [row(exportHeaders,{'PRODUCT KEY':g('PRODUCT KEY'),'DISPLAY NAME':g('DISPLAY NAME'),CATEGORY:g('WEBSITE CATEGORY'),
         'RETAIL SKU':g('RETAIL SKU'),RETAILER:g('RETAILER'),'QUANTITY AVAILABLE':q,'SQ FT PER UNIT':pack,
         'UNIT TYPE':g('UNIT TYPE'),'AVAILABLE SQ FT':typeof q==='number'&&q>=0&&typeof pack==='number'&&pack>0?q*pack:'',
@@ -128,7 +133,12 @@ export function createRuntime({now=Date.parse('2026-09-26T12:00:00Z'),key='STAGE
         'IN STOCK':q>0,DESCRIPTION:g('DESCRIPTION'),'ENRICHMENT STATUS':g('ENRICHMENT STATUS'),SUBCATEGORY:g('WEB SUBCATEGORY')})];
     })];
   }
-  const setQuantity=q=>{inventory.data[1][inventoryHeaders.indexOf('QUANTITY AVAILABLE')]=q;refreshExport();};
+  const setQuantity=q=>{
+    inventory.data[1][inventoryHeaders.indexOf('QUANTITY AVAILABLE')]=q;
+    sheets['Inventory Source Evidence'].data[1][5]=q;
+    if(q>0 && !catalog.data.slice(1).some(c=>c[26])) sheets['Inventory Source Evidence'].data[1][6]=new Date(clock+1).toISOString();
+    refreshExport();
+  };
   refreshExport();
   return {ctx,ss,sheets,catalog,inventory,properties,events,refreshExport,setQuantity,
     useRealNetwork:()=>{ctx.iwaRequest_=realRequest;ctx.iwaFetchAll_=realFetch;},

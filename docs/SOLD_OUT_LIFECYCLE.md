@@ -74,11 +74,17 @@ Archive is not an enrichment input. Retired keys cannot enter Social Queue or
 publish via a stale export. Sync cannot recreate a deleted pending/complete key;
 existing pending records can still report restock or uncertainty.
 
+The source-confirmation remediation replaces the original Export selection;
+see `NATIVE_ACCEPTANCE_AND_RELEASE_GATES.md`. Export now selects active
+Catalog permanent keys and takes quantity from Lifecycle Inventory, populated
+from full source evidence. No positive accounting view is widened. Cleanup uses
+the same source helper. Missing or inconsistent source evidence is unknown.
+
 The old Export qty>0 filter must go, but merely removing it is unsafe: its
 missing-catalog fallback exposes historical source keys. The prepared
 `test/fixtures/website-export-lifecycle.formula` includes zero/unknown ONLY with
-an active Catalog Product ID and nonblank permanent key. No fallback identity.
-MAP gives an explicit row-wise active mask. Quantity blanks are preserved;
+a nonblank active Catalog permanent key. No fallback identity.
+Quantity blanks are preserved;
 Available Sq Ft uses current quantity/current catalog pack size. U2:AC2's nine
 existing permanent-key lookups remain unchanged. This avoids Product Inventory
 J's old key lookup losing coverage with a new ACQ key; accounting formulas remain
@@ -93,8 +99,9 @@ the VM workbook model is not the Sheets engine.
 `runSoldOutCatalogCleanup()` previews only. Applying requires explicit Script
 Property CATALOG_LIFECYCLE_CLEANUP_ENABLED=true and `{apply:true}`. Optional
 `productKeys` scopes the run. Existing catalog maintenance invokes cleanup under
-its lock only when enabled. No new trigger is installed. AIRTABLE_BASE_ID supports
-the isolated test base; the original production fallback is unchanged. Add Sold
+its lock only when enabled. No new trigger is installed. AIRTABLE_BASE_ID,
+AIRTABLE_ENVIRONMENT and AIRTABLE_WORKBOOK_ID must explicitly match an approved
+environment and actual workbook; there is no production fallback. Add Sold
 Out Since datetime to production before any separately approved release.
 
 Live acceptance executes actual Apps Script in a VM, with durable isolated local

@@ -75,7 +75,7 @@ test('crash after catalog clearing resumes journal-only completion',()=>{
 test('corrupted archive blocks retry deletion',()=>{
   const t=createRuntime(),request=t.ctx.iwaRequest_;t.ctx.iwaRequest_=()=>{throw Error('stop');};t.cleanup();
   changeArchive(t,'DISPLAY NAME','tampered');t.ctx.iwaRequest_=request;
-  assert.equal(t.cleanup().failures.length,1);assert.equal(active(t).length,1);assert.equal(t.records.length,1);
+  assert.throws(()=>t.cleanup(),/Snapshot Hash/);assert.equal(active(t).length,1);assert.equal(t.records.length,1);
 });
 test('duplicate cleanup and maintenance are idempotent and do not resurrect history',()=>{
   const t=createRuntime();t.cleanup();const before=JSON.stringify(archive(t).rows);
@@ -131,12 +131,12 @@ test('non-flooring zero gets same retention and controlled cleanup',()=>{
 test('Website Export formula preserves unknown/zero, requires active ID/key, derives acquisition pack coverage',()=>{
   const formula=fs.readFileSync(new URL('./fixtures/website-export-lifecycle.formula',import.meta.url),'utf8');
   assert.doesNotMatch(formula,/'Product Inventory'!I2:I>0/);
-  assert.match(formula,/MAP\('Product Inventory'!A2:A,LAMBDA\(k,COUNTIFS/);
-  assert.match(formula,/'Product Catalog'!AA2:AA,"<>"/);
-  assert.match(formula,/ARRAYFORMULA\(IF\(ISNUMBER\('Product Inventory'!I:I\)/);
-  assert.match(formula,/availSqft,MAP\(qty,sqftUnit/);
+  assert.match(formula,/keys,FILTER\('Product Catalog'!AA2:AA/);
+  assert.match(formula,/'Product Catalog'!AA2:AA<>""/);
+  assert.match(formula,/ARRAYFORMULA\(IF\(ISNUMBER\('Lifecycle Inventory'!C:C\)/);
+  assert.match(formula,/avail,MAP\(qty,pack/);
   assert.doesNotMatch(formula,/'Product Inventory'!J:J/);
-  assert.match(formula,/permanentKey,MAP\(keys,LAMBDA\(k,XLOOKUP\(k,'Product Catalog'!AB:AB,'Product Catalog'!AA:AA,""\)\)\)/);
+  assert.match(formula,/XLOOKUP\(k,'Product Catalog'!AA:AA,column/);
   const t=createRuntime();assert.equal(t.sheets['Website Export'].data.length,2);
   t.setQuantity('');assert.equal(t.sheets['Website Export'].data.length,2);
   assert.equal(t.sheets['Website Export'].data[1][exportHeaders.indexOf('AVAILABLE SQ FT')],'');

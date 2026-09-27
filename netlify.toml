@@ -1,4 +1,6 @@
 [build]
+  command = "node scripts/build-public.mjs"
+  publish = "dist-public"
   functions = "netlify/functions"
 
 # Bumped to trigger a branch-deploy build now that "Branch deploys" was

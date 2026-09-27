@@ -50,6 +50,7 @@ check('A positive inventory/new publication',()=>{const p=sync();id=p.id;report.
 check('L active SKU correction retains key and Airtable ID',()=>{
   const im=t.ctx.buildHeaderMap_(t.inventory.data[0]);t.inventory.data[1][im['RETAIL SKU']]='1012206811';
   t.inventory.data[1][im['PRODUCT ID']]='HD-1012206811';t.inventory.data[1][im['PRODUCT KEY']]='HD-1012206811';
+  t.sheets['Inventory Source Evidence'].data[1][2]='1012206811';t.sheets['Inventory Source Evidence'].data[1][3]='HD-1012206811';
   assert.equal(t.ctx.runProductCatalogMaintenance().added,0);assert.equal(sync().id,id);
   assert.equal(t.catalog.data[1][catalogHeaders.indexOf('PRODUCT KEY')],key);
 });

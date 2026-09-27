@@ -22,7 +22,6 @@
  */
 
 const IWA_SYNC_HARDENED = {
-  BASE_ID: 'apptugvm4r5tm2OIt',
   TABLE_NAME: 'Website Products',
   EXPORT_SHEET: 'Website Export',
   TOKEN_PROPERTY: 'AIRTABLE_TOKEN',
@@ -136,6 +135,7 @@ function syncWebsiteExportToAirtable(options) {
 function syncWebsiteExportToAirtableLocked_(
   opts
 ) {
+  iwaApprovedConfiguration_();
   /*
    * Reset per-run Airtable API counter.
    *
@@ -162,6 +162,8 @@ function syncWebsiteExportToAirtableLocked_(
 
   const spreadsheet =
     SpreadsheetApp.getActiveSpreadsheet();
+
+  const observations = refreshCatalogLifecycleInventory_(spreadsheet);
 
   const retiredKeys = archivedCatalogKeys_(spreadsheet);
   const removedKeys = archivedCatalogKeys_(spreadsheet, true);
@@ -210,6 +212,19 @@ function syncWebsiteExportToAirtableLocked_(
    * Build header map.
    */
   const H = buildHeaderMap_(values[0]);
+  // Do not rely on asynchronous native formula recalculation for destructive
+  // lifecycle status. This is the same observation helper feeding Export.
+  if (observations) {
+    const stockByKey = new Map(observations.map(function(row) { return [normalizeKey_(row[0]), row[2]]; }));
+    values.slice(1).forEach(function(row) {
+      const quantity = stockByKey.get(normalizeKey_(row[H['PRODUCT KEY']]));
+      if (quantity === undefined) return; // Archived/stale Export is handled by retired-key exclusion.
+      const pack = row[H['SQ FT PER UNIT']];
+      row[H['QUANTITY AVAILABLE']] = quantity;
+      row[H['AVAILABLE SQ FT']] = typeof quantity === 'number' && typeof pack === 'number' && pack > 0 ? quantity * pack : '';
+      row[H['IN STOCK']] = typeof quantity === 'number' && quantity > 0;
+    });
+  }
 
   /*
    * Required Website Export contract.
@@ -1281,10 +1296,11 @@ function iwaRequest_(
   suffix,
   payload
 ) {
+  const approved = iwaApprovedConfiguration_();
   const url =
     'https://api.airtable.com/v0/' +
     encodeURIComponent(
-      PropertiesService.getScriptProperties().getProperty('AIRTABLE_BASE_ID') || IWA_SYNC_HARDENED.BASE_ID
+      approved.base
     ) +
     '/' +
     encodeURIComponent(
@@ -1439,6 +1455,22 @@ function iwaRequest_(
     ': ' +
     lastBody
   );
+}
+
+// No implicit production target, including reads. Validate again at transport
+// so every write/delete shares the same fail-closed boundary.
+function iwaApprovedConfiguration_() {
+  const properties = PropertiesService.getScriptProperties();
+  const base = properties.getProperty('AIRTABLE_BASE_ID');
+  const environment = properties.getProperty('AIRTABLE_ENVIRONMENT');
+  const workbook = properties.getProperty('AIRTABLE_WORKBOOK_ID');
+  const actual = SpreadsheetApp.getActiveSpreadsheet().getId();
+  const productionWorkbook = '1mB0F1zDjy0BoJvEKU81Z-WnGlkSJOPM6cwNUR3a7Oj4';
+  const valid = workbook && workbook === actual && (
+    environment === 'staging' && base === 'appLzUBCXBMzrgVx1' && actual !== productionWorkbook ||
+    environment === 'production' && base === 'apptugvm4r5tm2OIt' && actual === productionWorkbook);
+  if (!valid) throw new Error('Explicit approved AIRTABLE_BASE_ID/environment/workbook configuration required.');
+  return { base: base, environment: environment, workbook: workbook };
 }
 
 

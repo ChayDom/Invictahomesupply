@@ -60,6 +60,9 @@ function auditCatalogEnrichment() {
 }
 
 function queueMissingCatalogEnrichment() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = getInventorySheetOrThrow_(
     spreadsheet,
@@ -72,11 +75,15 @@ function queueMissingCatalogEnrichment() {
   const rows = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn())
     .getValues();
   let queued = 0;
+  const retired = archivedCatalogKeys_(spreadsheet);
 
   rows.forEach(function(values, index) {
     // Intentional bulk requeue, not a legacy/excluded-status override. Share the
     // nightly eligibility gate so this helper cannot accidentally broaden it.
-    if (!isCatalogRowEligibleForEnrichment_(values, columns)) return;
+    const current = sheet.getRange(index + 2, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const key = normalizeKey_(current[columns.PRODUCT_KEY - 1]);
+    if (!key || key !== normalizeKey_(values[columns.PRODUCT_KEY - 1]) || retired.has(key) ||
+        !isCatalogRowEligibleForEnrichment_(current, columns)) return;
 
     sheet.getRange(index + 2, columns.ENRICHMENT_STATUS)
       .setValue('PENDING');
@@ -84,6 +91,7 @@ function queueMissingCatalogEnrichment() {
   });
 
   return queued;
+  } finally { lock.releaseLock(); }
 }
 
 function setupCatalogEnrichmentTrigger() {

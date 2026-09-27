@@ -8,6 +8,8 @@
   },
   "type": "module",
   "scripts": {
+    "build": "node scripts/build-public.mjs",
+    "deploy:staging": "node scripts/deploy-staging.mjs",
     "test:unit": "node test/run-unit-tests.mjs",
     "test:e2e": "playwright test --project=chromium",
     "test:e2e:firefox": "playwright test --project=firefox",

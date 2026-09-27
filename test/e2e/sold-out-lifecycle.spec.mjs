@@ -9,7 +9,9 @@ function fixture(){return {records:[
  {id:'rec-tool',fields:{'Product Key':'STAGE-TOOL',Name:'TEST Drill',Category:'Tools','Quantity Available':0,Status:'Reserved','Sold Out Since':since}}
 ]};}
 for(const width of [390,1440])for(const [delta,count] of [[-1,3],[0,2],[1,2]])test(`browse exact boundary ${delta}ms ${width}px`,async({page})=>{
- await page.setViewportSize({width,height:1000});await page.clock.install({time:boundary+delta});await page.clock.pauseAt(boundary+delta);
+ // Install earlier so elapsed protocol time cannot make pauseAt target the past.
+ // The tested timestamp remains exactly boundary+delta.
+ await page.setViewportSize({width,height:1000});await page.clock.install({time:boundary+delta-10000});await page.clock.pauseAt(boundary+delta);
  await mockInventory(page,{body:fixture()});await page.goto('/shop.html?cat=Flooring');
  const cards=page.locator(width===390?'.contractor-card:visible':'#catalog-grid .product-card');await expect(cards).toHaveCount(count);
  if(delta<0){const zero=cards.filter({hasText:'TEST Zero Oak'});await expect(zero).toContainText('Sold Out');await expect(zero.locator('.badge-new')).toHaveCount(0);}
@@ -21,7 +23,7 @@ test('expired record remains directly accessible with same permanent key and cal
  await page.fill('#project-sqft','100');await expect(page.locator('#project-results')).toContainText('Not enough inventory');
 });
 test('cached and already-open browse crosses exact boundary without resetting timestamp',async({page})=>{
- await page.clock.install({time:boundary-1000});await page.clock.pauseAt(boundary-1000);await mockInventory(page,{body:fixture()});
+ await page.clock.install({time:boundary-11000});await page.clock.pauseAt(boundary-1000);await mockInventory(page,{body:fixture()});
  await page.goto('/shop.html?cat=Flooring');await expect(page.locator('#catalog-grid .product-card')).toHaveCount(3);
  await page.clock.fastForward(1000);await expect(page.locator('#catalog-grid .product-card')).toHaveCount(2);
  await page.reload();await expect(page.locator('#catalog-grid .product-card')).toHaveCount(2);
