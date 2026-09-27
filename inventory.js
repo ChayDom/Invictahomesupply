@@ -842,7 +842,7 @@ function photoBlock(item) {
   const alt = escapeAttr(item.name);
   const thumbs = item.photos.length > 1
     ? `<div class="thumb-row">${item.photos.map((p, i) =>
-        `<img class="thumb${i === 0 ? " active" : ""}" src="${escapeAttr(sanitizeImageUrl(item.photoThumbs[i]))}" data-full="${escapeAttr(sanitizeImageUrl(item.photos[i]))}" alt="" loading="lazy" width="40" height="40" tabindex="0" role="button" aria-label="View photo ${i + 1} of ${item.photos.length}"${i === 0 ? ' aria-current="true"' : ""}>`).join("")}</div>`
+        `<button type="button" class="thumb${i === 0 ? " active" : ""}" data-full="${escapeAttr(sanitizeImageUrl(item.photos[i]))}" aria-label="View photo ${i + 1} of ${item.photos.length}"${i === 0 ? ' aria-current="true"' : ""}><img src="${escapeAttr(sanitizeImageUrl(item.photoThumbs[i]))}" alt="" loading="lazy" width="40" height="40"></button>`).join("")}</div>`
     : THUMB_ROW_SPACER;
   return `<a class="product-photo main-photo" href="${href}">
     <img src="${escapeAttr(sanitizeImageUrl(item.photoCards[0]))}" alt="${alt}" loading="lazy" width="600" height="600" data-main-photo>
@@ -1056,12 +1056,7 @@ function bindThumbClicks(container) {
     };
     card.querySelectorAll(".thumb").forEach(thumb => {
       thumb.addEventListener("click", () => selectThumb(thumb));
-      // tabindex="0" (see photoBlock()) makes these <img>s keyboard-
-      // focusable, but only a real <button>/<a> gets Enter/Space
-      // activation for free — wire it up the same way here.
-      thumb.addEventListener("keydown", e => {
-        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectThumb(thumb); }
-      });
+      // Native buttons provide Enter/Space activation through this click handler.
     });
   });
 }
@@ -2592,7 +2587,7 @@ function calcProjectSummaryMarkup(projectSqFt, wastePercentage, product) {
   return `<dl class="project-results">${entries.map(([label,value])=>`<div><dt>${label}</dt><dd>${value}</dd></div>`).join("")}</dl>
     <p class="project-inventory-message">${message}</p>
     ${result.costComputed ? '<p class="project-estimate-note">Approximate material price derived from the square-foot price; confirm the box price before purchase.</p>' : ""}
-    <p class="project-estimate-note">Material only. Taxes, installation and delivery are not included. Final stock and pricing require confirmation.</p>`;
+    <p class="project-estimate-note">Material estimate only. Taxes and delivery fees are not included. Final stock and pricing require confirmation.</p>`;
 }
 
 function calcRenderPurchaseSummary(recommended) {
@@ -2835,7 +2830,7 @@ function productDetailPhotoBlock(item) {
   const alt = escapeAttr(item.name);
   const thumbs = item.photos.length > 1
     ? `<div class="thumb-row">${item.photos.map((p, i) =>
-        `<img class="thumb${i === 0 ? " active" : ""}" src="${escapeAttr(sanitizeImageUrl(item.photoThumbs[i]))}" data-full="${escapeAttr(sanitizeImageUrl(item.photos[i]))}" alt="" loading="lazy" width="40" height="40" tabindex="0" role="button" aria-label="View photo ${i + 1} of ${item.photos.length}"${i === 0 ? ' aria-current="true"' : ""}>`).join("")}</div>`
+        `<button type="button" class="thumb${i === 0 ? " active" : ""}" data-full="${escapeAttr(sanitizeImageUrl(item.photos[i]))}" aria-label="View photo ${i + 1} of ${item.photos.length}"${i === 0 ? ' aria-current="true"' : ""}><img src="${escapeAttr(sanitizeImageUrl(item.photoThumbs[i]))}" alt="" loading="lazy" width="40" height="40"></button>`).join("")}</div>`
     : "";
   return `<div class="product-photo main-photo">
     <img src="${escapeAttr(sanitizeImageUrl(item.photos[0]))}" alt="${alt}" width="800" height="800" data-main-photo>
@@ -3032,12 +3027,7 @@ function initProductDetail(items) {
   };
   container.querySelectorAll(".thumb").forEach(thumb => {
     thumb.addEventListener("click", () => selectThumb(thumb));
-    // tabindex="0" (see productDetailPhotoBlock()) makes these <img>s
-    // keyboard-focusable, but only a real <button>/<a> gets Enter/Space
-    // activation for free — wire it up the same way here.
-    thumb.addEventListener("keydown", e => {
-      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectThumb(thumb); }
-    });
+    // Native buttons provide Enter/Space activation through this click handler.
   });
 }
 
