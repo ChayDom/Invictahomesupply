@@ -78,6 +78,6 @@ try {
 } catch(error) {
   // Never output response bodies, signed URLs, environment values or raw stack.
   console.error('SOCIAL_ACCEPTANCE_REPORT '+JSON.stringify({status:'FAIL',phase,calls,
-    reason:/HTTP \d{3}/.exec(String(error.message))?.[0]||'Acceptance stopped; inspect guarded code/input contract.',created,publicPosts:0}));
+    reason:/HTTP \d{3}/.exec(String(error.message))?.[0]||'Acceptance stopped; inspect guarded code/input contract.',assetFacts:error.assetFacts??null,created,publicPosts:0}));
   process.exitCode=1;
 }

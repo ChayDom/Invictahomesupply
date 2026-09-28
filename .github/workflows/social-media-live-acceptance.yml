@@ -1,5 +1,5 @@
 name: One-time PR19 media acceptance (never publishes)
-# Acceptance retry: explicit metadata query; existing immutable uploads must be reused.
+# Acceptance retry: sanitized codec/shape diagnostics; never retry immutable uploads blindly.
 on:
   push:
     branches: [codex/social-photos-reels]

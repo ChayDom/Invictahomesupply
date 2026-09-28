@@ -85,7 +85,15 @@ export function verifyAsset(asset,type,publicId,hash) {
     asset.format!==(video?'mp4':'jpg')||asset.width!==1080||asset.height!==(video?1920:1350)||
     !(asset.bytes>0&&asset.bytes<=(video?100:8)*1024*1024)||
     (video&&(!Number.isFinite(asset.duration)||Math.abs(asset.duration-12)>0.5||asset.video?.codec!=='h264'||
-      asset.audio&&Object.keys(asset.audio).length))) throw Error('Existing/prepared asset does not match immutable identity/format.');
+      asset.audio&&Object.keys(asset.audio).length))) {
+    const error=Error('Existing/prepared asset does not match immutable identity/format.');
+    error.assetFacts={idMatches:asset?.public_id===publicId,hashMatches:asset?.context?.custom?.source_hash===hash,
+      format:asset?.format,width:asset?.width,height:asset?.height,bytes:asset?.bytes,seconds:asset?.duration,
+      hasVideoMetadata:!!asset?.video,hasMediaMetadata:!!asset?.media_metadata,hasImageMetadata:!!asset?.image_metadata,
+      nestedH264:asset?.video?.codec==='h264',mediaH264:asset?.media_metadata?.codec==='h264',imageH264:asset?.image_metadata?.codec==='h264',
+      audioPresent:!!asset?.audio&&Object.keys(asset.audio).length>0};
+    throw error;
+  }
   return asset;
 }
 
