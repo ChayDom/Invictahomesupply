@@ -84,6 +84,13 @@ test('initial unknown cannot archive/clear/retire anything',()=>{
   const t=recent(),q=social(t),before=plain(q.data);t.setQuantity('');t.cleanup();
   assert.equal(archive(t).rows.length,0);assert.equal(active(t).length,1);assert.deepEqual(q.data,before);assert.equal(t.events.length,0);
 });
+test('cancelled pre-clear correction restarts zero timer even without an intervening Airtable sync',()=>{
+  const t=createRuntime({now}),write=t.ctx.writeCatalogArchive_;let once=true;
+  t.ctx.writeCatalogArchive_=(...args)=>{const a=write(...args);if(once){once=false;t.setQuantity(2);}return a;};
+  t.cleanup();assert.equal(state(t),'CANCELLED');assert.equal(active(t).length,1);
+  t.setClock(now+1);t.setQuantity(0);assert.equal(t.cleanup().removed,0);
+  assert.equal(t.records[0].fields['Sold Out Since'],new Date(now+1).toISOString());assert.equal(state(t),'ARCHIVED');
+});
 for(const point of ['after archive','after social','after clear','before delete','after delete'])test('retry resumes exact lifecycle after '+point,()=>{
   const t=recent(),q=social(t);let once=true;
   if(point==='after archive'){const f=t.ctx.writeCatalogArchive_;t.ctx.writeCatalogArchive_=(...a)=>{const r=f(...a);if(once){once=false;throw Error('interrupted');}return r;};}

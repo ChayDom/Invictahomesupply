@@ -268,7 +268,9 @@ function transitionCatalogSoldOut_(ss, sheet, key, archive, token, evidence, sum
     const records = iwaFetchAll_(token).filter(function(r) { return normalizeKey_(r.fields['Product Key']) === key; });
     if (records.length > 1) throw new Error('Duplicate Airtable transition identity.');
     const remote = records[0], fields = remote ? remote.fields : {};
-    const previousSince = fields['Sold Out Since'];
+    // A cancelled pre-clear attempt broke the continuous-zero interval, even
+    // if the scheduled sync never observed that intervening correction.
+    const previousSince = archived && archived[archive.map['CLEANUP STATE']] === 'CANCELLED' ? null : fields['Sold Out Since'];
     if (previousSince != null && previousSince !== '' && !Number.isFinite(Date.parse(previousSince))) {
       throw new Error('Invalid Sold Out Since; manual review required.');
     }
