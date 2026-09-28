@@ -95,6 +95,12 @@ await test('Reel verification requires 12 seconds H264 1080x1920 silent MP4',()=
     assert.throws(()=>verifyAsset({...a,...patch},'video','id','hash'));
   }
 });
+await test('real Admin flattened video metadata validates H264 and rejects audio/codec contradictions',()=>{
+  const a={...asset('id','hash','video'),video:undefined,codec:'h264',pix_format:'yuv420p',frame_rate:30};
+  verifyAsset(a,'video','id','hash');
+  for(const patch of [{codec:'hevc'},{audio_codec:'aac'},{audio_bit_rate:1000},{audio_frequency:44100},
+    {channels:2},{has_audio:true},{video:{codec:'hevc'}}])assert.throws(()=>verifyAsset({...a,...patch},'video','id','hash'));
+});
 await test('Cloudinary lookup distinguishes missing asset from authentication/server failures',async()=>{
   assert.equal(await lookupAsset(config,'image','id','hash',async()=>new Response('',{status:404})),null);
   await assert.rejects(lookupAsset(config,'image','id','hash',async()=>new Response('secret-body',{status:401})),/HTTP 401/);

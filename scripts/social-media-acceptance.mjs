@@ -69,8 +69,8 @@ try {
     const r=await fetch(url,{method:'HEAD',redirect:'error',signal:AbortSignal.timeout(30000)});
     if(!r.ok)throw Error('Durable delivery unavailable.');
     assets.push({resourceType:a.resource_type,publicId:a.public_id,version:a.version,url,reachable:true,
-      width:a.width,height:a.height,bytes:a.bytes,seconds:a.duration??null,codec:a.video?.codec??null,
-      silent:a.resource_type==='video'?!a.audio||Object.keys(a.audio).length===0:null,sourceHash:plan.hashes[i]});
+      width:a.width,height:a.height,bytes:a.bytes,seconds:a.duration??null,codec:a.resource_type==='video'?contract.socialCloudinaryVideoFacts_(a).codec:null,
+      silent:a.resource_type==='video'?!contract.socialCloudinaryVideoFacts_(a).audioPresent:null,sourceHash:plan.hashes[i]});
   }
   console.log('SOCIAL_ACCEPTANCE_REPORT '+JSON.stringify({status:'PASS',productKey:key,inventory,
     orderedPhotoIds:images.photoIds,renderFacts:source.renderFacts,renderFingerprint:reel.renderHash,

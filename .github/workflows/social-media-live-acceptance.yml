@@ -1,5 +1,5 @@
 name: One-time PR19 media acceptance (never publishes)
-# Acceptance retry: sanitized codec/shape diagnostics; never retry immutable uploads blindly.
+# Acceptance retry: shared flattened Admin metadata normalization; reuse all existing assets.
 on:
   push:
     branches: [codex/social-photos-reels]

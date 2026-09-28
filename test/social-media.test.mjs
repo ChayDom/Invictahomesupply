@@ -52,6 +52,8 @@ test('multi-photo sends ordered assets using shareNow to both channels',()=>{
 test('approved Reel explicitly uses video assets and reel metadata for BOTH channels',()=>{
   const t=fixture({photos:4,reels:true});assert.equal(t.run().queued,1);
   assert.equal(t.inputs[0].metadata.facebook.type,'reel');assert.equal(t.inputs[1].metadata.instagram.type,'reel');
+  assert.equal(t.inputs[0].assets[0].video.metadata,undefined);
+  assert.equal(t.inputs[1].assets[0].video.metadata.thumbnailOffset,2000);
   for(const input of t.inputs){assert.equal(input.assets.length,1);assert.match(input.assets[0].video.url,/\.mp4$/);}
 });
 test('publishing disabled by default makes zero Buffer calls',()=>{

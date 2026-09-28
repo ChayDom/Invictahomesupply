@@ -19,6 +19,7 @@ export async function loadContract() {
   vm.runInContext(await fs.readFile(new URL('../Invicta Appscript Files/SocialMedia.js',import.meta.url),'utf8'),ctx);
   return ctx;
 }
+const assetContract=await loadContract();
 
 export function secureConfig(env) {
   for (const name of ['AIRTABLE_SOCIAL_READ_TOKEN','CLOUDINARY_CLOUD_NAME','CLOUDINARY_API_KEY','CLOUDINARY_API_SECRET']) {
@@ -80,18 +81,18 @@ export function uploadSignature(params,secret) {
 
 export function verifyAsset(asset,type,publicId,hash) {
   const video=type==='video';
+  const videoFacts=video ? assetContract.socialCloudinaryVideoFacts_(asset||{}) : null;
   if(asset?.public_id!==publicId||asset.resource_type!==type||asset.type!=='upload'||
     asset.context?.custom?.source_hash!==hash||!Number.isInteger(asset.version)||asset.version<=0||
     asset.format!==(video?'mp4':'jpg')||asset.width!==1080||asset.height!==(video?1920:1350)||
     !(asset.bytes>0&&asset.bytes<=(video?100:8)*1024*1024)||
-    (video&&(!Number.isFinite(asset.duration)||Math.abs(asset.duration-12)>0.5||asset.video?.codec!=='h264'||
-      asset.audio&&Object.keys(asset.audio).length))) {
+    (video&&(!Number.isFinite(asset.duration)||Math.abs(asset.duration-12)>0.5||videoFacts.codec!=='h264'||videoFacts.audioPresent))) {
     const error=Error('Existing/prepared asset does not match immutable identity/format.');
     error.assetFacts={idMatches:asset?.public_id===publicId,hashMatches:asset?.context?.custom?.source_hash===hash,
       format:asset?.format,width:asset?.width,height:asset?.height,bytes:asset?.bytes,seconds:asset?.duration,
       hasVideoMetadata:!!asset?.video,hasMediaMetadata:!!asset?.media_metadata,hasImageMetadata:!!asset?.image_metadata,
       nestedH264:asset?.video?.codec==='h264',mediaH264:asset?.media_metadata?.codec==='h264',imageH264:asset?.image_metadata?.codec==='h264',
-      audioPresent:!!asset?.audio&&Object.keys(asset.audio).length>0};
+      flatH264:asset?.codec==='h264',audioPresent:videoFacts?.audioPresent??false};
     throw error;
   }
   return asset;

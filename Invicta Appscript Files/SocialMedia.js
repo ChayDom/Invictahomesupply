@@ -228,6 +228,16 @@ function assertSocialMediaCurrent_(queue, rowNumber, row, plan) {
 }
 
 /** Only derived immutable public IDs; no arbitrary URL accepted by the sender. */
+function socialCloudinaryVideoFacts_(asset) {
+  // Admin media_metadata returns flattened codec/audio fields. Upload responses
+  // can use nested video/audio objects. Both are documented; contradictions fail.
+  const flat=asset.codec, nested=asset.video && asset.video.codec;
+  if(flat && nested && flat!==nested)throw new Error('Contradictory video codec metadata.');
+  return {codec:flat || nested || '',audioPresent:asset.has_audio===true ||
+    !!(asset.audio && Object.keys(asset.audio).length) || !!asset.audio_codec ||
+    Number(asset.audio_bit_rate)>0 || Number(asset.audio_frequency)>0 || Number(asset.channels)>0};
+}
+
 function socialResolveCloudinary_(plan) {
   const props = PropertiesService.getScriptProperties();
   const cloud = props.getProperty('CLOUDINARY_CLOUD_NAME'), key = props.getProperty('CLOUDINARY_API_KEY'), secret = props.getProperty('CLOUDINARY_API_SECRET');
@@ -244,13 +254,14 @@ function socialResolveCloudinary_(plan) {
     try { asset = JSON.parse(response.getContentText()); } catch (_) { throw new Error('Malformed Cloudinary asset response.'); }
     const fingerprint = asset.context && asset.context.custom && asset.context.custom.source_hash;
     const video = plan.resourceType === 'video';
+    const videoFacts = video ? socialCloudinaryVideoFacts_(asset) : null;
     if (asset.public_id !== id || asset.resource_type !== plan.resourceType || asset.type !== 'upload' ||
         fingerprint !== plan.hashes[index] || !Number.isInteger(asset.version) || asset.version <= 0 ||
         asset.format !== (video ? 'mp4' : 'jpg') || !Number.isFinite(asset.bytes) || asset.bytes <= 0 ||
         asset.bytes > (video ? 100*1024*1024 : 8*1024*1024) || asset.width !== 1080 ||
         asset.height !== (video ? 1920 : 1350) ||
         (video && (!Number.isFinite(asset.duration) || Math.abs(asset.duration-12) > 0.5 ||
-          !asset.video || asset.video.codec !== 'h264' || asset.audio && Object.keys(asset.audio).length))) {
+          videoFacts.codec !== 'h264' || videoFacts.audioPresent))) {
       throw new Error('Prepared asset fingerprint/format does not match approval.');
     }
     // Immutable version pinned. No on-demand paid transformations.
@@ -274,7 +285,8 @@ function socialBufferInput_(channelId,text,media,service,options) {
   const reel = media.plan.type === 'Reel';
   const input = {channelId:channelId,text:text,schedulingType:'automatic',
     mode:options && options.saveToDraft === true ? 'addToQueue' : 'shareNow',aiAssisted:true,
-    assets:media.urls.map(function(url) { return reel ? {video:{url:url,metadata:{thumbnailOffset:2000}}} : {image:{url:url}}; }),
+    assets:media.urls.map(function(url) { return reel ? {video:service === 'instagram' ?
+      {url:url,metadata:{thumbnailOffset:2000}} : {url:url}} : {image:{url:url}}; }),
     metadata:service === 'facebook' ? {facebook:{type:reel ? 'reel' : 'post'}} :
       {instagram:{type:reel ? 'reel' : 'post',shouldShareToFeed:true}},source:'invicta-google-sheets'};
   if (options && options.saveToDraft === true) input.saveToDraft = true;
