@@ -55,6 +55,7 @@ export class Sheet {
       getValues:read,getDisplayValues:()=>read().map(r=>r.map(String)),getValue:()=>read()[0][0],
       getFormula:()=>sheet.formula,
       setValues:v=>write(v,'setValues'),setValue:v=>write([[v]],'setValue'),
+      getNote:()=>sheet.notes?.[r+':'+c]||'',setNote:value=>{sheet.notes||={};sheet.notes[r+':'+c]=value;},
       clearContent:()=>write(Array.from({length:n},()=>new Array(m).fill('')),'clearContent'),
       copyTo(){},getNumberFormats:()=>Array.from({length:n},()=>new Array(m).fill('$#,##0.00')),
       getNumberFormat:()=>'$#,##0.00',setNumberFormats(){},setNumberFormat(){},getDataValidation:()=>null,setDataValidation(){},
@@ -93,7 +94,7 @@ export function createRuntime({now=Date.parse('2026-09-26T12:00:00Z'),key='STAGE
   class Clock extends Date {constructor(...args){super(...(args.length?args:[clock]));} static now(){return clock;}}
   const ss={getId:()=> 'isolated-test-workbook',getSheetByName:n=>sheets[n],insertSheet:n=>sheets[n]=new Sheet(n)};
   const ctx=vm.createContext({Date:Clock,console:{log(){},warn(){},error(){}},
-    SpreadsheetApp:{getActiveSpreadsheet:()=>ss,flush(){},CopyPasteType:{PASTE_FORMAT:'format'},
+    SpreadsheetApp:{getActiveSpreadsheet:()=>ss,flush(){if(!refreshing)refreshExport();},CopyPasteType:{PASTE_FORMAT:'format'},
       newDataValidation:()=>({requireValueInList(){return this;},setAllowInvalid(){return this;},build(){return {};}})},
     PropertiesService:{getScriptProperties:()=>({getProperty:n=>properties[n]??null})},
     LockService:{getScriptLock:()=>({waitLock(){},tryLock(){return true;},releaseLock(){}})},
@@ -125,7 +126,9 @@ export function createRuntime({now=Date.parse('2026-09-26T12:00:00Z'),key='STAGE
       records.push(created);return created;
     });return {records:result};
   };
+  let refreshing=false;
   function refreshExport() {
+    refreshing=true;
     // Formula contract model: catalog permanent-key join to source confirmation.
     // This does NOT execute the native Sheets engine.
     const cm=ctx.buildHeaderMap_(catalog.data[0]),im=ctx.buildHeaderMap_(inventory.data[0]);
@@ -140,15 +143,20 @@ export function createRuntime({now=Date.parse('2026-09-26T12:00:00Z'),key='STAGE
         'COMPARABLE RETAIL PRICE':g('COMPARABLE RETAIL PRICE'),'POST TO WEBSITE':g('POST TO WEBSITE'),
         'IN STOCK':q>0,DESCRIPTION:g('DESCRIPTION'),'ENRICHMENT STATUS':g('ENRICHMENT STATUS'),SUBCATEGORY:g('WEB SUBCATEGORY')})];
     })];
+    refreshing=false;
   }
   const setQuantity=q=>{
     inventory.data[1][inventoryHeaders.indexOf('QUANTITY AVAILABLE')]=q;
     sheets['Inventory Source Evidence'].data[1][5]=q;
-    if(q>0 && !catalog.data.slice(1).some(c=>c[26])) sheets['Inventory Source Evidence'].data[1][6]=new Date(clock+1).toISOString();
     refreshExport();
   };
+  const acquire=q=>{
+    const evidence=sheets['Inventory Source Evidence'];
+    const acquired=evidence.data[1].slice();acquired[4]=q;acquired[5]=q;acquired[6]=new Date(clock+1).toISOString();
+    evidence.data.push(acquired);inventory.data[1][inventoryHeaders.indexOf('QUANTITY AVAILABLE')]=q;refreshExport();
+  };
   refreshExport();
-  return {ctx,ss,sheets,catalog,inventory,properties,events,refreshExport,setQuantity,
+  return {ctx,ss,sheets,catalog,inventory,properties,events,refreshExport,setQuantity,acquire,
     useRealNetwork:()=>{ctx.iwaRequest_=realRequest;ctx.iwaFetchAll_=realFetch;},
     get records(){return records;},set records(v){records=v;},setClock:n=>{clock=n;ctx.iwaRequest_.lastRequestAt_=0;},
     cleanup:()=>ctx.runSoldOutCatalogCleanup({apply:true,productKeys:[key]}),

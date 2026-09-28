@@ -57,7 +57,7 @@ test('full preview of 1201 active products uses constant sheet reads, one bulk A
       i%4===1?{quantity:5,since:new Date(now-D).toISOString()}:
         i%4===2?{quantity:0,since:new Date(now-D+1).toISOString()}:
           {quantity:'',since:new Date(now-D).toISOString(),stock:null};
-    const key=add(t,i,config);if(i%4===0)expected.push(key);
+    const key=add(t,i,config);if(i%4===0||i%4===2)expected.push(key);
   }
   // Synthetic source universe larger than production; these unrelated rows
   // expose accidental O(catalog × source rows) matching in the preview path.
@@ -65,7 +65,7 @@ test('full preview of 1201 active products uses constant sheet reads, one bulk A
   prepare(t);const io=instrument(t),start=performance.now();const result=t.ctx.runSoldOutCatalogCleanup();const elapsed=performance.now()-start;
   assert.deepEqual(plain(result.eligible),expected);assert.equal(result.counts.active,1201);
   assert.equal(result.counts.confirmedPositive,300);assert.equal(result.counts.confirmedZero,601);assert.equal(result.counts.unknown,300);
-  assert.equal(result.eligible.length,301);assert.equal(result.failures.length,0);assert.equal(result.metrics.complete,true);
+  assert.equal(result.eligible.length,601);assert.equal(result.failures.length,0);assert.equal(result.metrics.complete,true);
   assert.equal(io.airtable,1);assert.equal(result.metrics.airtableApiCalls,1);
   assert.ok(io.counts['Inventory Source Evidence'].ranges<=6,JSON.stringify(io.counts));
   assert.ok(io.counts['Product Inventory'].ranges<=6,JSON.stringify(io.counts));
@@ -73,7 +73,7 @@ test('full preview of 1201 active products uses constant sheet reads, one bulk A
   assert.equal(t.events.length,0);assert.equal(t.sheets['Product Catalog Archive'],undefined);
   assert.ok(elapsed<10000,'synthetic preview should remain comfortably below 10s locally: '+elapsed);
 });
-test('scoped and unscoped decisions agree at exact expiry and for unknown, positive and malformed candidates',()=>{
+test('scoped and unscoped immediate-retirement decisions agree; future expiry never holds Catalog active',()=>{
   const t=createRuntime({now,quantity:0,since:new Date(now-D).toISOString()});
   const recent=add(t,1,{quantity:0,since:new Date(now-D+1).toISOString()});
   const positive=add(t,2,{quantity:5,since:new Date(now-D).toISOString()});
@@ -81,18 +81,17 @@ test('scoped and unscoped decisions agree at exact expiry and for unknown, posit
   const malformed=add(t,4,{quantity:0,since:'not-a-date'});
   const missing=add(t,5,{quantity:0,remote:false});
   prepare(t);const full=t.ctx.runSoldOutCatalogCleanup();
-  assert.deepEqual(plain(full.eligible),['STAGE-ARCHIVE-UNIT']);
+  assert.deepEqual(plain(full.eligible),['STAGE-ARCHIVE-UNIT',recent,missing]);
   for(const key of ['STAGE-ARCHIVE-UNIT',recent,positive,unknown,malformed,missing]){
     const scoped=t.ctx.runSoldOutCatalogCleanup({productKeys:[key]});
     assert.equal(scoped.eligible.includes(key),full.eligible.includes(key),key);
-    assert.equal(full.eligible.includes(key),oldScopedDecision(t,key),'old scoped parity '+key);
     assert.equal(scoped.failures.length,0);
   }
-  assert.match(full.rejected.find(x=>x.productKey===recent).reason,/TEN DAY/);
+  assert.match(full.eligibleDetails.find(x=>x.productKey===recent).action,/ARCHIVE/);
   assert.match(full.rejected.find(x=>x.productKey===positive).reason,/POSITIVE/);
   assert.match(full.rejected.find(x=>x.productKey===unknown).reason,/UNKNOWN/);
   assert.match(full.rejected.find(x=>x.productKey===malformed).reason,/INVALID/);
-  assert.match(full.rejected.find(x=>x.productKey===missing).reason,/REMOTE/);
+  assert.match(full.eligibleDetails.find(x=>x.productKey===missing).remoteIdentity,/ABSENT/);
 });
 test('duplicate catalog and Airtable keys abort preview before any write',()=>{
   const catalog=createRuntime();catalog.catalog.data.push(catalog.catalog.data[1].slice());prepare(catalog);

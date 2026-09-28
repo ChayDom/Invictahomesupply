@@ -41,7 +41,7 @@ test('old source adjustment after COMPLETE is flagged, not new acquisition',()=>
   assert.equal(t.ctx.runProductCatalogMaintenance().added,0);assert.equal(t.records.length,0);
 });
 test('later purchase after COMPLETE gets fresh identity/archive unchanged',()=>{
-  const t=createRuntime();t.cleanup();const archived=JSON.stringify(t.ctx.readCatalogArchive_(t.ss).rows);t.setQuantity(3);
+  const t=createRuntime();t.cleanup();const archived=JSON.stringify(t.ctx.readCatalogArchive_(t.ss).rows);t.acquire(3);
   assert.equal(t.ctx.runProductCatalogMaintenance().added,1);assert.match(t.catalog.data.find(r=>String(r[26]).startsWith('ACQ-'))[26],/^ACQ-/);assert.equal(JSON.stringify(t.ctx.readCatalogArchive_(t.ss).rows),archived);
 });
 for(const property of ['AIRTABLE_BASE_ID','AIRTABLE_ENVIRONMENT','AIRTABLE_WORKBOOK_ID'])test('missing '+property+' blocks sync/cleanup/transport before fetch',()=>{
@@ -54,8 +54,8 @@ test('production base with staging workbook fails closed',()=>{
 for(const position of [0,10,28])test('cleanup K position '+position+' and AIRTABLE REMOVED recovery',()=>{
   const t=createRuntime();const old=t.catalog.data[0],headers=old.filter(h=>h!=='AUTO BOX PRICE');headers.splice(position,0,'AUTO BOX PRICE');
   t.catalog.data=t.catalog.data.map(r=>headers.map(h=>r[old.indexOf(h)]));let once=true;
-  t.catalog.beforeWrite=()=>{if(once){once=false;throw Error('interrupted catalog clear');}};
-  assert.equal(t.cleanup().failures.length,1);assert.equal(t.records.length,0);assert.equal(t.cleanup().removed,1);
+  t.catalog.beforeWrite=op=>{if(op.method==='clearContent'&&once){once=false;throw Error('interrupted catalog clear');}};
+  assert.equal(t.cleanup().failures.length,1);assert.equal(t.records.length,1);assert.equal(t.cleanup().removed,1);
   assert.ok(t.catalog.writes.every(w=>w.m>0&&(w.c>position+1||w.c+w.m-1<position+1)));assert.ok(t.catalog.formula.startsWith('=MAP'));
 });
 test('valid COMPLETE archive Date/string normalization accepts identical hash',()=>{

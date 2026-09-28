@@ -119,9 +119,60 @@ function catalogSourceHasLaterPurchase_(ss, source, retired, archiveMap) {
   });
   const lastArchive = Math.max.apply(null, retired.map(function(row) { return Date.parse(catalogArchiveValue_(row[archiveMap['ARCHIVED AT']])); }));
   if (stock.state !== 'IN STOCK' || !Number.isFinite(lastArchive)) return false;
+  // A changed original acquisition is a correction, not a new lifecycle.
+  if (retired.some(function(row) {
+    return !catalogText_(row[archiveMap['SOURCE EVIDENCE']]) ||
+      catalogArchivedStock_(ss, function(h) {
+        return { RETAILER: source.retailer, 'PRODUCT ID': source.productId, 'SOURCE ITEM': source.item }[h];
+      }, row, archiveMap).state !== 'CONFIRMED ZERO';
+  })) return false;
   return stock.rows.some(function(row) {
     const raw = row[stock.map['BUY DATE']];
     const date = raw instanceof Date ? raw.getTime() : typeof raw === 'number' ? (raw - 25569) * 86400000 : Date.parse(raw);
     return row[stock.map.BALANCE] > 0 && Number.isFinite(date) && date > lastArchive;
   });
+}
+
+// Freeze the exact confirmed-zero source multiset in the existing archive.
+// Row positions are not identities: sorting/duplicate multiplicity is preserved.
+function catalogSourceRowsSnapshot_(stock) {
+  return stock.rows.map(function(row) {
+    return ['ITEM', 'RETAILER', 'RETAIL SKU', 'PRODUCT ID', 'BUY QUANTITY', 'BALANCE', 'BUY DATE']
+      .map(function(h) { return catalogArchiveValue_(row[stock.map[h]]); });
+  });
+}
+
+function catalogArchivedStock_(ss, get, archived, archiveMap, evidence) {
+  const raw = archived[archiveMap['SOURCE EVIDENCE']];
+  if (!raw) return catalogConfirmedStock_(ss, get, evidence); // Legacy journal; never infer a new partition.
+  let saved;
+  try { saved = JSON.parse(raw); } catch (_) { return { state: 'UNKNOWN', quantity: '', reason: 'Invalid archived source evidence' }; }
+  if (saved.version !== 1 || !Array.isArray(saved.rows) || !saved.rows.length ||
+      saved.rows.some(function(row) { return !Array.isArray(row) || row.length !== 7 || row[5] !== 0; })) {
+    return { state: 'UNKNOWN', quantity: '', reason: 'Invalid archived source evidence' };
+  }
+  const table = evidence || indexCatalogSourceEvidence_(readCatalogSourceEvidence_(ss));
+  // The current positive aggregate may belong to B. Still use the authoritative
+  // matcher/number/conflict rules, then account for every original row and extra.
+  const scoped = Object.assign({}, table, { positiveInventory: [] });
+  if (table.previewIndex) scoped.previewIndex = Object.assign({}, table.previewIndex,
+    { positiveIds: new Set(), positiveItems: new Set() });
+  const stock = catalogConfirmedStock_(ss, get, scoped);
+  if (stock.state === 'UNKNOWN') return stock;
+  const current = catalogSourceRowsSnapshot_(stock);
+  for (const row of saved.rows) {
+    const i = current.findIndex(function(value) { return JSON.stringify(value) === JSON.stringify(row); });
+    if (i < 0) return { state: 'UNKNOWN', quantity: '', reason: 'Original archived source changed/missing; manual recovery required' };
+    current.splice(i, 1);
+  }
+  const cutoff = Date.parse(catalogArchiveValue_(archived[archiveMap['ARCHIVED AT']]));
+  if (!Number.isFinite(cutoff) || current.some(function(row) {
+    const date = typeof row[6] === 'number' ? (row[6] - 25569) * 86400000 : Date.parse(row[6]);
+    return !Number.isFinite(date) || date <= cutoff;
+  })) return { state: 'UNKNOWN', quantity: '', reason: 'Additional acquisition timing ambiguous; manual review required' };
+  if (!current.some(function(row) { return row[5] > 0; }) && catalogConfirmedStock_(ss, get, table).state === 'UNKNOWN') {
+    return { state: 'UNKNOWN', quantity: '', reason: 'Unexplained positive inventory contradicts archived source' };
+  }
+  return { state: 'CONFIRMED ZERO', quantity: 0, reason: 'Original zero source unchanged; later acquisitions separate',
+    laterAcquisitions: current.length };
 }

@@ -55,7 +55,7 @@ test('unpublished zero gets first timestamp once, expires after full ten days, n
   t.ctx.runProductCatalogMaintenance();t.sync();const since=t.records[0].fields['Sold Out Since'];
   assert.equal(t.records[0].fields['Quantity Available'],0);assert.deepEqual(t.records[0].fields.Photos,[{id:'owner-photo'}]);
   t.setClock(Date.parse(since)+864000000-1);t.events.length=0;t.sync();assert.equal(t.events.length,0);
-  assert.equal(t.records[0].fields['Sold Out Since'],since);assert.equal(t.ctx.runSoldOutCatalogCleanup().eligible.length,0);
+  assert.equal(t.records[0].fields['Sold Out Since'],since);assert.equal(t.ctx.runSoldOutCatalogCleanup().eligible.length,1,'zero is immediately eligible for Catalog retirement');
   t.properties.CATALOG_LIFECYCLE_CLEANUP_ENABLED='true';t.setClock(Date.parse(since)+864000000);
   assert.equal(t.cleanup().removed,1);assert.equal(t.records.length,0);
 });

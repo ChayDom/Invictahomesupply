@@ -166,7 +166,6 @@ function syncWebsiteExportToAirtableLocked_(
   const observations = refreshCatalogLifecycleInventory_(spreadsheet);
 
   const retiredKeys = archivedCatalogKeys_(spreadsheet);
-  const removedKeys = archivedCatalogKeys_(spreadsheet, true);
 
 
   const sheet =
@@ -417,11 +416,9 @@ function syncWebsiteExportToAirtableLocked_(
           return;
         }
 
-        // A pending journal may have already deleted its remote record when an
-        // acknowledgement was interrupted. Never recreate that permanent key.
-        // Still allow an existing pending record to report restock/uncertainty.
-        if (removedKeys.has(normalizeKey_(key)) ||
-            (retiredKeys.has(normalizeKey_(key)) && !existingByKey.has(key))) return;
+        // Archive owns every retired lifecycle, including its remote grace
+        // record. Never recreate it or change its fixed zero/timer observation.
+        if (retiredKeys.has(normalizeKey_(key))) return;
 
 
         /*
@@ -971,6 +968,10 @@ function syncWebsiteExportToAirtableLocked_(
         if (!key) {
           return false;
         }
+
+        // Archive owns the old lifecycle and its fixed ten-day display window.
+        // Disappearance from active Export is not permission to unpublish it.
+        if (retiredKeys.has(normalizeKey_(key))) return false;
 
 
         /*

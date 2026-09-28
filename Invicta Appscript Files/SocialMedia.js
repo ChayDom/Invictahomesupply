@@ -147,6 +147,24 @@ function socialQueueHistory_(queue, rowNumber, row) {
     /Buffer (send failed|RECONCILE|PUBLISHING)/i.test(String(row[18] || '')));
 }
 
+// Lifecycle-owned retirement is narrow: never refresh copy/media, alter receipt
+// cells/notes, touch evergreen, or call Buffer. Every occurrence is retained.
+function retireCatalogSocialKey_(ss, productKey) {
+  const queue = ss.getSheetByName('Social Queue');
+  if (!queue || queue.getLastRow() < 2 || evergreenIdentity_(productKey)) return 0;
+  const rows = queue.getRange(2, 1, queue.getLastRow() - 1, 19).getValues();
+  let count = 0;
+  rows.forEach(function(row, i) {
+    if (normalizeKey_(row[0]) !== productKey || evergreenIdentity_(row[0])) return;
+    if (row[12] !== 'Skip') {
+      queue.getRange(i + 2, 13).setValue('Skip');
+      queue.getRange(i + 2, 13).setNote('Retired: confirmed-zero lifecycle archived; Buffer evidence preserved.');
+      count++;
+    }
+  });
+  return count;
+}
+
 /** Reconcile every existing row, including absent/zero sources, before appending. */
 function reconcileSocialQueue_(queue, sources) {
   const rows = queue.getLastRow() > 1 ? queue.getRange(2,1,queue.getLastRow()-1,19).getValues() : [];
