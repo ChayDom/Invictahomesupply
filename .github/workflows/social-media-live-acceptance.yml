@@ -1,0 +1,30 @@
+name: One-time PR19 media acceptance (never publishes)
+on:
+  push:
+    branches: [codex/social-photos-reels]
+    paths: [.github/workflows/social-media-live-acceptance.yml]
+permissions:
+  contents: read
+concurrency:
+  group: pr19-live-media-acceptance
+  cancel-in-progress: false
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: social-media
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Install distro FFmpeg and open font
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y ffmpeg fonts-dejavu-core
+      - name: Accept actual Photos and immutable media only
+        env:
+          AIRTABLE_SOCIAL_READ_TOKEN: ${{ secrets.AIRTABLE_SOCIAL_READ_TOKEN }}
+          CLOUDINARY_CLOUD_NAME: ${{ vars.CLOUDINARY_CLOUD_NAME }}
+          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+        run: node scripts/social-media-acceptance.mjs
