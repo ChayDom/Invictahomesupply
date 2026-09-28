@@ -255,6 +255,8 @@ function generateSocialCaptions_(
       const row =
         rows[i];
 
+      if (evergreenIdentity_(row[0])) continue; // Editorial source owns copy; no Gemini/inventory fallback.
+
 
       const status =
         String(
@@ -1260,6 +1262,7 @@ function readBufferPostsForReconciliation_(apiKey, channelIds) {
 
 function matchingSocialBufferPosts_(posts, payload) {
   return posts.filter(function(post) {
+    if (payload.sourceType && Array.isArray(payload.priorReceiptIds) && payload.priorReceiptIds.includes(String(post.id))) return false;
     if (String(post.channelId) !== payload.channelId || String(post.text || '') !== payload.text) return false;
     // V1 audit only: old journals are never converted into new publish operations.
     if (!payload.publicIds) return post.assets.length === 1 && String(post.assets[0].source || '') === payload.mediaUrl;

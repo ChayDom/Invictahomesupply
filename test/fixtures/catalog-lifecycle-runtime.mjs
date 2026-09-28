@@ -35,7 +35,7 @@ export class Sheet {
     const sheet=this;
     const read=()=>Array.from({length:n},(_,i)=>Array.from({length:m},(_,j)=>sheet.data[r+i-1]?.[c+j-1]??''));
     const write=(values,method)=>{
-      assert.ok(['Product Catalog','Product Catalog Archive','Social Queue','Lifecycle Inventory'].includes(sheet.name),'history sheets are read-only');
+      assert.ok(['Product Catalog','Product Catalog Archive','Social Queue','Lifecycle Inventory','Evergreen Social Content'].includes(sheet.name),'history sheets are read-only');
       if(sheet.name==='Product Catalog') {
         const spill=sheet.data[0].indexOf('AUTO BOX PRICE')+1;
         assert.ok(c>spill||c+m-1<spill,'never write/clear K');
@@ -96,7 +96,7 @@ export function createRuntime({now=Date.parse('2026-09-26T12:00:00Z'),key='STAGE
       base64EncodeWebSafe:b=>Buffer.from(b).toString('base64url')},
     UrlFetchApp:{fetch(){throw Error('Live requests forbidden');}},ScriptApp:{getProjectTriggers(){throw Error('Triggers forbidden');}}});
   for(const name of ['Config','CatalogSourceConfirmation','ProductCatalogLifecycle','ProductCatalogMaintenance','LegacyRepair','AdminTools',
-    'CatalogEnrichment','EnrichmentAdmin','WebsiteAirtableSync','BufferSocialSync','SocialMedia']) {
+    'CatalogEnrichment','EnrichmentAdmin','WebsiteAirtableSync','BufferSocialSync','SocialMedia','EvergreenSocial','EvergreenSocialLibrary']) {
     vm.runInContext(fs.readFileSync(new URL('../../Invicta Appscript Files/'+name+'.js',import.meta.url),'utf8'),ctx,{filename:name+'.js'});
   }
   const realRequest=ctx.iwaRequest_,realFetch=ctx.iwaFetchAll_;

@@ -6,6 +6,11 @@ as part of its acceptance. Production Apps Script source has not been replaced.
 
 ## Architecture and cadence
 
+For the optional educational/comparison source, shared rotation, graphic
+preparation and manual approval, see [Evergreen content](EVERGREEN_SOCIAL_CONTENT.md).
+It uses this same queue, cadence, publisher and receipts; the Photos-only
+requirements below still apply to every inventory product.
+
 Keep the existing 19-column Social Queue and permanent Product Key. Preparation
 reconciles **all** rows, including products absent from Export. The existing
 catalog source-confirmation helper and archive validation remain authoritative;
