@@ -216,7 +216,7 @@ test('actual Cloudinary resolver verifies metadata and pins immutable public del
   const asset={public_id:id,resource_type:'image',type:'upload',version:123,format:'jpg',bytes:10000,width:1080,height:1350,
     context:{custom:{source_hash:'hash'}}};
   t.ctx.UrlFetchApp.fetch=(url,options)=>{
-    assert.match(url,/resources\/image\/upload\//);assert.equal(options.method,'get');
+    assert.match(url,/resources\/image\/upload\//);assert.equal(new URL(url).searchParams.get('media_metadata'),'true');assert.equal(options.method,'get');
     assert.equal(options.headers.Authorization,'Basic '+Buffer.from('test-key:test-secret').toString('base64'));
     return {getResponseCode:()=>200,getContentText:()=>JSON.stringify(asset)};
   };

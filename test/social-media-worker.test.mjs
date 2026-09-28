@@ -99,6 +99,15 @@ await test('Cloudinary lookup distinguishes missing asset from authentication/se
   assert.equal(await lookupAsset(config,'image','id','hash',async()=>new Response('',{status:404})),null);
   await assert.rejects(lookupAsset(config,'image','id','hash',async()=>new Response('secret-body',{status:401})),/HTTP 401/);
 });
+await test('Cloudinary video lookup explicitly requests codec/audio metadata; missing codec fails closed',async()=>{
+  await lookupAsset(config,'video','id','hash',async url=>{
+    assert.equal(new URL(url).searchParams.get('media_metadata'),'true');
+    return Response.json(asset('id','hash','video'));
+  });
+  await assert.rejects(lookupAsset(config,'video','id','hash',async()=>Response.json({
+    ...asset('id','hash','video'),video:undefined
+  })),/identity\/format/);
+});
 await test('upload is signed, immutable overwrite=false, no eager paid transformations',async()=>{
   const dir=await fs.mkdtemp(path.join(os.tmpdir(),'invicta-social-test-'));const file=path.join(dir,'image.jpg');
   try {

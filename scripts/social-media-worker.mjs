@@ -90,7 +90,7 @@ export function verifyAsset(asset,type,publicId,hash) {
 }
 
 export async function lookupAsset(config,type,publicId,hash,fetcher=fetch) {
-  const response=await fetcher('https://api.cloudinary.com/v1_1/'+config.cloud+'/resources/'+type+'/upload/'+encodeURIComponent(publicId)+'?context=true',
+  const response=await fetcher('https://api.cloudinary.com/v1_1/'+config.cloud+'/resources/'+type+'/upload/'+encodeURIComponent(publicId)+'?context=true&media_metadata=true',
     {headers:{Authorization:'Basic '+Buffer.from(config.key+':'+config.secret).toString('base64')},
       redirect:'error',signal:AbortSignal.timeout(30000)});
   if(response.status===404) return null;

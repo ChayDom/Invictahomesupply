@@ -236,7 +236,7 @@ function socialResolveCloudinary_(plan) {
     if (!/^invicta-social\/(photos-v1|reel-v1)\/[A-Za-z0-9_-]+$/.test(id)) throw new Error('Invalid derived media identity.');
     let response;
     try {
-      response = UrlFetchApp.fetch('https://api.cloudinary.com/v1_1/' + cloud + '/resources/' + plan.resourceType + '/upload/' + encodeURIComponent(id) + '?context=true',
+      response = UrlFetchApp.fetch('https://api.cloudinary.com/v1_1/' + cloud + '/resources/' + plan.resourceType + '/upload/' + encodeURIComponent(id) + '?context=true&media_metadata=true',
         {method:'get',headers:{Authorization:'Basic ' + Utilities.base64Encode(key + ':' + secret)},muteHttpExceptions:true});
     } catch (_) { throw new Error('Cloudinary lookup failed; publishing blocked.'); }
     if (response.getResponseCode() !== 200) throw new Error('Prepared Cloudinary asset unavailable (HTTP ' + response.getResponseCode() + ').');
