@@ -60,6 +60,15 @@ test('publishing disabled by default makes zero Buffer calls',()=>{
   const t=fixture();delete t.properties.SOCIAL_PUBLISHING_ENABLED;assert.equal(t.run().skipped,true);assert.equal(t.inputs.length,0);
   assert.throws(()=>t.ctx.createOrReconcileSocialPost_(t.queue,2,t.row.slice(),'test','fb','text',t.media,'facebook'),/disabled/);
 });
+test('disabled social trigger setup performs no trigger reads, deletions or installations',()=>{
+  for(const enabled of [undefined,'false']) {
+    const t=fixture();if(enabled===undefined)delete t.properties.SOCIAL_PUBLISHING_ENABLED;
+    else t.properties.SOCIAL_PUBLISHING_ENABLED=enabled;
+    let calls=0;t.ctx.ScriptApp={getProjectTriggers:()=>{calls++;return [];},deleteTrigger:()=>calls++,newTrigger:()=>calls++};
+    assert.throws(()=>t.ctx.setupDailySocialTriggers(),/explicit owner activation/);
+    assert.equal(calls,0);
+  }
+});
 for(const [label,change] of [
   ['zero authoritative inventory',t=>t.setQuantity(0)],
   ['unknown authoritative inventory',t=>t.setQuantity('')],

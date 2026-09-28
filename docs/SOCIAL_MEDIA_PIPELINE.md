@@ -130,8 +130,8 @@ secure process environment is also supported; do not paste credentials into comm
 
 Completed without publishing:
 
-- Full unit suite: **857 passed, 0 failed**, 44 files, including 46 social contract
-  checks, 22 preparation-worker checks and all 15 existing Buffer idempotency checks.
+- Full unit suite: **860 passed, 0 failed**, 44 files, including 47 social contract
+  checks, 24 preparation-worker checks and all 15 existing Buffer idempotency checks.
   Run in an isolated LF-normalized copy because existing repository text fixtures
   are sensitive to Windows CRLF; source files were not bulk reformatted.
 - Apps Script/worker syntax checks and `git diff --check` passed. All 18 public-only
@@ -151,7 +151,9 @@ Completed without publishing:
   All non-M cells (including media/captions/IDs/error/journal notes) unchanged.
 - Production still has only the existing maintenance, enrichment and Airtable
   sync triggers; social/cleanup triggers absent. Cleanup opt-in remains false.
-  No Apps Script production source, Airtable records or production website changed.
+  Original production Apps Script files, Airtable records and production website
+  remain unchanged. Namespaced acceptance helpers are temporary and removed after
+  acceptance; candidate source is not activated by testing.
 
 Final live queue classification (64 products):
 
@@ -168,24 +170,80 @@ Lake Annette HD-1004669158 is Skip; both saved IDs remain untouched.
 Dyson HD-1007846436 is Skip; its ambiguous historical error is preserved.
 Neither may be reset/reposted without separately reviewing the old operation.
 
-Still required once owner enters secure configuration:
+## Live non-publishing acceptance — September 28, 2026
+
+Secure configuration was supplied by the owner; no secret values were logged.
+The restricted read-only Airtable token retrieved 67 Website Products records.
+Owner Photos produced five immutable images and one silent 1080x1920, 12-second
+H264 MP4 (3,274,095 bytes). Repeated lookup and rotated Airtable signed URLs reused
+existing assets without duplicate uploads/renders. All six durable URLs were
+reachable. Keep these reusable assets; they are not public social publications.
+
+Buffer acceptance used only `saveToDraft:true` with `mode:addToQueue`, behind a
+temporary firewall that rejected every publishing mutation. Production policy
+remains `shareNow`, with the rolling 48-hour cadence controlled by Apps Script.
+
+| Media | Facebook draft | Instagram draft |
+| --- | --- | --- |
+| Single image | 6abaa0e16219c00209b7bb1e | 6abaa1007c19a799daebffee |
+| Four-image carousel | 6ab9ecef54f1e60c7e867585 | 6abaa0b26706f7fb0100d48f |
+| Reel | 6abaa1356706f7fb0100e30a | 6abaa14d0b9d13a08baa3683 |
+
+Every draft recovered its original ID after simulated receipt-value loss, with
+one exact remote match and no duplicate create. Each fixture used a separate
+media-type/channel journal. The first cross-channel temporary-fixture attempt
+failed closed; no Instagram create occurred until isolated state was installed.
+Acceptance journals and these six labeled drafts are retained as evidence;
+**never schedule or publish them**. Real Social Queue rows were not edited.
+
+Live-context rejection cases used isolated fixtures against current production
+data, not destructive edits of real products: sold out, Post to Website false,
+missing Photos, changed approved attachment order, missing source and publishing
+disabled each produced **zero Buffer create calls**. The changed-set case used a
+stale approval manifest, not an Airtable edit. The missing-source key was nonexistent.
+
+Final queue remains 46 eligible Draft, 4 Needs Image, 8 Skip, 6 historical Queued,
+and 0 Ready. All values/notes match the preserved post-cleanup historical snapshot.
+Lake Annette and Dyson remain Skip with their existing evidence intact.
+
+The acceptance run found and fixed two real integration issues: Cloudinary Admin
+video metadata is flattened (codec/audio), unlike nested upload metadata; and
+Facebook video assets must omit Instagram's `thumbnailOffset`. Strict codec,
+silence, identity/hash and size checks remain intact, with rejection regressions.
+Social trigger installation now fails before any trigger operation unless the
+owner explicitly enables `SOCIAL_PUBLISHING_ENABLED`; no Draft becomes Ready
+automatically. Publishing, social triggers and destructive cleanup remain OFF.
+
+Local maintained verification: 860 unit tests and 139 Chromium E2E tests passed,
+zero failures after resolving local Python/browser availability with runtime-only
+overrides. Apps Script/worker syntax checks and `git diff --check` passed. Temporary
+GitHub acceptance workflow/script are excluded from the final PR candidate; the
+intended preparation workflow is manual-only, standard Ubuntu, contents-read-only,
+pinned checkout, no persisted Git credential, and no Buffer/Netlify credentials.
+
+Draft acceptance proves API submission, stored media and receipt recovery—not
+actual Meta publication. No real Facebook/Instagram content was published.
+An inventory change after the last check but before Meta publishes remains an
+unavoidable remote race; `shareNow` minimizes it but does not make it atomic.
+
+Still required before separately approved production activation:
 
 1. Review/deploy only the two changed social Apps Script files with social OFF;
    preserve all other bound-project source/properties/triggers.
-2. Prepare one controlled Photos-only image/carousel and one silent Reel; validate
-   Cloudinary authoritative metadata/public immutable URLs and reuse.
+2. Preserve the completed media/draft acceptance evidence; do not repeat uploads
+   or publish acceptance drafts as a test.
 3. Review exact media, facts/captions and intentional queue approval.
-4. Controlled **non-publishing draft** acceptance only, using explicit
-   `saveToDraft:true` and addToQueue; verify both channels' draft metadata,
-   ordered media and idempotent receipt recovery. Normal sender never uses draft mode.
-   Do not assume a draft proves actual Reel publication.
+4. Keep publishing OFF until the owner separately authorizes live activation.
+   Normal sender never uses acceptance draft mode.
 5. Read-only Buffer reconciliation, re-audit Ready, inspect owner quota/account plan.
 6. Only after non-publishing acceptance passes and owner approves activation:
    enable SOCIAL_PUBLISHING_ENABLED and intended social schedules separately.
 
-Real Cloudinary upload/lookup and Buffer draft acceptance have NOT been executed
-without credentials. No real content was published. Do not declare production
-publishing accepted based solely on mocks/local render success.
+The GitHub `social-media` environment currently has no required reviewer or branch
+restriction. Before operational use, the owner should configure those protections
+and review account quotas. This acceptance did not alter credentials, scopes or
+environment security settings. Merge/release must preserve `[skip netlify]` or
+otherwise explicitly prevent an unintended Netlify production build.
 
 ## Official contracts
 

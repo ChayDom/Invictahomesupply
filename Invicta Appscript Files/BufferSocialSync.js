@@ -2109,6 +2109,11 @@ function escapeSocialEmailHtml_(value) {
 
 
 function setupDailySocialTriggers() {
+  // Installing preparation triggers also enables unattended Gemini/email work.
+  // Keep the entire social schedule opt-in, not just the Buffer sender.
+  if (PropertiesService.getScriptProperties().getProperty('SOCIAL_PUBLISHING_ENABLED') !== 'true') {
+    throw new Error('Social automation is disabled; explicit owner activation is required before installing triggers.');
+  }
   const preparationHandlers = [
     'runDailySocialPreparation',
     // Legacy handler name retained only so setup can remove any stale old trigger.
