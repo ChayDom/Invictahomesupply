@@ -113,7 +113,8 @@ function cleanupSoldOutCatalogLocked_(opts) {
   getCatalogColumns_(catalogSheet);
   let catalog = readSheetTable_(catalogSheet, 'PRODUCT KEY');
   if (catalogIdentityFindings_(catalog.rows, catalog.map).length) throw new Error('Unsafe catalog identities; cleanup aborted.');
-  readCatalogSourceEvidence_(ss);
+  // Initial eligibility uses one snapshot; destructive rechecks below remain fresh.
+  const evidence = indexCatalogSourceEvidence_(readCatalogSourceEvidence_(ss));
   const token = PropertiesService.getScriptProperties().getProperty(IWA_SYNC_HARDENED.TOKEN_PROPERTY);
   if (!token) throw new Error('Missing Airtable token.');
   let records = iwaFetchAll_(token), archive = readCatalogArchive_(ss);
@@ -141,7 +142,7 @@ function cleanupSoldOutCatalogLocked_(opts) {
       const snapshot = catalog.rows.find(function(row) { return normalizeKey_(row[cm['PRODUCT KEY']]) === key; });
       const get = function(h) { return snapshot ? snapshot[cm[h]] : archivedRow[archive.map[h]]; };
       if (state === 'COMPLETE') return;
-      const quantity = catalogConfirmedStock_(ss, get).quantity;
+      const quantity = catalogConfirmedStock_(ss, get, evidence).quantity;
       const record = records.find(function(r) { return normalizeKey_(r.fields['Product Key']) === key; });
       const f = record ? record.fields : {};
       const savedSince = archivedRow ? catalogArchiveValue_(archivedRow[archive.map['SOLD OUT SINCE']]) : undefined;

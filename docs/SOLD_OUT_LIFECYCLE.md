@@ -117,6 +117,29 @@ bound-project staging execution, archive permissions/backup, review of preview,
 explicit cleanup opt-in, proper Airtable schema/token permissions and release
 approval. Test suite: full units, Apps Script lifecycle/failures, Chromium and axe.
 
+## Production maintenance hardening
+
+The existing six-hour `runProductCatalogMaintenance` trigger runs enabled cleanup
+before normal maintenance under the same lock. Enable only after reviewing the
+full read-only preview, using `CATALOG_LIFECYCLE_CLEANUP_ENABLED=true`; no separate
+cleanup trigger is required. Retention remains exactly 864000000 milliseconds.
+
+Maintenance uses the shared authoritative source-confirmation index to turn an
+existing confirmed-zero product's `POST TO WEBSITE` from Yes to No. Positive or
+unknown inventory never grants permission, and restock remains No until the
+owner deliberately republishes. No identity, curated field or K value is changed
+by this override. The guard includes zero products absent from Product Inventory.
+
+Sync continues lifecycle observations on **existing** unpublished Airtable
+records, by record ID, without creating or republishing them. This preserves the
+first-zero timer, clears it on restock/uncertainty, and permits the normal ten-day
+cleanup. Photos and other Airtable-curated fields remain untouched.
+
+Apply uses an indexed initial eligibility snapshot, but still performs fresh
+source and Airtable checks immediately before deletion and retains all archive,
+hash, identity, deletion-verification and retry-journal safeguards. Logs separate
+guard correction keys, normal maintenance updates, and cleanup results.
+
 ## Fulfillment (unchanged)
 
 Local Pickup Only • McKinney, TX
