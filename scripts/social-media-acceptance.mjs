@@ -1,5 +1,8 @@
 /** Explicit live media acceptance only. No Buffer, Sheet, Netlify or Airtable writes. */
-import {secureConfig,loadContract,readProduct,prepareProduct,lookupAsset,airtableBase,airtableTable} from './social-media-worker.mjs';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import {secureConfig,loadContract,readProduct,prepareProduct,lookupAsset,verifyReel,airtableBase,airtableTable} from './social-media-worker.mjs';
 
 const key='LEG-HD-000959',config=secureConfig(process.env),contract=await loadContract();
 const calls={airtableReads:0,cloudinaryReads:0,imageUploads:0,videoUploads:0},created=[];
@@ -62,19 +65,34 @@ try {
   phase='real-reel-render-upload';const videoFirst=await prepareProduct(key,{reels:true,config,contract,fetcher});
   phase='reel-reuse';const videoCount=calls.videoUploads,videoSecond=await prepareProduct(key,{reels:true,config,contract,fetcher});
   if(videoSecond.prepared!==0||videoSecond.reused!==1||calls.videoUploads!==videoCount)throw Error('Reel reuse failed.');
+  phase='single-image-upload-reuse';const singleKey='HD-1012697613',singleFields=await readProduct(singleKey,config,fetcher);
+  const single=contract.socialMediaPlan_({productKey:singleKey,photos:contract.socialPhotos_(singleFields),renderFacts:contract.socialRenderFacts_(singleFields)},false);
+  if(single.type!=='Image')throw Error('Reviewed single-photo Draft changed.');
+  const singleFirst=await prepareProduct(singleKey,{config,contract,fetcher}),singleSecond=await prepareProduct(singleKey,{config,contract,fetcher});
+  if(singleSecond.prepared!==0||singleSecond.reused!==1)throw Error('Single image reuse failed.');
   phase='durable-delivery-check';const assets=[];
-  for(const plan of [images,reel])for(let i=0;i<plan.publicIds.length;i++) {
+  let publishedVideoProbe;
+  for(const plan of [images,reel,single])for(let i=0;i<plan.publicIds.length;i++) {
     const a=await lookupAsset(config,plan.resourceType,plan.publicIds[i],plan.hashes[i],fetcher);
     const url='https://res.cloudinary.com/'+config.cloud+'/'+a.resource_type+'/upload/v'+a.version+'/'+a.public_id+'.'+a.format;
     const r=await fetch(url,{method:'HEAD',redirect:'error',signal:AbortSignal.timeout(30000)});
     if(!r.ok)throw Error('Durable delivery unavailable.');
+    if(a.resource_type==='video') {
+      const tmp=await fs.mkdtemp(path.join(os.tmpdir(),'pr19-cloud-video-'));
+      try {
+        const delivered=await fetch(url,{redirect:'error',signal:AbortSignal.timeout(30000)});
+        if(!delivered.ok)throw Error('Original video download unavailable.');
+        const bytes=Buffer.from(await delivered.arrayBuffer());if(bytes.length!==a.bytes)throw Error('Original video bytes differ from Admin metadata.');
+        const file=path.join(tmp,'original.mp4');await fs.writeFile(file,bytes);publishedVideoProbe=verifyReel(file);
+      } finally {await fs.rm(tmp,{recursive:true});}
+    }
     assets.push({resourceType:a.resource_type,publicId:a.public_id,version:a.version,url,reachable:true,
       width:a.width,height:a.height,bytes:a.bytes,seconds:a.duration??null,codec:a.resource_type==='video'?contract.socialCloudinaryVideoFacts_(a).codec:null,
       silent:a.resource_type==='video'?!contract.socialCloudinaryVideoFacts_(a).audioPresent:null,sourceHash:plan.hashes[i]});
   }
   console.log('SOCIAL_ACCEPTANCE_REPORT '+JSON.stringify({status:'PASS',productKey:key,inventory,
     orderedPhotoIds:images.photoIds,renderFacts:source.renderFacts,renderFingerprint:reel.renderHash,
-    images:{first,second,rotated},video:{first:videoFirst,second:videoSecond},calls,created,assets,publicPosts:0}));
+    images:{first,second,rotated},single:{first:singleFirst,second:singleSecond},video:{first:videoFirst,second:videoSecond,deliveredProbe:publishedVideoProbe},calls,created,assets,publicPosts:0}));
 } catch(error) {
   // Never output response bodies, signed URLs, environment values or raw stack.
   console.error('SOCIAL_ACCEPTANCE_REPORT '+JSON.stringify({status:'FAIL',phase,calls,

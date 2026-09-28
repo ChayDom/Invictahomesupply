@@ -1,5 +1,5 @@
 name: One-time PR19 media acceptance (never publishes)
-# Acceptance retry: shared flattened Admin metadata normalization; reuse all existing assets.
+# Acceptance: reuse existing carousel/Reel; prepare one reviewed single-photo Draft and probe delivered MP4.
 on:
   push:
     branches: [codex/social-photos-reels]
