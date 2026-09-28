@@ -10,7 +10,8 @@ After a separately approved Apps Script deployment, manually invoke
 `initializeEvergreenSocialLibrary()` once in the existing inventory workbook.
 It creates only **Evergreen Social Content**, never replaces an existing sheet,
 never changes Product Catalog / Website Export / their 29-column schemas, and
-never installs a trigger. No production workbook was edited during implementation.
+never installs a trigger. Owner-authorized final acceptance adds this source tab
+and Draft-only queue rows; it does not activate publishing or modify inventory.
 
 The source has 11 columns:
 
@@ -150,7 +151,7 @@ media using Cloudinary/GitHub, manually approve enough topics for the rotation a
 perform separately authorized non-publishing live acceptance. **Do not enable
 publishing or cleanup as part of this implementation.**
 
-### Candidate validation checkpoint
+### Original implementation checkpoint (superseded by final acceptance)
 
 - Full maintained units: **915 passed, 0 failed**, 46 files, isolated LF-normalized
   copy (matching GitHub checkout; native Windows has pre-existing CRLF-sensitive
@@ -166,8 +167,9 @@ publishing or cleanup as part of this implementation.**
   historical evidence retained. No workbook or approval changes were made.
 - The production workbook has no evergreen source tab yet. The library and
   graphics capability are a review candidate, not a production installation.
-- This one follow-up includes the previously completed, unpushed ten-track
-  background-music candidate; no additional feature/paid-provider work was added.
+- Final review removes the ten-track music implementation from the initial
+  release. Silent `reel-v1` identities remain unchanged. See
+  [music decision and retained license research](REEL_MUSIC_LICENSES.md).
 - No real Buffer create, Cloudinary upload, production backend deployment, social
   trigger installation, cleanup enablement or Netlify deployment was performed.
 

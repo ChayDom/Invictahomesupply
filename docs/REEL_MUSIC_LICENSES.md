@@ -1,4 +1,23 @@
-# Curated Reel music library v1
+# Initial-release decision: silent Reels
+
+Final review decision (2026-09-28): **REMOVE FROM INITIAL RELEASE**. The ten
+tracks and audio implementation are preserved in Git commit
+`990e8e4764fbe7b6c70e4b397a897c6be0c8d7ac`, not bundled in this candidate.
+Production remains on the proven silent `reel-v1` format and fingerprint.
+No existing silent-video receipt or asset identity is migrated.
+
+Music may improve polish, but its business benefit has not been demonstrated.
+Free CC BY 4.0 music requires attribution, a license link and modification notice.
+Incompetech's [Content ID guidance](https://incompetech.com/music/royalty-free/youtube-contentid.html)
+warns that video-overlay attribution may not be recognized automatically; retain
+description credits and evidence when distributing any future music-enabled Reel.
+This guidance concerns YouTube, not a guarantee of Meta account allowlisting.
+Automated copyright claims remain possible, and non-publishing tests cannot prove
+claim-free Facebook/Instagram publication. Silent Reels avoid this operational
+burden, audio validation and approximately 4.8 MB of maintained binary assets.
+
+The following is retained license research for a future separately reviewed
+music release, **not a statement that music assets remain installed**.
 
 Verified 2026-09-28, before importing audio. Provider: Kevin MacLeod / Incompetech.
 The provider's [licensing page](https://incompetech.com/music/royalty-free/licenses/)
@@ -33,13 +52,13 @@ Daily Beetle also credits guitarist **Brett Van Donsel** in the provider's
 [release note](https://incompetech.com/wordpress/2015/04/daily-beetle/); its Reel
 credit retains that contribution.
 
-Controlled location: `media/social-music/`. `library.json` pins each excerpt's
+Historical controlled location: `media/social-music/`. `library.json` pinned each excerpt's
 SHA-256 and source URL. Files are downloaded only during reviewed library import,
 not from an arbitrary music URL at render time. They are not part of the public
 website package. Do not overwrite an approved track: change the library/template
 version intentionally if replacing any audio or attribution.
 
-Music-enabled videos carry their title, author/provider, CC BY 4.0 license URL and
+The removed music-enabled implementation carried its title, author/provider, CC BY 4.0 license URL and
 modification notice in a visible credit overlay. Keep that credit when reposting.
 The library license does not license product photos or any other site content.
 No copyright ownership or endorsement by the musician is claimed. Preserve these

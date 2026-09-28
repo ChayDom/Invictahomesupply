@@ -177,20 +177,6 @@ test('all existing rows reconciled, absent/sold-out rows retired and old Ready l
 test('same manifest preserves explicit Ready on subsequent preparation',()=>{
   const t=fixture();t.ctx.reconcileSocialQueue_(t.queue,new Map([[t.key,t.source]]));assert.equal(t.row[12],'Ready');
 });
-test('old silent Reel approval requires explicit reapproval; historical receipts remain held',()=>{
-  const t=fixture({photos:4,reels:true});
-  const old=plain(t.plan);delete old.musicTrackId;delete old.musicLibraryVersion;delete old.templateVersion;
-  old.renderHash=t.ctx.socialOperationKey_([t.key,old.photoIds,'reel-v1',t.source.renderFacts,
-    {width:1080,height:1920,seconds:12,silent:true}]);
-  old.hashes=[old.renderHash];old.publicIds=['invicta-social/reel-v1/'+old.renderHash];
-  t.notes.set('2:5',JSON.stringify(old));
-  t.ctx.reconcileSocialQueue_(t.queue,new Map([[t.key,t.source]]));
-  assert.equal(t.row[12],'Draft');assert.equal(t.inputs.length,0);
-  t.notes.set('2:5',JSON.stringify(old));t.notes.set('2:14','historical durable journal');t.row[13]='old-fb';t.row[12]='Ready';
-  t.ctx.reconcileSocialQueue_(t.queue,new Map([[t.key,t.source]]));
-  assert.equal(t.row[12],'Skip');assert.equal(t.row[13],'old-fb');
-  assert.equal(t.notes.get('2:14'),'historical durable journal');assert.equal(t.inputs.length,0);
-});
 test('receipt/error/legacy evidence is preserved during reconciliation, never reset into new operation',()=>{
   const t=fixture();t.row[13]='old-fb';t.row[18]='Buffer send failed: historical error';t.row[12]='Ready';
   t.notes.set('2:14','old journal evidence');const before=t.row.slice();

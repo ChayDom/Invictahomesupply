@@ -16,7 +16,7 @@ on:
         required: false
         type: string
       reel:
-        description: Prepare optional Reel with curated music or silent fallback (4-6 Photos)
+        description: Prepare optional silent Reel (4-6 Photos)
         default: false
         type: boolean
 

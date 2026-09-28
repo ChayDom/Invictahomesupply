@@ -139,10 +139,7 @@ await test('unchanged prepared Reel reuses Cloudinary without downloading, rende
       assert.notEqual(options.method,'POST');uploads+=Number(options.method==='POST');
       if(url.startsWith('https://api.airtable.com'))return Response.json({records:[{fields}]});
       assert.ok(url.startsWith('https://api.cloudinary.com'));
-      const prepared=asset(plan.publicIds[0],plan.hashes[0],'video');
-      Object.assign(prepared.context.custom,{music_track_id:plan.musicTrackId,
-        music_library_version:plan.musicLibraryVersion,music_status:'silent-fallback'});
-      return Response.json(prepared);
+      return Response.json(asset(plan.publicIds[0],plan.hashes[0],'video'));
     }});
   assert.equal(result.reused,1);assert.equal(result.prepared,0);assert.equal(uploads,0);
 });

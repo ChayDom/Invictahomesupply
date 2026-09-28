@@ -68,13 +68,12 @@ the second and preserves the first receipt.
 The preparation worker has no Buffer, Sheets, Gemini or Netlify credentials.
 It only reads the explicitly scoped production Website Products table and
 uploads approved media into the owner-confirmed Cloudinary Free product environment.
-No Airtable writes, unsigned upload preset, paid transformation, generative
+No Airtable writes, unsigned upload preset, paid transformation, music, generative
 product imagery, public GitHub artifact media URL or automatic media deletion.
 
 Immutable image IDs: permanent Product Key + attachment ID + photos-v1.
-Reel fingerprint: permanent key + ordered selected attachment IDs + reel-v2-music +
-actual name/price/spec/branding/CTA + deterministic musicTrackId + music-library-v1 +
-1080x1920 / 12 seconds / versioned AAC/background/fallback settings.
+Reel fingerprint: permanent key + ordered selected attachment IDs + reel-v1 +
+actual name/price/spec/branding/CTA + 1080x1920 / 12 seconds / silent settings.
 Existing valid assets are reused BEFORE downloads/rendering; mismatches fail closed.
 Uploads are signed SHA256, overwrite=false, with a matching source_hash context.
 Delivery URLs are pinned to the uploaded version; manual URLs are not trusted.
@@ -83,53 +82,12 @@ The worker normalizes image posts to 1080x1350 JPEG (4:5), <=8MB. Airtable somet
 serves genuine Photos as binary/octet-stream; downloads still require allowlisted
 Airtable delivery hosts and matching JPEG/PNG/WebP file signatures.
 
-One Reel template: 1080x1920, 12 seconds, 30fps, H264/yuv420p MP4 with faststart,
+One Reel template: silent 1080x1920, 12 seconds, 30fps, H264/yuv420p MP4 with faststart,
 gentle centered zoom, crossfades, actual product name/price/card specs, Invicta
 Home Supply and McKinney/website CTA. Photos are resized once before looping to
 avoid repeatedly decoding huge original attachments. Text is in local text files
 with literal expansion, never shell/filter interpolation. ffprobe rejects format,
 duration, size, bitrate, frame-rate or audio violations.
-
-### Controlled background music
-
-Exactly ten curated instrumental tracks (`music-01` through `music-10`) live in
-`media/social-music/`, outside the public website package. Source, commercial-use
-license, required attribution and hash-pinned excerpts are documented in
-[REEL_MUSIC_LICENSES.md](REEL_MUSIC_LICENSES.md) and `library.json`. All are Kevin
-MacLeod / Incompetech CC BY 4.0; the rendered Reel embeds the required artist/title,
-provider, license URL and modification notice. Daily Beetle retains the guest
-guitarist credit. No platform music, vocals, paid license or runtime music download.
-
-The shared Apps Script helper selects a track deterministically from permanent
-Product Key + template version, never randomness or posting time. Both approval
-and the worker use the same helper. Its track/library/template identity is part of
-the render hash and immutable Cloudinary public ID. Image/carousel identities,
-48-hour cadence, shareNow, send-time inventory guards and existing journals stay
-unchanged. Old reel-v1 assets/receipts are retained; a newly prepared music Reel
-needs explicit approval again and cannot automatically repost a historical product.
-
-FFmpeg fully decodes/checks the pinned MP3, loops/trims it to 12 seconds, normalizes
-to -23 LUFS before an additional 0.5 gain, limits peaks, fades in for 0.5 seconds
-and out over the final 1.2 seconds, and encodes AAC 128 kbps / stereo / 48 kHz.
-Muxing copies the existing H264 video; no replacement product imagery. The local
-probe verifies audio/video format; both worker and sender accept only matching
-Cloudinary music metadata and AAC, or verified silence. Upload context includes
-`music_track_id`, `music_library_version` and `music_status` (`music` or
-`silent-fallback`). Missing/invalid/corrupt music or audio encode/mux failure uses
-the silent video instead; it does not fail the whole post.
-
-A silent fallback is **sticky** under that fingerprint: retries reuse the already
-uploaded silent MP4 even if the track later becomes available. Do not overwrite or
-delete it to force music. Intentionally bump the template/library version and
-reapprove to create a new render. Replacing approved track bytes likewise requires
-a library version bump; checksums reject an accidental in-place replacement.
-The reviewed importer refuses to overwrite an existing approved library.
-
-Offline checks: `node test/reel-music.test.mjs` and (FFmpeg/ffprobe + DejaVu required)
-`node test/reel-music-ffmpeg.mjs`. The latter decodes/encodes all ten files and renders
-one real AAC Reel plus a silent fallback without credentials or any network calls.
-Optional `--photos-dir` uses four existing local owner-photo files named source-0
-through source-3. This is preparation only: no social activation or deployment.
 
 Standard ubuntu-24.04 GitHub Actions runner with distro FFmpeg/open DejaVu font.
 Manual workflow_dispatch only; one Product Key; protected social-media environment;
