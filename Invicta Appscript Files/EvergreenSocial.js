@@ -149,6 +149,19 @@ function assertEvergreenCurrent_(queue,rowNumber,row,plan) {
 }
 
 /** Explicit owner invocation; no triggers, Gemini, Buffer or inventory changes. */
+function evergreenQueueTypeValidation_(queue,rowNumber,type) {
+  const cell = queue.getRange(rowNumber,8), rule = cell.getDataValidation();
+  if (!rule) return;
+  if (rule.getCriteriaType() !== SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST) throw new Error('Unexpected queue content-type validation; owner review required.');
+  const criteria = rule.getCriteriaValues(), options = criteria[0];
+  const supported = ['Post','Reel','Educational','Comparison','Tip','Brand'];
+  if (!Array.isArray(options) || !options.includes('Post') || !options.includes('Reel') ||
+      options.some(function(value) { return !supported.includes(value); })) throw new Error('Unknown queue content-type options; owner review required.');
+  if (options.includes(type)) return;
+  // Only this editorial row: preserve strictness/UI and all product-row validation.
+  cell.setDataValidation(rule.copy().requireValueInList(supported,criteria[1]).build());
+}
+
 function prepareEvergreenSocialQueue() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) throw new Error('Another social/maintenance operation is active.');
@@ -171,6 +184,7 @@ function prepareEvergreenSocialQueue() {
       evergreenPublishSnapshot_(item,plan);
       const rowNumber = existing ? existing.index+2 : queue.getLastRow()+1;
       if (rowNumber > queue.getMaxRows()) queue.insertRowsAfter(queue.getMaxRows(),rowNumber-queue.getMaxRows());
+      evergreenQueueTypeValidation_(queue,rowNumber,item.type);
       const unchanged = existing && existing.row[17] === plan.sourceHash && existing.row[9] === item.caption && existing.row[10] === item.caption &&
         existing.row[7] === item.type && existing.row[5] === 'Image' && existing.row[11] === '' &&
         queue.getRange(rowNumber,5).getNote() === JSON.stringify(plan);

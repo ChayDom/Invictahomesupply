@@ -54,7 +54,7 @@ export class Sheet {
       setValues:v=>write(v,'setValues'),setValue:v=>write([[v]],'setValue'),
       clearContent:()=>write(Array.from({length:n},()=>new Array(m).fill('')),'clearContent'),
       copyTo(){},getNumberFormats:()=>Array.from({length:n},()=>new Array(m).fill('$#,##0.00')),
-      getNumberFormat:()=>'$#,##0.00',setNumberFormats(){},setNumberFormat(){},setDataValidation(){}
+      getNumberFormat:()=>'$#,##0.00',setNumberFormats(){},setNumberFormat(){},getDataValidation:()=>null,setDataValidation(){}
     };
   }
 }

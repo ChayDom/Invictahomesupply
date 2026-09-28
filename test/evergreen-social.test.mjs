@@ -59,6 +59,22 @@ await test('preparation enters the existing 19-column queue as Draft, with no in
   const row=t.row('EDU-01');assert.equal(row[0],'EVERGREEN|EDU-01|1');assert.equal(row[7],'Educational');assert.equal(row[12],'Draft');
   assert.equal(t.inputs.length,0);assert.equal(t.snapshots.length,30);
 });
+await test('legacy strict Post/Reel validation is extended only on the appended editorial cell before its value write',()=>{
+  const t=fixture(),original=t.queue.getRange.bind(t.queue),calls=[],kind='VALUE_IN_LIST';
+  t.ctx.SpreadsheetApp.DataValidationCriteria={VALUE_IN_LIST:kind};
+  const rule={getCriteriaType:()=>kind,getCriteriaValues:()=>[['Post','Reel'],true],copy:()=>({
+    requireValueInList(options,show){assert.deepEqual(plain(options),['Post','Reel','Educational','Comparison','Tip','Brand']);assert.equal(show,true);return this;},build:()=>({strict:true})})};
+  t.queue.getRange=(r,c,n=1,m=1)=>Object.assign(original(r,c,n,m),c===8?{
+    getDataValidation:()=>rule,setDataValidation:value=>{assert.equal(value.strict,true);calls.push([r,c]);}
+  }:{});
+  t.prepare();assert.equal(calls.length,30);assert.ok(calls.every(([r,c])=>r>=3&&c===8));
+  assert.equal(t.row('EDU-01')[7],'Educational');assert.equal(t.row('EDU-01')[12],'Draft');
+});
+await test('unexpected content validation fails closed without clearing validation or writing approval',()=>{
+  const t=fixture(),original=t.queue.getRange.bind(t.queue);t.ctx.SpreadsheetApp.DataValidationCriteria={VALUE_IN_LIST:'LIST'};
+  t.queue.getRange=(r,c,n=1,m=1)=>Object.assign(original(r,c,n,m),c===8?{getDataValidation:()=>({getCriteriaType:()=> 'CUSTOM_FORMULA'})}:{});
+  assert.throws(t.prepare,/Unexpected queue content-type validation/);assert.equal(t.queue.getLastRow(),2);assert.equal(t.inputs.length,0);
+});
 await test('preparation is idempotent and never auto-approves; unchanged manual Ready stays Ready',()=>{
   const t=fixture();t.prepare();t.approve('EDU-01');const before=plain(t.queue.data);t.prepare();
   assert.deepEqual(plain(t.queue.data),before);assert.equal(t.row('EDU-02')[12],'Draft');
