@@ -88,6 +88,14 @@ product V1/V2 payloads and receipt recovery are unchanged.
 
 ## Media and safety
 
+The initializer formats only the new populated source area: wrapped/top-aligned
+copy, bounded column widths, a light gray bold header and one frozen row. It does
+not format inventory or product queue rows. Preparation preserves existing strict
+Post/Reel validation on product rows and extends that validation only on each
+editorial CONTENT TYPE cell, keeping strictness and dropdown UI. Unexpected
+validation fails closed. An interrupted partial editorial row is repaired in
+place as Draft; no second occurrence is created.
+
 FFmpeg creates four 1080×1350 JPEG slides with the site's charcoal/cream/terracotta
 colors, Invicta branding and website/McKinney CTA. No fake product images, external
 retailer imagery, Canva or paid rendering. The Ubuntu runner uses DejaVu Sans Mono.
@@ -105,7 +113,9 @@ Old receipt rows are never rewritten to republish changed content.
 
 Evergreen send-time checks source presence, Enabled status, exact approved copy,
 manifest/type/occurrence, duplicate pending content and cooldown, before resolving
-media and again immediately before each Buffer create. Product posts still require
+media and again immediately before each Buffer create. Unused-topic priority is
+also rechecked at send time, including a newly enabled topic after selection.
+Product posts still require
 current workbook/source evidence, positive stock, publication controls and ordered
 owner Airtable Photos. No general-purpose inventory-check bypass was added.
 
@@ -146,32 +156,60 @@ Local Windows font override is QA-only; production rendering remains on the
 existing Linux runner. Existing product-safety tests remain maintained.
 
 Before activation: approve/merge backend-only PR with skip marker, deploy reviewed
-Apps Script source through the existing process, seed/edit the library, prepare
-media using Cloudinary/GitHub, manually approve enough topics for the rotation and
-perform separately authorized non-publishing live acceptance. **Do not enable
+Apps Script source through the existing process, review the already installed
+library (do not reseed), prepare remaining media using Cloudinary/GitHub and
+manually approve enough topics for the rotation. Final non-publishing acceptance
+is recorded below; deployment and activation remain separate approvals. **Do not enable
 publishing or cleanup as part of this implementation.**
 
-### Original implementation checkpoint (superseded by final acceptance)
+### Final live, non-publishing acceptance (2026-09-28)
 
-- Full maintained units: **915 passed, 0 failed**, 46 files, isolated LF-normalized
+- Full maintained units: **905 passed, 0 failed**, 45 files, isolated LF-normalized
   copy (matching GitHub checkout; native Windows has pre-existing CRLF-sensitive
-  frontend fixture assertions). Includes 39 new evergreen checks.
+  frontend fixture assertions). Includes 45 evergreen checks.
 - Chromium browser regressions: **139 passed, 0 failed**, installed Chrome 152.
   Initial Chromium 90 run had one unrelated card-layout failure because that
   browser predates the existing CSS `:has()` rule; no frontend fix was made.
 - Real offline graphics E2E: **3 passed, 0 failed**, 12 ordered graphics, correct
   JPEG dimensions/size and byte-identical retries. Samples: EDU-01, CMP-01, BRAND-02.
-- Apps Script/modules syntax: **19 passed**; `git diff --check` passed.
-- Read-only production queue check: **64 rows: Draft 46, Needs Image 4, Skip 8,
-  historical Queued 6, Ready 0; evergreen 0**. Lake Annette/Dyson remain Skip with
-  historical evidence retained. No workbook or approval changes were made.
-- The production workbook has no evergreen source tab yet. The library and
-  graphics capability are a review candidate, not a production installation.
+- Apps Script/modules syntax: **18 passed**; `git diff --check` passed.
+- Before installation: **64 product rows: Draft 46, Needs Image 4, Skip 8,
+  historical Queued 6, Ready 0; evergreen 0**. Seven receipt-bearing rows verified
+  from live values and notes (six Queued plus Lake Annette).
+- Owner-authorized acceptance added the 30-topic source and **30 evergreen Drafts**.
+  Final total: **94 rows: Draft 76 (46 product + 30 evergreen), Needs Image 4,
+  Skip 8, historical Queued 6, Ready 0**. The first 64 rows and all their notes
+  were checked by digest before/after; Product Catalog / Website Export headers
+  and native K2 formula were unchanged. Lake Annette/Dyson remain safely held.
+  Read-only live source/Airtable Photos audit: **46 of 46 product Drafts eligible**,
+  zero Airtable writes and zero Buffer creates during that audit.
+- Live graphics examples: EDU-01 (wear layer), CMP-01 (5 mm / 12 MIL vs 7 mm /
+  22 MIL), BRAND-01 (compare with confidence). Twelve ordered 1080×1350 JPEGs
+  uploaded and validated through the actual Apps Script Cloudinary resolver;
+  visual samples checked. Unchanged EDU-01 rerun: **reused 4, prepared 0**.
+- Temporary EDU-01 copy edit changed fingerprint and blocked approved-fixture
+  publication with **zero creates**. Four new immutable graphics were rendered.
+  Original copy and source identity were restored afterward.
+- Six **Buffer drafts only** (three topics × Facebook/Instagram), each with four
+  ordered images and distinct fixture journal. Each lost-receipt retry recovered
+  the same draft ID with **zero additional creates**. A temporary mutation
+  firewall allowed only `saveToDraft:true` + `mode:addToQueue`; public `shareNow`
+  and other mutations were rejected. No production queue row became Ready.
+- Rotation from live seven-row offset and its complete next sequence are covered;
+  48-hour exact boundary, no fallback, Draft/approval rejection, shared cadence,
+  120-day boundary, unused priority and fail-closed historical dates passed.
+- Live trigger installer test was rejected while OFF; the same three catalog/
+  sync/enrichment handlers remained. No social or cleanup handler was installed.
 - Final review removes the ten-track music implementation from the initial
   release. Silent `reel-v1` identities remain unchanged. See
   [music decision and retained license research](REEL_MUSIC_LICENSES.md).
-- No real Buffer create, Cloudinary upload, production backend deployment, social
-  trigger installation, cleanup enablement or Netlify deployment was performed.
+- Real preparation creates Cloudinary assets and **non-publishing Buffer drafts**,
+  not public posts. Retain prepared assets for cache reuse and clearly marked test
+  drafts/receipt evidence until intentionally reviewed; do not schedule them.
+- Temporary Apps Script acceptance files are removed and original PR19 production
+  source read back. No temporary GitHub workflow/script is included in the PR.
+  Backend deployment/merge remains separately approved work. Publishing and
+  cleanup stay OFF; no Netlify deployment occurred.
 
 With the current seven receipt-bearing historical rows (six Queued plus held
 Lake Annette), installing the library makes the next fresh slot **Brand/Tip**.

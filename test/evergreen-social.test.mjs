@@ -59,6 +59,13 @@ await test('preparation enters the existing 19-column queue as Draft, with no in
   const row=t.row('EDU-01');assert.equal(row[0],'EVERGREEN|EDU-01|1');assert.equal(row[7],'Educational');assert.equal(row[12],'Draft');
   assert.equal(t.inputs.length,0);assert.equal(t.snapshots.length,30);
 });
+await test('initializer makes only the new authored library readable and leaves inventory/queue formats alone',()=>{
+  const t=fixture();delete t.sheets['Evergreen Social Content'];t.ctx.initializeEvergreenSocialLibrary();
+  const formats=t.sheets['Evergreen Social Content'].formats;
+  assert.ok(formats.some(f=>f.wrap===true&&f.r===1&&f.n===31&&f.m===11));
+  assert.ok(formats.some(f=>f.frozenRows===1));assert.ok(formats.some(f=>f.column===4&&f.width===360));
+  assert.equal(t.catalog.formats.length,0);assert.equal(t.queue.formats.length,0);
+});
 await test('legacy strict Post/Reel validation is extended only on the appended editorial cell before its value write',()=>{
   const t=fixture(),original=t.queue.getRange.bind(t.queue),calls=[],kind='VALUE_IN_LIST';
   t.ctx.SpreadsheetApp.DataValidationCriteria={VALUE_IN_LIST:kind};
@@ -97,6 +104,24 @@ await test('full eight-slot rotation is deterministic and one shared sequence',(
 });
 await test('product slot cannot publish educational content and does not auto-promote Drafts',()=>{
   const t=fixture({history:false});t.prepare();t.approve('EDU-01');assert.equal(t.run().queued,0);assert.equal(t.inputs.length,0);
+});
+await test('seven receipt-bearing rows start Brand/Tip and preserve the live historical offset through a full rotation',()=>{
+  const t=fixture({history:false});t.queue.maxRows=1000;
+  for(let i=0;i<7;i++){const r=new Array(19).fill('');Object.assign(r,{0:'HIST-'+i,7:'Post',12:i===6?'Skip':'Queued',13:'historical-'+i,15:new Date(t.ctx.Date.now()-200*86400000)});t.queue.data.push(r);}
+  // The other seven owner holds have no receipt and must not advance rotation.
+  for(let i=0;i<7;i++){const r=new Array(19).fill('');Object.assign(r,{0:'HELD-'+i,7:'Post',12:'Skip'});t.queue.data.push(r);}
+  t.prepare();
+  for(const row of t.queue.data.slice(1))if(String(row[0]).startsWith('EVERGREEN|'))row[12]='Ready';
+  for(const [i,expected] of ['Brand/Tip','Product','Educational','Product','Comparison','Product','Educational','Product','Brand/Tip'].entries()){
+    const product=new Array(19).fill('');Object.assign(product,{0:'P-FRESH-'+i,7:'Post',12:'Ready'});t.queue.data.push(product);
+    const rows=t.queue.data.slice(1),chosen=rows[t.ctx.evergreenSelectReady_(t.queue,rows)];assert.ok(chosen);
+    const type=String(chosen[0]).startsWith('EVERGREEN|')?chosen[7]:'Product';assert.ok(expected==='Brand/Tip'?['Brand','Tip'].includes(type):type===expected);
+    chosen[12]='Queued';chosen[13]='new-receipt-'+i;chosen[15]=new Date(t.ctx.Date.now()-72*3600000);
+  }
+});
+await test('a partially written first editorial row is repaired as Draft without duplicating its identity',()=>{
+  const t=fixture(),row=new Array(19).fill('');Object.assign(row,{0:'EVERGREEN|EDU-01|1',1:'Wear layer: 6, 12 or 22 MIL?',2:'Evergreen',5:'Image',6:'https://invictahomesupply.com'});t.queue.data.push(row);
+  const result=t.prepare();assert.equal(result.refreshed,1);assert.equal(result.added,29);assert.equal(t.queue.data.filter(r=>r[0]==='EVERGREEN|EDU-01|1').length,1);assert.equal(t.row('EDU-01')[12],'Draft');
 });
 await test('educational slot waits for manual approval, never falls back to product flooding',()=>{
   const t=fixture();t.prepare();assert.equal(t.run().queued,0);assert.equal(t.inputs.length,0);
@@ -138,6 +163,14 @@ await test('source disabled after Facebook acceptance blocks Instagram and prese
   const t=fixture();t.prepare();t.approve('EDU-01');t.onCreate=()=>{t.sheets['Evergreen Social Content'].data[1][8]='Disabled';};
   t.run();assert.equal(t.inputs.length,1);assert.equal(t.row('EDU-01')[13],'synthetic-1');assert.equal(t.row('EDU-01')[14],'');
   assert.equal(t.ctx.hasSocialPostQueuedWithinHours_(48),true);
+});
+await test('a newly enabled unused topic after selection blocks reused content at the final source check',()=>{
+  const base=fixture(),seed=plain(base.ctx.evergreenSeedRows_()),t=fixture({libraryRows:[seed[0]]});t.prepare();
+  const old=t.row('EDU-01');old[12]='Queued';old[13]='old-fb';old[14]='old-ig';old[15]=new Date(t.ctx.Date.now()-120*86400000);
+  for(let i=0;i<3;i++){const p=new Array(19).fill('');Object.assign(p,{0:'P-OLD-'+i,7:'Post',12:'Queued',13:'old-'+i,15:new Date(t.ctx.Date.now()-200*86400000)});t.queue.data.push(p);}
+  t.prepare();const fresh=t.queue.data.find(r=>r[0]==='EVERGREEN|EDU-01|2');fresh[12]='Ready';
+  const resolve=t.ctx.socialResolveCloudinary_;t.ctx.socialResolveCloudinary_=plan=>{const result=resolve(plan);t.sheets['Evergreen Social Content'].data.push(seed[1]);return result;};
+  t.run();assert.equal(t.inputs.length,0);assert.equal(fresh[12],'Draft');assert.match(fresh[18],/Unused evergreen/);assert.equal(old[13],'old-fb');
 });
 await test('duplicate content occurrences cannot bypass content-level approval safeguards',()=>{
   const t=fixture();t.prepare();t.approve('EDU-01');const duplicate=t.row('EDU-01').slice();duplicate[0]='EVERGREEN|EDU-01|2';t.queue.data.push(duplicate);

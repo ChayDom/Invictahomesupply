@@ -22,12 +22,15 @@ export class Sheet {
   constructor(name, headers=[], rows=[]) {
     this.name=name; this.data=[headers.slice(),...rows.map(r=>r.slice())]; this.maxRows=50;
     this.formula=name==='Product Catalog'?'=MAP(I2:I,J2:J,LAMBDA(a,p,a*p))':'';
-    this.writes=[]; this.beforeWrite=()=>{}; this.afterWrite=()=>{};
+    this.writes=[]; this.formats=[]; this.beforeWrite=()=>{}; this.afterWrite=()=>{};
   }
   getLastColumn(){return this.data[0].length;}
   getMaxRows(){return this.maxRows;}
   getLastRow(){return this.data.length;}
   insertRowsAfter(_,n){this.maxRows+=n;}
+  setColumnWidth(c,width){this.formats.push({column:c,width});}
+  setFrozenRows(n){this.formats.push({frozenRows:n});}
+  autoResizeRows(r,n){this.formats.push({autoRows:[r,n]});}
   getDataRange(){return this.getRange(1,1,this.data.length,this.getLastColumn());}
   getRange(r,c,n=1,m=1) {
     assert.ok([r,c,n,m].every(v=>Number.isInteger(v)&&v>0),'positive dimensions');
@@ -54,7 +57,11 @@ export class Sheet {
       setValues:v=>write(v,'setValues'),setValue:v=>write([[v]],'setValue'),
       clearContent:()=>write(Array.from({length:n},()=>new Array(m).fill('')),'clearContent'),
       copyTo(){},getNumberFormats:()=>Array.from({length:n},()=>new Array(m).fill('$#,##0.00')),
-      getNumberFormat:()=>'$#,##0.00',setNumberFormats(){},setNumberFormat(){},getDataValidation:()=>null,setDataValidation(){}
+      getNumberFormat:()=>'$#,##0.00',setNumberFormats(){},setNumberFormat(){},getDataValidation:()=>null,setDataValidation(){},
+      setWrap(value){sheet.formats.push({r,c,n,m,wrap:value});return this;},
+      setVerticalAlignment(value){sheet.formats.push({r,c,n,m,vertical:value});return this;},
+      setFontWeight(value){sheet.formats.push({r,c,n,m,weight:value});return this;},
+      setBackground(value){sheet.formats.push({r,c,n,m,background:value});return this;}
     };
   }
 }

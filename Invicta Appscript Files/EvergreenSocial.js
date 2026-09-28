@@ -130,7 +130,8 @@ function evergreenSelectReady_(queue,rows) {
 
 function assertEvergreenCurrent_(queue,rowNumber,row,plan) {
   const identity = evergreenIdentity_(row[0]);
-  const item = identity && evergreenReadLibrary_().find(function(content) { return content.id === identity.id; });
+  const library = evergreenReadLibrary_();
+  const item = identity && library.find(function(content) { return content.id === identity.id; });
   const fail = function(status,message) {
     queue.getRange(rowNumber,13).setValue(status);queue.getRange(rowNumber,19).setValue(message);
     const error = new Error(message);error.socialEligibilityFailure = true;throw error;
@@ -142,9 +143,10 @@ function assertEvergreenCurrent_(queue,rowNumber,row,plan) {
       JSON.stringify(socialReadMediaPlan_(queue,rowNumber)) !== JSON.stringify(plan)) fail('Draft','Evergreen source/caption/media changed; prepare and approve again.');
   const rows = evergreenQueueRows_(queue);
   const others = rows.map(function(other,index) { return index+2 === rowNumber ? new Array(19).fill('') : other; });
-  const state = evergreenHistory_(queue,others).get(item.id);
+  const history = evergreenHistory_(queue,others), state = history.get(item.id);
   if (state && state.pending) fail('Draft','Duplicate pending evergreen content; owner review required.');
   if (state && state.posted && Date.now() < state.last + item.cooldown*86400000) fail('Draft','Evergreen reuse cooldown active.');
+  if (state && state.posted && evergreenUnusedAvailable_(library,history)) fail('Draft','Unused evergreen topics take priority; review rotation again.');
   return item;
 }
 
@@ -258,5 +260,17 @@ function initializeEvergreenSocialLibrary() {
   const sheet = ss.insertSheet(EVERGREEN_SHEET_), rows = evergreenSeedRows_();
   if (sheet.getMaxRows() < rows.length+1) sheet.insertRowsAfter(sheet.getMaxRows(),rows.length+1-sheet.getMaxRows());
   sheet.getRange(1,1,rows.length+1,EVERGREEN_HEADERS_.length).setValues([EVERGREEN_HEADERS_].concat(rows));
+  evergreenFormatLibrary_(sheet,rows.length+1);
   return {sheet:EVERGREEN_SHEET_,topics:rows.length,queueRowsAdded:0,publishingEnabled:false};
+}
+
+/** Readable owner review area only; no inventory/queue formatting changes. */
+function evergreenFormatLibrary_(sheet,rowCount) {
+  sheet.getRange(1,1,rowCount,11).setWrap(true).setVerticalAlignment('top');
+  sheet.getRange(1,1,1,11).setFontWeight('bold').setBackground('#eeeeee');
+  [110,140,220,360,260,260,260,260,100,140,300].forEach(function(width,index) {
+    sheet.setColumnWidth(index+1,width);
+  });
+  sheet.setFrozenRows(1);
+  sheet.autoResizeRows(1,rowCount);
 }

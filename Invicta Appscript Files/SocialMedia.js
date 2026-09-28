@@ -236,9 +236,7 @@ function socialCloudinaryVideoFacts_(asset) {
   // can use nested video/audio objects. Both are documented; contradictions fail.
   const flat=asset.codec, nested=asset.video && asset.video.codec;
   if(flat && nested && flat!==nested)throw new Error('Contradictory video codec metadata.');
-  const audioFlat=asset.audio_codec, audioNested=asset.audio && asset.audio.codec;
-  if(audioFlat && audioNested && audioFlat!==audioNested)throw new Error('Contradictory audio codec metadata.');
-  return {codec:flat || nested || '',audioCodec:audioFlat || audioNested || '',audioPresent:asset.has_audio===true ||
+  return {codec:flat || nested || '',audioPresent:asset.has_audio===true ||
     !!(asset.audio && Object.keys(asset.audio).length) || !!asset.audio_codec ||
     Number(asset.audio_bit_rate)>0 || Number(asset.audio_frequency)>0 || Number(asset.channels)>0};
 }
