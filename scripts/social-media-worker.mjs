@@ -8,6 +8,7 @@ import crypto from 'node:crypto';
 import vm from 'node:vm';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
+import {prepareMusicAudio} from './social-music.mjs';
 
 export const airtableBase = 'apptugvm4r5tm2OIt';
 export const airtableTable = 'tblUyA3uFL6FmMw6T';
@@ -79,14 +80,15 @@ export function uploadSignature(params,secret) {
   return crypto.createHash('sha256').update(serialized+secret).digest('hex');
 }
 
-export function verifyAsset(asset,type,publicId,hash) {
+export function verifyAsset(asset,type,publicId,hash,plan) {
   const video=type==='video';
   const videoFacts=video ? assetContract.socialCloudinaryVideoFacts_(asset||{}) : null;
   if(asset?.public_id!==publicId||asset.resource_type!==type||asset.type!=='upload'||
     asset.context?.custom?.source_hash!==hash||!Number.isInteger(asset.version)||asset.version<=0||
     asset.format!==(video?'mp4':'jpg')||asset.width!==1080||asset.height!==(video?1920:1350)||
     !(asset.bytes>0&&asset.bytes<=(video?100:8)*1024*1024)||
-    (video&&(!Number.isFinite(asset.duration)||Math.abs(asset.duration-12)>0.5||videoFacts.codec!=='h264'||videoFacts.audioPresent))) {
+    (video&&(!Number.isFinite(asset.duration)||Math.abs(asset.duration-12)>0.5||videoFacts.codec!=='h264'||
+      !assetContract.socialVideoAudioAllowed_(asset,plan)))) {
     const error=Error('Existing/prepared asset does not match immutable identity/format.');
     error.assetFacts={idMatches:asset?.public_id===publicId,hashMatches:asset?.context?.custom?.source_hash===hash,
       format:asset?.format,width:asset?.width,height:asset?.height,bytes:asset?.bytes,seconds:asset?.duration,
@@ -98,17 +100,20 @@ export function verifyAsset(asset,type,publicId,hash) {
   return asset;
 }
 
-export async function lookupAsset(config,type,publicId,hash,fetcher=fetch) {
+export async function lookupAsset(config,type,publicId,hash,fetcher=fetch,plan) {
   const response=await fetcher('https://api.cloudinary.com/v1_1/'+config.cloud+'/resources/'+type+'/upload/'+encodeURIComponent(publicId)+'?context=true&media_metadata=true',
     {headers:{Authorization:'Basic '+Buffer.from(config.key+':'+config.secret).toString('base64')},
       redirect:'error',signal:AbortSignal.timeout(30000)});
   if(response.status===404) return null;
   if(!response.ok) throw Error('Cloudinary lookup failed (HTTP '+response.status+').');
-  return verifyAsset(await response.json(),type,publicId,hash);
+  return verifyAsset(await response.json(),type,publicId,hash,plan);
 }
 
-export async function uploadAsset(config,type,publicId,hash,file,fetcher=fetch) {
-  const params={public_id:publicId,overwrite:'false',context:'source_hash='+hash,timestamp:String(Math.floor(Date.now()/1000))};
+export async function uploadAsset(config,type,publicId,hash,file,fetcher=fetch,plan,musicStatus) {
+  const musicContext=type==='video'&&plan?.musicTrackId?
+    '|music_track_id='+plan.musicTrackId+'|music_library_version='+plan.musicLibraryVersion+'|music_status='+musicStatus:'';
+  if(musicContext&&!['music','silent-fallback'].includes(musicStatus))throw Error('Verified music result required.');
+  const params={public_id:publicId,overwrite:'false',context:'source_hash='+hash+musicContext,timestamp:String(Math.floor(Date.now()/1000))};
   const data=new FormData();
   for(const [key,value] of Object.entries(params)) data.set(key,value);
   data.set('api_key',config.key);data.set('signature',uploadSignature(params,config.secret));
@@ -117,7 +122,7 @@ export async function uploadAsset(config,type,publicId,hash,file,fetcher=fetch) 
     {method:'POST',body:data,redirect:'error',signal:AbortSignal.timeout(120000)});
   if(!response.ok) throw Error('Cloudinary upload failed (HTTP '+response.status+'). No overwrite/retry permitted.');
   // Resolve authoritative metadata, including codec; never trust an old asset on upload collision.
-  const asset=await lookupAsset(config,type,publicId,hash,fetcher);
+  const asset=await lookupAsset(config,type,publicId,hash,fetcher,plan);
   if(!asset) throw Error('Uploaded asset not observable; stop and reconcile manually.');
   return asset;
 }
@@ -141,7 +146,7 @@ export function wrapText(value,columns,maxLines) {
   return lines.join('\n');
 }
 
-export function reelGraph(photoCount) {
+export function reelGraph(photoCount,{musicCredit=false}={}) {
   if(!Number.isInteger(photoCount)||photoCount<4||photoCount>6) throw Error('Reel needs 4-6 Photos.');
   const fade=0.5, segment=(12+fade*(photoCount-1))/photoCount;
   const filters=[];
@@ -162,17 +167,25 @@ export function reelGraph(photoCount) {
     "drawtext=fontfile=font.ttf:textfile=name.txt:expansion=none:fontsize=45:fontcolor=white:x=60:y=145:line_spacing=12,"+
     "drawtext=fontfile=font.ttf:textfile=price.txt:expansion=none:fontsize=60:fontcolor=white:x=60:y=1460,"+
     "drawtext=fontfile=font.ttf:textfile=specs.txt:expansion=none:fontsize=35:fontcolor=white:x=60:y=1560:line_spacing=10,"+
+    (musicCredit?"drawtext=fontfile=font.ttf:textfile=music-credit.txt:expansion=none:fontsize=20:fontcolor=white:x=60:y=1750:line_spacing=4,":"")+
     "drawtext=fontfile=font.ttf:textfile=cta.txt:expansion=none:fontsize=32:fontcolor=white:x=60:y=1830,"+
     'scale=in_range=auto:out_range=tv,format=yuv420p[out]');
   return filters.join(';\n');
 }
 
-export async function renderReel(photos,facts,cwd,{ffmpeg=runFFmpeg,font=process.env.SOCIAL_FONT_PATH||'/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'}={}) {
+export async function renderReel(photos,facts,cwd,{ffmpeg=runFFmpeg,musicPlan,music=prepareMusicAudio,
+  probe=verifyReel,font=process.env.SOCIAL_FONT_PATH||'/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'}={}) {
+  let audio=null;
+  if(musicPlan) {
+    try {audio=await music(musicPlan,cwd,{ffmpeg});} catch (_) { /* Optional audio must not fail a post. */ }
+  }
   await fs.copyFile(font,path.join(cwd,'font.ttf'));
   const text={brand:wrapText(facts.brand,32,1),name:wrapText(facts.name,32,3),
     price:wrapText(facts.price,24,1),specs:wrapText(facts.specs.join(' | '),42,4),cta:wrapText(facts.cta,50,1)};
   for(const [name,value] of Object.entries(text)) await fs.writeFile(path.join(cwd,name+'.txt'),value);
-  await fs.writeFile(path.join(cwd,'reel-filter.txt'),reelGraph(photos.length));
+  if(audio)await fs.writeFile(path.join(cwd,'music-credit.txt'),audio.credit);
+  const graph=reelGraph(photos.length,{musicCredit:!!audio});
+  await fs.writeFile(path.join(cwd,'reel-filter.txt'),graph);
   // Decode/resize each large attachment ONCE. Looping 9000px originals at 30fps
   // wastes CPU and can exceed free-runner/job budgets before encoding starts.
   const slides=[];
@@ -186,9 +199,19 @@ export async function renderReel(photos,facts,cwd,{ffmpeg=runFFmpeg,font=process
   const args=['-hide_banner','-loglevel','error','-y','-filter_complex_threads','1'];
   const segment=(12+0.5*(photos.length-1))/photos.length;
   for(const slide of slides) args.push('-loop','1','-framerate','30','-t',String(segment),'-i',slide);
-  args.push('-filter_complex',reelGraph(photos.length),'-map','[out]','-t','12','-an','-r','30',
-    '-c:v','libx264','-preset','fast','-crf','23','-pix_fmt','yuv420p','-color_range','tv','-movflags','+faststart','reel.mp4');
+  args.push('-filter_complex',graph,'-map','[out]','-t','12','-an','-r','30',
+    '-c:v','libx264','-preset','fast','-crf','23','-pix_fmt','yuv420p','-color_range','tv','-movflags','+faststart',
+    audio?'reel-silent.mp4':'reel.mp4');
   ffmpeg(args,cwd);
+  if(audio) {
+    try {
+      ffmpeg(['-hide_banner','-loglevel','error','-y','-i','reel-silent.mp4','-i',audio.file,
+        '-map','0:v:0','-map','1:a:0','-c:v','copy','-c:a','copy','-t','12','-movflags','+faststart','reel.mp4'],cwd);
+      if(probe(path.join(cwd,'reel.mp4')).silent!==false)throw Error('Music mux failed.');
+    } catch (_) {
+      await fs.copyFile(path.join(cwd,'reel-silent.mp4'),path.join(cwd,'reel.mp4'));
+    }
+  }
   return path.join(cwd,'reel.mp4');
 }
 
@@ -197,10 +220,14 @@ export function verifyReel(file,ffprobe=process.env.FFPROBE_PATH||'ffprobe') {
     {encoding:'utf8',timeout:30000,windowsHide:true});
   if(result.status!==0) throw Error('Local video verification failed.');
   const body=JSON.parse(result.stdout),video=body.streams?.find(s=>s.codec_type==='video');
-  if(body.streams.length!==1||!video||video.codec_name!=='h264'||video.width!==1080||video.height!==1920||
+  const audio=body.streams?.find(s=>s.codec_type==='audio');
+  if(body.streams.length!==(audio?2:1)||!video||video.codec_name!=='h264'||video.width!==1080||video.height!==1920||
     video.pix_fmt!=='yuv420p'||video.avg_frame_rate!=='30/1'||Math.abs(Number(body.format.duration)-12)>0.1||
+    (audio&&(audio.codec_name!=='aac'||Number(audio.sample_rate)!==48000||audio.channels!==2||
+      !(Number(audio.bit_rate)>0&&Number(audio.bit_rate)<=160000)))||
     !(Number(body.format.size)<100*1024*1024)||Number(body.format.bit_rate)>25000000) throw Error('Rendered MP4 failed social format acceptance.');
-  return {width:video.width,height:video.height,seconds:Number(body.format.duration),silent:true,codec:video.codec_name};
+  return {width:video.width,height:video.height,seconds:Number(body.format.duration),silent:!audio,codec:video.codec_name,
+    ...(audio?{audioCodec:audio.codec_name,sampleRate:Number(audio.sample_rate),channels:audio.channels}:{})};
 }
 
 export async function prepareProduct(productKey,{reels=false,config,fetcher=fetch,contract,ffmpeg=runFFmpeg,probe=verifyReel}={}) {
@@ -210,7 +237,7 @@ export async function prepareProduct(productKey,{reels=false,config,fetcher=fetc
   const source={productKey,photos:contract.socialPhotos_(fields),renderFacts:contract.socialRenderFacts_(fields)};
   const plan=contract.socialMediaPlan_(source,reels);
   const existing=[];
-  for(let i=0;i<plan.publicIds.length;i++) existing.push(await lookupAsset(config,plan.resourceType,plan.publicIds[i],plan.hashes[i],fetcher));
+  for(let i=0;i<plan.publicIds.length;i++) existing.push(await lookupAsset(config,plan.resourceType,plan.publicIds[i],plan.hashes[i],fetcher,plan));
   if(existing.every(Boolean)) return {productKey,strategy:plan.type,reused:existing.length,prepared:0};
   const cwd=await fs.mkdtemp(path.join(os.tmpdir(),'invicta-social-'));
   try {
@@ -229,8 +256,9 @@ export async function prepareProduct(productKey,{reels=false,config,fetcher=fetc
         JSON.stringify(contract.socialRenderFacts_(fresh))!==JSON.stringify(source.renderFacts)) throw Error('Product/Photos changed during preparation; stop.');
     };
     if(plan.type==='Reel') {
-      const file=await renderReel(files,source.renderFacts,cwd,{ffmpeg}); probe(file);
-      await check(); await uploadAsset(config,'video',plan.publicIds[0],plan.hashes[0],file,fetcher);
+      const file=await renderReel(files,source.renderFacts,cwd,{ffmpeg,musicPlan:plan,probe});
+      const verified=probe(file),musicStatus=verified.silent?'silent-fallback':'music';
+      await check(); await uploadAsset(config,'video',plan.publicIds[0],plan.hashes[0],file,fetcher,plan,musicStatus);
     } else {
       for(let i=0;i<count;i++) {
         if(existing[i]) continue;

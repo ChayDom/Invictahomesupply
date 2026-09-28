@@ -7,6 +7,10 @@ let failures=0;function test(n,f){try{f();console.log('ok - '+n);}catch(e){failu
 const artifact=buildPublic({staging:true});
 test('HTML retains candidate identity through provider post-processing',()=>{for(const name of Object.keys(artifact.files).filter(name=>name.endsWith('.html')))assert.ok(fs.readFileSync(path.join(root,'dist-public',name),'utf8').includes('<meta name="invicta-candidate" content="'+artifact.candidate+'">'));});
 for(const name of ['package.json','package-lock.json','Invicta Appscript Files/Config.js','test/appscript-remediation.test.mjs','docs/SOLD_OUT_LIFECYCLE.md','codex-appscript-refactor.patch','scripts/deploy-staging.mjs','.netlify/state.json'])test('operational path absent: '+name,()=>assert.equal(fs.existsSync(path.join(root,'dist-public',name)),false));
+test('controlled music library and its operational license manifest never enter website packaging',()=>{
+  for(const name of ['media/social-music','scripts/social-music.mjs','scripts/import-reel-music.mjs','docs/REEL_MUSIC_LICENSES.md'])
+    assert.equal(fs.existsSync(path.join(root,'dist-public',name)),false);
+});
 test('staging noindex/CSP/analytics marker is reproducible',()=>{
   assert.equal(artifact.staging,true);assert.equal(artifact.files._headers,undefined);assert.match(artifact.deploymentControls._headers,/^[a-f0-9]{64}$/);assert.match(fs.readFileSync(path.join(root,'dist-public/_headers'),'utf8'),/connect-src 'self'/);assert.match(fs.readFileSync(path.join(root,'dist-public/app.js'),'utf8'),/^window.__INVICTA_STAGING__ = true/);assert.match(fs.readFileSync(path.join(root,'dist-public/robots.txt'),'utf8'),/Disallow: \//);
 });

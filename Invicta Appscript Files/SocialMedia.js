@@ -3,7 +3,23 @@
  * Cloudinary upload/rendering belongs to the worker, NOT Apps Script/Netlify.
  */
 const SOCIAL_MEDIA_VERSION_ = 'photos-v1';
-const SOCIAL_REEL_VERSION_ = 'reel-v1';
+const SOCIAL_REEL_VERSION_ = 'reel-v2-music';
+const SOCIAL_MUSIC_VERSION_ = 'music-library-v1';
+
+/** Stable rotation shared by Apps Script approval and the FFmpeg worker. */
+function socialMusicTrackId_(productKey, templateVersion) {
+  const hash = socialOperationKey_([productKey,templateVersion || SOCIAL_REEL_VERSION_,'music']);
+  let bucket = 0;
+  for (let i=0;i<hash.length;i++) bucket = (bucket*33 + hash.charCodeAt(i)) % 10;
+  return 'music-' + String(bucket+1).padStart(2,'0');
+}
+
+function socialReelFingerprint_(source, selected, templateVersion, musicTrackId, libraryVersion) {
+  if (!/^music-(0[1-9]|10)$/.test(musicTrackId)) throw new Error('Unapproved music identity.');
+  return socialOperationKey_([source.productKey,selected,templateVersion,source.renderFacts,
+    {width:1080,height:1920,seconds:12,musicTrackId:musicTrackId,
+      musicLibraryVersion:libraryVersion,audio:'aac-128k-stereo-48k-background-v1',silentFallback:true}]);
+}
 const SOCIAL_HISTORY_HOLDS_ = ['HD-1004669158', 'HD-1007846436'];
 
 function socialSelectText_(value) {
@@ -59,14 +75,22 @@ function socialMediaPlan_(source, reels) {
   const imageIds = selected.map(function(id) {
     return 'invicta-social/' + SOCIAL_MEDIA_VERSION_ + '/' + socialOperationKey_([source.productKey,id]);
   });
-  const renderHash = socialOperationKey_([source.productKey, selected, SOCIAL_REEL_VERSION_, source.renderFacts,
-    {width:1080,height:1920,seconds:12,silent:true}]);
-  return {kind:'INVICTA_SOCIAL_MEDIA_V1', productKey:source.productKey, photoIds:ids,
+  const musicTrackId = reel ? socialMusicTrackId_(source.productKey,SOCIAL_REEL_VERSION_) : '';
+  // Preserve existing image/carousel hashes and their durable receipt identities.
+  const renderHash = reel ? socialReelFingerprint_(source,selected,SOCIAL_REEL_VERSION_,musicTrackId,SOCIAL_MUSIC_VERSION_) :
+    socialOperationKey_([source.productKey,selected,'reel-v1',source.renderFacts,{width:1080,height:1920,seconds:12,silent:true}]);
+  const plan = {kind:'INVICTA_SOCIAL_MEDIA_V1', productKey:source.productKey, photoIds:ids,
     type:reel ? 'Reel' : ids.length === 1 ? 'Image' : 'Carousel',
     resourceType:reel ? 'video' : 'image',
     publicIds:reel ? ['invicta-social/' + SOCIAL_REEL_VERSION_ + '/' + renderHash] : imageIds,
     hashes:reel ? [renderHash] : selected.map(function(id) { return socialOperationKey_([source.productKey,id,SOCIAL_MEDIA_VERSION_]); }),
     renderHash:renderHash, sourceHash:buildSocialSourceHash_(source)};
+  if (reel) {
+    plan.musicTrackId = musicTrackId;
+    plan.musicLibraryVersion = SOCIAL_MUSIC_VERSION_;
+    plan.templateVersion = SOCIAL_REEL_VERSION_;
+  }
+  return plan;
 }
 
 function socialReadMediaPlan_(queue, rowNumber) {
@@ -233,9 +257,23 @@ function socialCloudinaryVideoFacts_(asset) {
   // can use nested video/audio objects. Both are documented; contradictions fail.
   const flat=asset.codec, nested=asset.video && asset.video.codec;
   if(flat && nested && flat!==nested)throw new Error('Contradictory video codec metadata.');
-  return {codec:flat || nested || '',audioPresent:asset.has_audio===true ||
+  const audioFlat=asset.audio_codec, audioNested=asset.audio && asset.audio.codec;
+  if(audioFlat && audioNested && audioFlat!==audioNested)throw new Error('Contradictory audio codec metadata.');
+  return {codec:flat || nested || '',audioCodec:audioFlat || audioNested || '',audioPresent:asset.has_audio===true ||
     !!(asset.audio && Object.keys(asset.audio).length) || !!asset.audio_codec ||
     Number(asset.audio_bit_rate)>0 || Number(asset.audio_frequency)>0 || Number(asset.channels)>0};
+}
+
+/** New music Reels accept verified AAC or a sticky silent fallback; legacy stays silent. */
+function socialVideoAudioAllowed_(asset, plan) {
+  const facts = socialCloudinaryVideoFacts_(asset);
+  if (!plan || !plan.musicTrackId) return !facts.audioPresent;
+  if (asset.has_audio === false && facts.audioPresent) return false;
+  const context = asset.context && asset.context.custom || {};
+  if (!/^music-(0[1-9]|10)$/.test(plan.musicTrackId) || plan.musicLibraryVersion !== SOCIAL_MUSIC_VERSION_ ||
+      context.music_track_id !== plan.musicTrackId || context.music_library_version !== plan.musicLibraryVersion) return false;
+  return context.music_status === 'music' ? facts.audioPresent && facts.audioCodec === 'aac' :
+    context.music_status === 'silent-fallback' && !facts.audioPresent;
 }
 
 function socialResolveCloudinary_(plan) {
@@ -243,7 +281,7 @@ function socialResolveCloudinary_(plan) {
   const cloud = props.getProperty('CLOUDINARY_CLOUD_NAME'), key = props.getProperty('CLOUDINARY_API_KEY'), secret = props.getProperty('CLOUDINARY_API_SECRET');
   if (!cloud || !/^[a-z0-9_-]+$/i.test(cloud) || !key || !secret) throw new Error('Cloudinary secure configuration required; publishing blocked.');
   const urls = plan.publicIds.map(function(id,index) {
-    if (!/^invicta-social\/(photos-v1|reel-v1)\/[A-Za-z0-9_-]+$/.test(id)) throw new Error('Invalid derived media identity.');
+    if (!/^invicta-social\/(photos-v1|reel-v1|reel-v2-music)\/[A-Za-z0-9_-]+$/.test(id)) throw new Error('Invalid derived media identity.');
     let response;
     try {
       response = UrlFetchApp.fetch('https://api.cloudinary.com/v1_1/' + cloud + '/resources/' + plan.resourceType + '/upload/' + encodeURIComponent(id) + '?context=true&media_metadata=true',
@@ -261,7 +299,7 @@ function socialResolveCloudinary_(plan) {
         asset.bytes > (video ? 100*1024*1024 : 8*1024*1024) || asset.width !== 1080 ||
         asset.height !== (video ? 1920 : 1350) ||
         (video && (!Number.isFinite(asset.duration) || Math.abs(asset.duration-12) > 0.5 ||
-          videoFacts.codec !== 'h264' || videoFacts.audioPresent))) {
+          videoFacts.codec !== 'h264' || !socialVideoAudioAllowed_(asset,plan)))) {
       throw new Error('Prepared asset fingerprint/format does not match approval.');
     }
     // Immutable version pinned. No on-demand paid transformations.
