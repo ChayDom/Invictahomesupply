@@ -17,6 +17,7 @@ export async function loadContract() {
     buildSocialSourceHash_:()=>'' // Worker never approves copy/queue; sender owns this hash.
   });
   vm.runInContext(await fs.readFile(new URL('../Invicta Appscript Files/SocialMedia.js',import.meta.url),'utf8'),ctx);
+  vm.runInContext(await fs.readFile(new URL('../Invicta Appscript Files/EvergreenSocial.js',import.meta.url),'utf8'),ctx);
   return ctx;
 }
 const assetContract=await loadContract();

@@ -129,7 +129,7 @@ function runtime(catalogRows = [], invRows = [], headers = catalogHeaders) {
     ScriptApp:{getProjectTriggers(){throw new Error('Triggers forbidden in tests');}}
   });
   for(const name of ['Config','CatalogSourceConfirmation','ProductCatalogLifecycle','ProductCatalogMaintenance','LegacyRepair','AdminTools',
-    'CatalogEnrichment','EnrichmentAdmin','WebsiteAirtableSync','BufferSocialSync','SocialMedia']) {
+    'CatalogEnrichment','EnrichmentAdmin','WebsiteAirtableSync','BufferSocialSync','SocialMedia','EvergreenSocial','EvergreenSocialLibrary']) {
     vm.runInContext(fs.readFileSync(path.join(scripts,name+'.js'),'utf8'),ctx,{filename:name+'.js'});
   }
   // Direct Export mapping unit tests isolate refresh; real source/view integration

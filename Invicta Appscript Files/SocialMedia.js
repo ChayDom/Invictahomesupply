@@ -74,6 +74,7 @@ function socialReadMediaPlan_(queue, rowNumber) {
   try { plan = JSON.parse(queue.getRange(rowNumber,5).getNote()); } catch (_) {
     throw new Error('Photos approval manifest missing; prepare media and approve again.');
   }
+  if (plan && plan.kind === 'INVICTA_EVERGREEN_MEDIA_V1' && evergreenIdentity_(plan.productKey)) return plan;
   if (!plan || plan.kind !== 'INVICTA_SOCIAL_MEDIA_V1' || !Array.isArray(plan.photoIds) || !plan.photoIds.length) {
     throw new Error('Invalid Photos approval manifest.');
   }
@@ -158,6 +159,7 @@ function reconcileSocialQueue_(queue, sources) {
   rows.forEach(function(row,index) {
     const rowNumber = index+2, key = String(row[0] || '').trim(), source = sources.get(key);
     if (!key) return;
+    if (evergreenIdentity_(key)) return; // Explicit content-source path, never an inventory product.
     const history = socialQueueHistory_(queue,rowNumber,row);
     let status = String(row[12] || '').trim(), reason = '';
     if (!source || !source.eligible) { status = 'Skip'; reason = 'Retired: no confirmed active positive inventory.'; summary.retired++; }
@@ -206,6 +208,7 @@ function reconcileSocialQueue_(queue, sources) {
 
 function assertSocialMediaCurrent_(queue, rowNumber, row, plan) {
   assertSocialSendRowUnchanged_(queue,rowNumber,row);
+  if (evergreenIdentity_(row[0]) || plan.kind === 'INVICTA_EVERGREEN_MEDIA_V1') return assertEvergreenCurrent_(queue,rowNumber,row,plan);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const source = readSocialSourceMap_(getInventorySheetOrThrow_(ss,SOCIAL_CONFIG_.EXPORT_SHEET),String(row[0])).get(String(row[0]));
   let status = '', reason = '';
@@ -243,7 +246,7 @@ function socialResolveCloudinary_(plan) {
   const cloud = props.getProperty('CLOUDINARY_CLOUD_NAME'), key = props.getProperty('CLOUDINARY_API_KEY'), secret = props.getProperty('CLOUDINARY_API_SECRET');
   if (!cloud || !/^[a-z0-9_-]+$/i.test(cloud) || !key || !secret) throw new Error('Cloudinary secure configuration required; publishing blocked.');
   const urls = plan.publicIds.map(function(id,index) {
-    if (!/^invicta-social\/(photos-v1|reel-v1)\/[A-Za-z0-9_-]+$/.test(id)) throw new Error('Invalid derived media identity.');
+    if (!/^invicta-social\/(photos-v1|reel-v1|evergreen-v1)\/[A-Za-z0-9_-]+$/.test(id)) throw new Error('Invalid derived media identity.');
     let response;
     try {
       response = UrlFetchApp.fetch('https://api.cloudinary.com/v1_1/' + cloud + '/resources/' + plan.resourceType + '/upload/' + encodeURIComponent(id) + '?context=true&media_metadata=true',
@@ -274,10 +277,15 @@ function socialMediaPayload_(row, channelId, text, media, options) {
   if (!media || !media.plan || !Array.isArray(media.urls) || media.urls.length !== media.plan.publicIds.length) {
     throw new Error('Prepared Photos-only media required, not a manual URL.');
   }
-  return {productKey:String(row[0]).trim(), channelId:String(channelId), text:text,
+  const payload = {productKey:String(row[0]).trim(), channelId:String(channelId), text:text,
     sourceHash:String(row[17] || ''), cloud:media.cloud, mediaType:media.plan.type,
     publicIds:media.plan.publicIds, photoIds:media.plan.photoIds, renderHash:media.plan.renderHash,
     saveToDraft:!!(options && options.saveToDraft === true), mode:options && options.saveToDraft === true ? 'addToQueue' : 'shareNow'};
+  if (media.plan.kind === 'INVICTA_EVERGREEN_MEDIA_V1') {
+    payload.sourceType = media.plan.sourceType;payload.contentId = media.plan.contentId;payload.occurrence = media.plan.occurrence;
+    payload.priorReceiptIds = evergreenPriorReceipts_(media.plan);
+  }
+  return payload;
 }
 
 function socialBufferInput_(channelId,text,media,service,options) {
@@ -309,8 +317,8 @@ function sendReadySocialMedia_() {
     const queue = getSocialQueueSheetOrThrow_(SpreadsheetApp.getActiveSpreadsheet());
     assertSocialQueueHeaders_(queue);
     const rows = queue.getLastRow() > 1 ? queue.getRange(2,1,queue.getLastRow()-1,19).getValues() : [];
-    const index = rows.findIndex(function(row) { return String(row[12]).trim() === 'Ready'; });
-    if (index < 0) return summary;
+    const index = evergreenSelectReady_(queue,rows);
+    if (index < 0) { summary.reason = 'No approved candidate for the next rotation slot.'; return summary; }
     const row = rows[index], rowNumber = index+2;
     // Existing journal may ONLY reconcile. It cannot create an unsent sibling on retry.
     const history = socialQueueHistory_(queue,rowNumber,row);

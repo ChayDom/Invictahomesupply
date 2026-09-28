@@ -5,10 +5,18 @@ on:
     inputs:
       product_key:
         description: Permanent Product Key (one product; owner Photos only)
-        required: true
+        required: false
+        type: string
+      content_id:
+        description: Evergreen Content ID instead of Product Key
+        required: false
+        type: string
+      content_hash:
+        description: Immutable renderHash returned by prepareEvergreenSocialQueue
+        required: false
         type: string
       reel:
-        description: Prepare optional silent Reel (4-6 Photos; matches reviewed strategy)
+        description: Prepare optional silent Reel (4-6 Photos)
         default: false
         type: boolean
 
@@ -16,7 +24,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: social-media-${{ inputs.product_key }}
+  group: social-media-${{ inputs.product_key || inputs.content_id }}
   cancel-in-progress: false
 
 jobs:
@@ -37,14 +45,21 @@ jobs:
       - name: Prepare immutable media only
         env:
           PRODUCT_KEY: ${{ inputs.product_key }}
+          CONTENT_ID: ${{ inputs.content_id }}
+          CONTENT_HASH: ${{ inputs.content_hash }}
           PREPARE_REEL: ${{ inputs.reel }}
           AIRTABLE_SOCIAL_READ_TOKEN: ${{ secrets.AIRTABLE_SOCIAL_READ_TOKEN }}
           CLOUDINARY_CLOUD_NAME: ${{ vars.CLOUDINARY_CLOUD_NAME }}
           CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
           CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
         run: |
-          if [ "$PREPARE_REEL" = "true" ]; then
+          if [ -n "$CONTENT_ID" ] && [ -z "$PRODUCT_KEY" ] && [ -n "$CONTENT_HASH" ] && [ "$PREPARE_REEL" != "true" ]; then
+            node scripts/evergreen-media-worker.mjs "$CONTENT_ID" "$CONTENT_HASH"
+          elif [ -z "$CONTENT_ID" ] && [ -z "$CONTENT_HASH" ] && [ -n "$PRODUCT_KEY" ] && [ "$PREPARE_REEL" = "true" ]; then
             node scripts/social-media-worker.mjs "$PRODUCT_KEY" --reel
-          else
+          elif [ -z "$CONTENT_ID" ] && [ -z "$CONTENT_HASH" ] && [ -n "$PRODUCT_KEY" ]; then
             node scripts/social-media-worker.mjs "$PRODUCT_KEY"
+          else
+            echo "Select exactly one product or evergreen content source."
+            exit 1
           fi
