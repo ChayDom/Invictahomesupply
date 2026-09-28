@@ -153,7 +153,34 @@ function readCatalogMaintenancePlan_() {
   const inventory = readSheetTable_(getInventorySheetOrThrow_(ss, INVENTORY_CONFIG.PRODUCT_INVENTORY_SHEET), 'PRODUCT ID');
   const sources = catalogSourcesForLifecycle_(inventorySources_(inventory), catalog, readCatalogArchive_(ss));
   const plan = planCatalogMaintenance_(sources, catalog.rows, catalog.map, catalog.width);
+  plan.normalMaintenanceUpdates = plan.updates.length;
+  planCatalogZeroStockPublishingGuard_(ss, catalog, plan);
   return { sheet: sheet, catalog: catalog, plan: plan };
+}
+
+// One-way safety override on existing products, using the authoritative source
+// confirmation rules. Restock/unknown never grant publishing permission.
+function planCatalogZeroStockPublishingGuard_(ss, catalog, plan) {
+  const byRow = new Map(plan.updates.map(function(update) { return [update.rowNumber, update]; }));
+  const candidates = catalog.rows.map(function(row, index) { return { row: row, number: index + 2 }; })
+    .filter(function(entry) {
+      return catalogText_(entry.row[catalog.map['PRODUCT KEY']]) &&
+        catalogText_(entry.row[catalog.map['POST TO WEBSITE']]).toUpperCase() === 'YES';
+    });
+  plan.zeroStockPublishingCorrections = [];
+  if (!candidates.length) return;
+  const evidence = indexCatalogSourceEvidence_(readCatalogSourceEvidence_(ss));
+  candidates.forEach(function(entry) {
+    const update = byRow.get(entry.number);
+    const projected = entry.row.slice();
+    if (update) update.changes.forEach(function(change) { projected[change.column] = change.value; });
+    const stock = catalogConfirmedStock_(ss, function(header) { return projected[catalog.map[header]]; }, evidence);
+    if (stock.state !== 'CONFIRMED ZERO') return;
+    const target = update || { rowNumber: entry.number, permanentKey: entry.row[catalog.map['PRODUCT KEY']], changes: [] };
+    target.changes.push({ header: 'POST TO WEBSITE', column: catalog.map['POST TO WEBSITE'], value: 'No' });
+    if (!update) plan.updates.push(target);
+    plan.zeroStockPublishingCorrections.push(target.permanentKey);
+  });
 }
 
 function applyCatalogMaintenancePlan_(context, includeNew) {
@@ -236,6 +263,8 @@ function runCatalogMaintenance_(includeNew) {
     }
     const context = readCatalogMaintenancePlan_();
     const summary = applyCatalogMaintenancePlan_(context, includeNew);
+    console.log(JSON.stringify({ zeroStockPublishingCorrections: context.plan.zeroStockPublishingCorrections,
+      normalMaintenanceUpdates: context.plan.normalMaintenanceUpdates }));
     SpreadsheetApp.flush();
     auditProductCatalogDuplicateKeys({ throwOnIssues: true });
     console.log(JSON.stringify(summary));

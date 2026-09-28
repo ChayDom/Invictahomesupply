@@ -104,7 +104,11 @@ class Sheet {
 function runtime(catalogRows = [], invRows = [], headers = catalogHeaders) {
   const catalog = new Sheet('Product Catalog',headers,catalogRows);
   const inventory = new Sheet('Product Inventory',inventoryHeaders,invRows);
-  const sheets = { 'Product Catalog':catalog, 'Product Inventory':inventory };
+  const sheets = { 'Product Catalog':catalog, 'Product Inventory':inventory,
+    'Inventory Source Evidence':new Sheet('Inventory Source Evidence',
+      ['ITEM','RETAILER','RETAIL SKU','PRODUCT ID','BUY QUANTITY','BALANCE','BUY DATE'],
+      invRows.map(r=>['ITEM','RETAILER','RETAIL SKU','PRODUCT ID'].map(h=>r[inventoryHeaders.indexOf(h)])
+        .concat([20,r[inventoryHeaders.indexOf('QUANTITY AVAILABLE')],'2026-09-01']))) };
   const lock = { waitLock(){}, tryLock(){return true;}, releaseLock(){} };
   const ctx = vm.createContext({
     console: {log(){},warn(){},error(){}},

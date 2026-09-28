@@ -453,6 +453,25 @@ function syncWebsiteExportToAirtableLocked_(
          * later be considered for unpublishing.
          */
         if (!post) {
+          // Publication permission is separate from lifecycle observation.
+          // Maintain existing retained records only; never create/re-publish a
+          // product merely to track zero, restock or uncertainty.
+          const existing = existingByKey.get(key);
+          if (existing) {
+            const fields = existing.fields || {};
+            const category = row[H['CATEGORY']];
+            const quantity = iwaNumber_(row[H['QUANTITY AVAILABLE']]);
+            const coverage = category === 'Flooring' ? iwaNumber_(row[H['AVAILABLE SQ FT']]) : null;
+            const lifecycle = iwaFlooringLifecycle_(coverage, quantity, fields['Sold Out Since'], observedAt);
+            const desired = { 'Product Key': key, 'Post to Website': false,
+              'Quantity Available': quantity, 'Available Sq Ft': coverage,
+              Status: category !== 'Flooring' && lifecycle.status === 'In Stock' && /^(Reserved|Draft)$/.test(fields.Status)
+                ? fields.Status : lifecycle.status, 'Sold Out Since': lifecycle.soldOutSince };
+            if (iwaOwnedFieldsChanged_(desired, fields)) {
+              recordsToWrite.push({ id: existing.id, fields: desired });
+              updatedCount++;
+            }
+          }
           return;
         }
 
