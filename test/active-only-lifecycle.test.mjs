@@ -19,6 +19,18 @@ function social(t){
 function purchase(t){t.setClock(now+4*86400000);t.acquire(3);assert.equal(t.ctx.runProductCatalogMaintenance().added,1);
   const b=active(t)[0];assert.match(b[26],/^ACQ-/);assert.equal(b[12],'');return b;}
 
+test('controlled maintenance preserves owner SKU/identity when source SKU is missing; explicit corrections still apply',()=>{
+  const t=recent(),row=t.catalog.data[1],map=t.ctx.readSheetTable_(t.catalog,'PRODUCT KEY').map;
+  row[map['RETAIL SKU']]='1004851221';row[map['PRODUCT ID']]='HD-1004851221';
+  const s={retailer:row[map.RETAILER],retailSku:'',productId:key,item:row[map['SOURCE ITEM']],fields:{}};
+  let changes=t.ctx.sourceCatalogChanges_(s,row,map);
+  assert.ok(!changes.some(c=>['RETAIL SKU','PRODUCT ID'].includes(c.header)));
+  s.retailSku='1004851222';s.productId='HD-1004851222';
+  changes=t.ctx.sourceCatalogChanges_(s,row,map);
+  assert.equal(changes.find(c=>c.header==='RETAIL SKU').value,s.retailSku);
+  assert.equal(changes.find(c=>c.header==='PRODUCT ID').value,s.productId);
+});
+
 test('immediate zero archives, clears Catalog/Export, retires every social occurrence and preserves K/receipts/evergreen',()=>{
   const t=recent(),q=social(t),history=plain(q.data[6]),evergreen=plain(q.data[7]),formula=t.catalog.formula;
   t.records[0].fields.Photos=[{id:'owner-photo'}];const s=t.cleanup();

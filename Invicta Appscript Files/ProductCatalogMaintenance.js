@@ -123,6 +123,12 @@ function planCatalogMaintenance_(sources, rows, map, width) {
 function sourceCatalogChanges_(source, row, map) {
   const values = { RETAILER: source.retailer, 'RETAIL SKU': source.retailSku,
     'PRODUCT ID': source.productId, 'SOURCE ITEM': source.item };
+  // Missing source SKU is not authority to erase an owner-populated Catalog SKU.
+  // Preserve its current identity together; explicit nonblank corrections still apply.
+  if (!catalogText_(source.retailSku) && catalogText_(row[map['RETAIL SKU']])) {
+    delete values['RETAIL SKU'];
+    delete values['PRODUCT ID'];
+  }
   Object.keys(source.fields || {}).forEach(function(header) {
     if (!catalogText_(row[map[header]])) values[header] = source.fields[header];
   });
