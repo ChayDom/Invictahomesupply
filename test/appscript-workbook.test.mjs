@@ -34,6 +34,7 @@ class Sheet {
     this.name = name; this.headers = headers.slice(); this.data = [headers.slice(), ...rows.map(r => r.slice())];
     this.maxRows = 50; this.writes = []; this.formats = []; this.validations = [];
     this.insertions = []; this.numberFormats = Object.create(null);
+    this.notes = new Map();
     for (const h of ['SELL PRICE ($/SQ FT OR EACH)','AUTO BOX PRICE','COMPARABLE RETAIL PRICE']) {
       const c = headers.indexOf(h) + 1;
       if (c > 0) this.numberFormats['2:'+c] = '$#,##0.00';
@@ -71,6 +72,8 @@ class Sheet {
       getValues: read,
       getDisplayValues: () => read().map(row => row.map(String)),
       getValue: () => read()[0][0],
+      getNote: () => sheet.notes.get(r+':'+c) || '',
+      setNote: value => sheet.notes.set(r+':'+c,value),
       getFormula: () => r === 2 && c === sheet.headers.indexOf('AUTO BOX PRICE') + 1 ? sheet.formula : '',
       setValue(value) { write([[value]],'setValue'); },
       setValues(values) { assert.equal(values.length,n); values.forEach(v=>assert.equal(v.length,m)); write(values,'setValues'); },
@@ -126,7 +129,7 @@ function runtime(catalogRows = [], invRows = [], headers = catalogHeaders) {
     ScriptApp:{getProjectTriggers(){throw new Error('Triggers forbidden in tests');}}
   });
   for(const name of ['Config','CatalogSourceConfirmation','ProductCatalogLifecycle','ProductCatalogMaintenance','LegacyRepair','AdminTools',
-    'CatalogEnrichment','EnrichmentAdmin','WebsiteAirtableSync','BufferSocialSync']) {
+    'CatalogEnrichment','EnrichmentAdmin','WebsiteAirtableSync','BufferSocialSync','SocialMedia']) {
     vm.runInContext(fs.readFileSync(path.join(scripts,name+'.js'),'utf8'),ctx,{filename:name+'.js'});
   }
   // Direct Export mapping unit tests isolate refresh; real source/view integration
@@ -520,6 +523,9 @@ test('explicit publication opt-out still unpublishes without deleting; non-floor
 });
 test('zero-stock export remains ineligible for automatic Social Queue despite website retention',()=>{
   const t=lifecycleSync();const headers=plain(vm.runInContext('SOCIAL_REQUIRED_HEADERS_',t.ctx));
+  // This fixture isolates Export/queue reconciliation. Canonical + fresh Airtable
+  // confirmation is exercised by social-media.test.mjs with real shared helpers.
+  t.ctx.readSocialSourceMap_=t.ctx.readSocialExportMap_;
   t.sheets['Social Queue']=new Sheet('Social Queue',headers);
   assert.equal(t.ctx.syncSocialQueueFromCatalog().added,0);
 });
@@ -537,13 +543,18 @@ test('Airtable refuses duplicate export or Airtable keys before writes',()=>{
   assert.throws(()=>ctx.syncWebsiteExportToAirtable({}),/Duplicate Airtable/);
   assert.equal(writes,0);
 });
-test('Social Queue sync uses current export and preserves approvals, media, Buffer IDs and source hash',()=>{
+test('Social Queue sync holds historical sends without resetting captions, media or receipts',()=>{
   const {ctx,catalog,sheets}=runtime([], [sourceRow()]);
   ctx.runProductCatalogMaintenance();
   const headers=plain(vm.runInContext('SOCIAL_REQUIRED_HEADERS_',ctx));
   const queue=new Sheet('Social Queue',headers);
   sheets['Social Queue']=queue;
   sheets['Website Export']=new Sheet('Website Export',exportHeaders,[exportFixture(catalog,'HD-1001234567')]);
+  ctx.readSocialSourceMap_=sheet=>{
+    const map=ctx.readSocialExportMap_(sheet);
+    map.forEach(source=>{source.photos=[{id:'attPhoto1'}];source.renderFacts={name:source.displayName,price:source.priceLabel,specs:[]};});
+    return map;
+  };
   assert.equal(ctx.syncSocialQueueFromCatalog().added,1);
   const key=value(queue,'PRODUCT KEY');
   assert.equal(value(queue,'PRICE'),'$1.49/sq ft');
@@ -559,13 +570,13 @@ test('Social Queue sync uses current export and preserves approvals, media, Buff
   ctx.syncSocialQueueFromCatalog();
   assert.equal(queue.data.length,2);
   assert.equal(value(queue,'MEDIA URL'),'https://example.com/manual.jpg');
-  assert.equal(value(queue,'SOCIAL STATUS'),'Ready');
+  assert.equal(value(queue,'SOCIAL STATUS'),'Skip');
   assert.equal(value(queue,'FB BUFFER POST ID'),'buffer-fb');
   assert.equal(value(queue,'IG BUFFER POST ID'),'buffer-ig');
   assert.equal(value(queue,'LAST POSTED AT'),'2026-01-01');
   sheets['Website Export'].data[1][exportHeaders.indexOf('DESCRIPTION')]='Changed verified facts';
   ctx.syncSocialQueueFromCatalog();
-  assert.equal(value(queue,'SOCIAL STATUS'),'Needs Copy');
+  assert.equal(value(queue,'SOCIAL STATUS'),'Skip');
   assert.equal(value(queue,'FACEBOOK CAPTION'),'Human caption');
 });
 for(const headers of [catalogHeaders,catalogHeaders.slice().reverse()]) {
