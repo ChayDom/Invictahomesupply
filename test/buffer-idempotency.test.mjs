@@ -8,10 +8,14 @@ const headers=['PRODUCT KEY','PRODUCT NAME','CATEGORY','PRICE','MEDIA URL','MEDI
 function fixture(){
   const t=createRuntime({quantity:10});
   Object.assign(t.properties,{BUFFER_API_KEY:'test-only',BUFFER_ORGANIZATION_ID:'org',
-    BUFFER_FACEBOOK_CHANNEL_ID:'fb',BUFFER_INSTAGRAM_CHANNEL_ID:'ig'});
+    BUFFER_FACEBOOK_CHANNEL_ID:'fb',BUFFER_INSTAGRAM_CHANNEL_ID:'ig',SOCIAL_PUBLISHING_ENABLED:'true'});
   const source={productKey:'SYNTH-SOCIAL',displayName:'Synthetic oak',category:'Flooring',priceLabel:'$1.50/sq ft',
-    description:'Synthetic',highlights:'Test only',stockImageUrl:'https://example.com/image.jpg',eligible:true};
-  const values=['SYNTH-SOCIAL','Synthetic oak','Flooring','$1.50/sq ft',source.stockImageUrl,'Image',
+    description:'Synthetic',highlights:'Test only',eligible:true,
+    photos:[{id:'attSynthetic1',url:'https://example.com/photo.jpg',width:1200,height:1600,type:'image/jpeg'}],
+    renderFacts:{name:'Synthetic oak',price:'$1.50 / sq ft',specs:[],brand:'Invicta Home Supply',cta:'McKinney, TX'}};
+  const plan=t.ctx.socialMediaPlan_(source,false);
+  const media={plan,cloud:'test-cloud',urls:plan.publicIds.map(id=>'https://res.cloudinary.com/test-cloud/image/upload/v1/'+id+'.jpg')};
+  const values=['SYNTH-SOCIAL','Synthetic oak','Flooring','$1.50/sq ft',media.urls[0],'Image',
     'https://example.com/product','Post','Hook','FB synthetic caption','IG synthetic caption','#Test','Ready',
     '','','','',t.ctx.buildSocialSourceHash_(source),''];
   const queue=new Sheet('Social Queue',headers,[values]);
@@ -19,6 +23,8 @@ function fixture(){
   const notes=new Map(),range=queue.getRange.bind(queue);
   queue.getRange=(r,c,n=1,m=1)=>Object.assign(range(r,c,n,m),{
     getNote:()=>notes.get(r+':'+c)||'',setNote:v=>{notes.set(r+':'+c,v);return queue.getRange(r,c,n,m);}});
+  notes.set('2:5',JSON.stringify(plan));
+  t.ctx.socialResolveCloudinary_=()=>media;
   t.ctx.readSocialSourceMap_=()=>new Map([[source.productKey,source]]);
   let held=false;
   t.ctx.LockService.getScriptLock=()=>({tryLock(){if(held)return false;held=true;return true;},releaseLock(){held=false;}});
@@ -30,11 +36,11 @@ function fixture(){
     assert.match(query,/mutation CreatePost/);events.push('create');
     const input=vars.input,id='post-'+(remote.length+1);
     remote.push({id,text:input.text,channelId:input.channelId,status:input.saveToDraft?'draft':'scheduled',createdAt:new Date().toISOString(),
-      assets:[{source:input.assets[0].image.url}]});
+      assets:input.assets.map(asset=>({source:(asset.image||asset.video).url}))});
     t.onCreate?.(remote.at(-1));
     return {createPost:{post:{id,dueAt:new Date().toISOString()}}};
   };
-  return Object.assign(t,{queue,notes,remote,events,row:queue.data[1],run:()=>t.ctx.sendReadySocialPostsToBuffer(),
+  return Object.assign(t,{queue,notes,remote,events,source,media,row:queue.data[1],run:()=>t.ctx.sendReadySocialPostsToBuffer(),
     resetReady(){queue.data[1][12]='Ready';}});
 }
 test('first publish persists durable channel intent before remote creation and queues both receipts',()=>{
@@ -101,11 +107,11 @@ test('incomplete remote pagination fails closed with no create',()=>{
 test('read-only production audit never changes queue or creates a post',()=>{
   const t=fixture(),before=plain(t.queue.data);const a=t.ctx.auditSocialBufferQueue();
   assert.equal(a.rows,1);assert.equal(a.ready.length,1);assert.deepEqual(plain(t.queue.data),before);
-  assert.equal(t.queue.writes.length,0);assert.equal(t.notes.size,0);assert.equal(t.remote.length,0);
+  assert.equal(t.queue.writes.length,0);assert.equal(t.notes.size,1);assert.equal(t.remote.length,0);
 });
 test('controlled draft-mode ID loss/retry keeps one draft and never queues/publishes it',()=>{
   const t=fixture(),row=t.row.slice();
-  const send=()=>t.ctx.createOrReconcileSocialPost_(t.queue,2,row,'test-only','fb','FB synthetic caption\n\n#Test',row[4],'facebook',{saveToDraft:true});
+  const send=()=>t.ctx.createOrReconcileSocialPost_(t.queue,2,row,'test-only','fb','FB synthetic caption\n\n#Test',t.media,'facebook',{saveToDraft:true});
   const a=send();assert.equal(t.remote.length,1);assert.equal(t.remote[0].status,'draft');
   t.row[13]='';t.resetReady();const b=send();assert.equal(a.id,b.id);assert.equal(t.remote.length,1);
   assert.equal(t.remote[0].status,'draft');assert.equal(t.row[12],'Ready');

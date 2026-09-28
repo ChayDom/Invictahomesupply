@@ -1,0 +1,50 @@
+name: Social media preparation (never publishes)
+
+on:
+  workflow_dispatch:
+    inputs:
+      product_key:
+        description: Permanent Product Key (one product; owner Photos only)
+        required: true
+        type: string
+      reel:
+        description: Prepare optional silent Reel (4-6 Photos; matches reviewed strategy)
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: social-media-${{ inputs.product_key }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    # Standard public-repository runner; never a paid larger runner.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: social-media
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install distro FFmpeg and open font
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y ffmpeg fonts-dejavu-core
+          ffmpeg -version | head -n 1
+      - name: Prepare immutable media only
+        env:
+          PRODUCT_KEY: ${{ inputs.product_key }}
+          PREPARE_REEL: ${{ inputs.reel }}
+          AIRTABLE_SOCIAL_READ_TOKEN: ${{ secrets.AIRTABLE_SOCIAL_READ_TOKEN }}
+          CLOUDINARY_CLOUD_NAME: ${{ vars.CLOUDINARY_CLOUD_NAME }}
+          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+        run: |
+          if [ "$PREPARE_REEL" = "true" ]; then
+            node scripts/social-media-worker.mjs "$PRODUCT_KEY" --reel
+          else
+            node scripts/social-media-worker.mjs "$PRODUCT_KEY"
+          fi

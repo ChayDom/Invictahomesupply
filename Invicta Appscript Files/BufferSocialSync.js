@@ -6,7 +6,8 @@
  *   -> Social Queue
  *   -> Gemini social copy
  *   -> Manual Ready approval
- *   -> Buffer Facebook + Instagram queues
+ *   -> Photos-only immutable Cloudinary media
+ *   -> Buffer shareNow after final stock validation
  *
  * Existing Script Property reused:
  *   GEMINI_API_KEY
@@ -19,9 +20,8 @@
  *   BUFFER_FACEBOOK_CHANNEL_ID
  *   BUFFER_INSTAGRAM_CHANNEL_ID
  *
- * V1 intentionally auto-publishes IMAGE POSTS only.
- * Reel/video rows can receive Gemini copy, but Reel/video
- * publishing remains manual.
+ * One existing queue, rolling 48-hour cadence, receipt-before-value journals.
+ * Optional FFmpeg Reels are prepared separately; publishing is OFF by default.
  */
 
 const SOCIAL_CONFIG_ = Object.freeze({
@@ -101,383 +101,19 @@ const SOCIAL_REQUIRED_HEADERS_ =
  * Pull currently published/in-stock products
  * from Website Export into Social Queue.
  *
- * Existing captions, approval status, manually
- * supplied media URLs, and Buffer IDs are preserved.
+ * Every existing row is reconciled; stale legacy Ready approvals are invalidated.
+ * Historical receipts/journals and captions are preserved.
  *
  * Rows are never automatically deleted.
  */
 function syncSocialQueueFromCatalog() {
-
-  const lock =
-    LockService.getScriptLock();
-
-  if (!lock.tryLock(30000)) {
-    throw new Error(
-      'Another Apps Script maintenance/social run is active.'
-    );
-  }
-
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) throw new Error('Another Apps Script maintenance/social run is active.');
   try {
-
-    const ss =
-      SpreadsheetApp.getActiveSpreadsheet();
-
-    const queue =
-      getSocialQueueSheetOrThrow_(ss);
-
-    const exportSheet =
-      getInventorySheetOrThrow_(
-        ss,
-        SOCIAL_CONFIG_.EXPORT_SHEET
-      );
-
+    const ss = SpreadsheetApp.getActiveSpreadsheet(), queue = getSocialQueueSheetOrThrow_(ss);
     assertSocialQueueHeaders_(queue);
-
-    const sourceMap =
-      readSocialSourceMap_(exportSheet);
-
-    const lastQueueRow =
-      getLastDataRowInColumn_(
-        queue,
-        SOCIAL_COLUMNS_.PRODUCT_KEY
-      );
-
-    const existingRows =
-      lastQueueRow >= 2
-        ? queue
-            .getRange(
-              2,
-              1,
-              lastQueueRow - 1,
-              SOCIAL_COLUMNS_.ERROR
-            )
-            .getValues()
-        : [];
-
-    const rowByKey =
-      new Map();
-
-    existingRows.forEach(
-      function(row, index) {
-
-        const key =
-          String(
-            row[
-              SOCIAL_COLUMNS_.PRODUCT_KEY - 1
-            ] || ''
-          ).trim();
-
-        if (key) {
-          rowByKey.set(
-            key,
-            {
-              rowNumber:
-                index + 2,
-
-              values:
-                row
-            }
-          );
-        }
-      }
-    );
-
-
-    let added = 0;
-    let refreshed = 0;
-    let needsCopy = 0;
-
-    const appendRows = [];
-
-
-    sourceMap.forEach(
-      function(
-        source,
-        productKey
-      ) {
-
-        if (!source.eligible) {
-          return;
-        }
-
-        const currentHash =
-          buildSocialSourceHash_(
-            source
-          );
-
-        const existing =
-          rowByKey.get(
-            productKey
-          );
-
-        const ownProductUrl =
-          SOCIAL_CONFIG_
-            .WEBSITE_BASE_URL +
-          encodeURIComponent(
-            productKey
-          );
-
-
-        /*
-         * NEW PRODUCT
-         */
-        if (!existing) {
-
-          appendRows.push([
-            productKey,
-            source.displayName,
-            source.category,
-            source.priceLabel,
-            source.stockImageUrl,
-            'Image',
-            ownProductUrl,
-            'Post',
-            '',
-            '',
-            '',
-            '',
-            source.stockImageUrl
-              ? 'Draft'
-              : 'Needs Image',
-            '',
-            '',
-            '',
-            '',
-            currentHash,
-            ''
-          ]);
-
-          added++;
-
-          return;
-        }
-
-
-        /*
-         * EXISTING PRODUCT
-         */
-        const row =
-          existing.values.slice();
-
-        const oldHash =
-          String(
-            row[
-              SOCIAL_COLUMNS_
-                .SOURCE_HASH - 1
-            ] || ''
-          );
-
-        const oldStatus =
-          String(
-            row[
-              SOCIAL_COLUMNS_
-                .SOCIAL_STATUS - 1
-            ] || ''
-          ).trim();
-
-        const hasCopy =
-          Boolean(
-            String(
-              row[
-                SOCIAL_COLUMNS_
-                  .FACEBOOK_CAPTION - 1
-              ] || ''
-            ).trim() ||
-
-            String(
-              row[
-                SOCIAL_COLUMNS_
-                  .INSTAGRAM_CAPTION - 1
-              ] || ''
-            ).trim()
-          );
-
-
-        /*
-         * Source-owned fields
-         */
-        row[
-          SOCIAL_COLUMNS_
-            .PRODUCT_NAME - 1
-        ] =
-          source.displayName;
-
-        row[
-          SOCIAL_COLUMNS_
-            .CATEGORY - 1
-        ] =
-          source.category;
-
-        row[
-          SOCIAL_COLUMNS_
-            .PRICE - 1
-        ] =
-          source.priceLabel;
-
-        row[
-          SOCIAL_COLUMNS_
-            .PRODUCT_URL - 1
-        ] =
-          ownProductUrl;
-
-
-        /*
-         * Preserve manually supplied
-         * media URL.
-         *
-         * Only fill if blank.
-         */
-        if (
-          !String(
-            row[
-              SOCIAL_COLUMNS_
-                .MEDIA_URL - 1
-            ] || ''
-          ).trim() &&
-
-          source.stockImageUrl
-        ) {
-
-          row[
-            SOCIAL_COLUMNS_
-              .MEDIA_URL - 1
-          ] =
-            source.stockImageUrl;
-
-          if (
-            oldStatus ===
-            'Needs Image'
-          ) {
-
-            row[
-              SOCIAL_COLUMNS_
-                .SOCIAL_STATUS - 1
-            ] =
-              'Draft';
-          }
-        }
-
-
-        if (
-          !String(
-            row[
-              SOCIAL_COLUMNS_
-                .MEDIA_TYPE - 1
-            ] || ''
-          ).trim()
-        ) {
-
-          row[
-            SOCIAL_COLUMNS_
-              .MEDIA_TYPE - 1
-          ] =
-            'Image';
-        }
-
-
-        if (
-          !String(
-            row[
-              SOCIAL_COLUMNS_
-                .CONTENT_TYPE - 1
-            ] || ''
-          ).trim()
-        ) {
-
-          row[
-            SOCIAL_COLUMNS_
-              .CONTENT_TYPE - 1
-          ] =
-            'Post';
-        }
-
-
-        /*
-         * If verified product facts changed
-         * after copy was generated,
-         * require fresh copy.
-         */
-        if (
-          oldHash &&
-          oldHash !== currentHash &&
-          hasCopy &&
-          oldStatus !== 'Queued' &&
-          oldStatus !== 'Skip'
-        ) {
-
-          row[
-            SOCIAL_COLUMNS_
-              .SOCIAL_STATUS - 1
-          ] =
-            'Needs Copy';
-
-          row[
-            SOCIAL_COLUMNS_
-              .ERROR - 1
-          ] =
-            'Product facts changed after social copy was generated.';
-
-          needsCopy++;
-        }
-
-
-        row[
-          SOCIAL_COLUMNS_
-            .SOURCE_HASH - 1
-        ] =
-          currentHash;
-
-
-        queue
-          .getRange(
-            existing.rowNumber,
-            1,
-            1,
-            SOCIAL_COLUMNS_.ERROR
-          )
-          .setValues([row]);
-
-        refreshed++;
-      }
-    );
-
-
-    /*
-     * Append new products
-     */
-    if (appendRows.length) {
-
-      queue
-        .getRange(
-          queue.getLastRow() + 1,
-          1,
-          appendRows.length,
-          SOCIAL_COLUMNS_.ERROR
-        )
-        .setValues(
-          appendRows
-        );
-    }
-
-
-    const summary = {
-      added: added,
-      refreshed: refreshed,
-      needsCopy: needsCopy
-    };
-
-    console.log(
-      JSON.stringify(
-        summary
-      )
-    );
-
-    return summary;
-
-  } finally {
-
-    lock.releaseLock();
-  }
+    return reconcileSocialQueue_(queue,readSocialSourceMap_(getInventorySheetOrThrow_(ss,SOCIAL_CONFIG_.EXPORT_SHEET)));
+  } finally { lock.releaseLock(); }
 }
 
 
@@ -802,15 +438,7 @@ if (
           .clearContent();
 
 
-        const mediaUrl =
-          String(
-            row[
-              SOCIAL_COLUMNS_
-                .MEDIA_URL - 1
-            ] ||
-            source.stockImageUrl ||
-            ''
-          ).trim();
+        const hasPhotos = source.photos && source.photos.length > 0 && !source.mediaError;
 
 
         queue
@@ -820,7 +448,7 @@ if (
               .SOCIAL_STATUS
           )
           .setValue(
-            mediaUrl
+            hasPhotos
               ? 'Draft'
               : 'Needs Image'
           );
@@ -1155,682 +783,16 @@ function testBufferConnection() {
 /**
  * Sends Ready rows to Buffer.
  *
- * Buffer uses addToQueue, therefore Buffer
- * chooses the next configured publishing time.
- *
- * V1 supports IMAGE POSTS ONLY.
+ * Our automation owns cadence. Buffer shareNow is only called after validation.
  */
 function sendReadySocialPostsToBuffer() {
-
-  const props =
-    PropertiesService
-      .getScriptProperties();
-
-
-  const apiKey =
-    props.getProperty(
-      SOCIAL_CONFIG_
-        .BUFFER_API_KEY_PROPERTY
-    );
-
-
-  const fbChannelId =
-    props.getProperty(
-      SOCIAL_CONFIG_
-        .BUFFER_FB_CHANNEL_PROPERTY
-    );
-
-
-  const igChannelId =
-    props.getProperty(
-      SOCIAL_CONFIG_
-        .BUFFER_IG_CHANNEL_PROPERTY
-    );
-
-
-  if (
-    !apiKey ||
-    !fbChannelId ||
-    !igChannelId
-  ) {
-
-    throw new Error(
-      'Buffer is not configured. ' +
-      'Add BUFFER_API_KEY and run setupBufferChannels() first.'
-    );
-  }
-
-
-  /*
-   * Prevent overlapping social runs.
-   */
-  const lock =
-    LockService.getScriptLock();
-
-
-  if (!lock.tryLock(30000)) {
-
-    throw new Error(
-      'Another Apps Script maintenance/social run is active.'
-    );
-  }
-
-
-  const summary = {
-    processed: 0,
-    queued: 0,
-    partial: 0,
-    failed: 0,
-    skipped: false,
-    reason: ''
-  };
-
-
-  try {
-
-    const ss =
-      SpreadsheetApp
-        .getActiveSpreadsheet();
-
-
-    const queue =
-      getSocialQueueSheetOrThrow_(
-        ss
-      );
-
-
-    const exportSheet =
-      getInventorySheetOrThrow_(
-        ss,
-        SOCIAL_CONFIG_
-          .EXPORT_SHEET
-      );
-
-
-    assertSocialQueueHeaders_(
-      queue
-    );
-
-
-    /*
- * EVERY-OTHER-DAY SAFETY GATE
- *
- * Allow at most one automated product to be queued
- * during any rolling 48-hour window.
- */
-if (
-  hasSocialPostQueuedWithinHours_(48)
-) {
-
-  summary.skipped = true;
-
-  summary.reason =
-    'A social product post was queued within the last 48 hours.';
-
-  console.log(
-    JSON.stringify(
-      summary
-    )
-  );
-
-  return summary;
-}
-
-
-    const sourceMap =
-      readSocialSourceMap_(
-        exportSheet
-      );
-
-
-    const lastRow =
-      getLastDataRowInColumn_(
-        queue,
-        SOCIAL_COLUMNS_
-          .PRODUCT_KEY
-      );
-
-
-    if (lastRow < 2) {
-
-      console.log(
-        JSON.stringify(
-          summary
-        )
-      );
-
-      return summary;
-    }
-
-
-    const rows =
-      queue
-        .getRange(
-          2,
-          1,
-          lastRow - 1,
-          SOCIAL_COLUMNS_.ERROR
-        )
-        .getValues();
-
-
-    /*
-     * Process AT MOST ONE Ready product.
-     *
-     * This is intentionally independent
-     * of BUFFER_BATCH_SIZE.
-     */
-    for (
-      let i = 0;
-      i < rows.length;
-      i++
-    ) {
-
-      const row =
-        rows[i];
-
-
-      const status =
-        String(
-          row[
-            SOCIAL_COLUMNS_
-              .SOCIAL_STATUS - 1
-          ] || ''
-        ).trim();
-
-
-      if (
-        status !== 'Ready'
-      ) {
-        continue;
-      }
-
-
-      /*
-       * We found our one candidate
-       * for this run.
-       */
-      summary.processed = 1;
-
-
-      const rowNumber =
-        i + 2;
-
-
-      const productKey =
-        String(
-          row[
-            SOCIAL_COLUMNS_
-              .PRODUCT_KEY - 1
-          ] || ''
-        ).trim();
-
-
-      const source =
-        sourceMap.get(
-          productKey
-        );
-
-
-      /*
-       * Recheck current Website Export
-       * eligibility immediately before
-       * sending anything to Buffer.
-       */
-      if (
-        !source ||
-        !source.eligible
-      ) {
-
-        queue
-          .getRange(
-            rowNumber,
-            SOCIAL_COLUMNS_
-              .SOCIAL_STATUS
-          )
-          .setValue(
-            'Error'
-          );
-
-
-        queue
-          .getRange(
-            rowNumber,
-            SOCIAL_COLUMNS_
-              .ERROR
-          )
-          .setValue(
-            'Blocked before Buffer: product is no longer eligible/in stock in Website Export.'
-          );
-
-
-        summary.failed++;
-
-        break;
-      }
-
-
-      /*
-       * Verify that the product facts
-       * have not changed since Gemini
-       * generated the approved copy.
-       */
-      const currentHash =
-        buildSocialSourceHash_(
-          source
-        );
-
-
-      const approvedHash =
-        String(
-          row[
-            SOCIAL_COLUMNS_
-              .SOURCE_HASH - 1
-          ] || ''
-        );
-
-
-      if (
-        !approvedHash ||
-        approvedHash !== currentHash
-      ) {
-
-        queue
-          .getRange(
-            rowNumber,
-            SOCIAL_COLUMNS_
-              .SOCIAL_STATUS
-          )
-          .setValue(
-            'Needs Copy'
-          );
-
-
-        queue
-          .getRange(
-            rowNumber,
-            SOCIAL_COLUMNS_
-              .ERROR
-          )
-          .setValue(
-            'Blocked before Buffer: product facts changed since caption generation.'
-          );
-
-
-        summary.failed++;
-
-        break;
-      }
-
-
-      const mediaUrl =
-        String(
-          row[
-            SOCIAL_COLUMNS_
-              .MEDIA_URL - 1
-          ] || ''
-        ).trim();
-
-
-      const mediaType =
-        String(
-          row[
-            SOCIAL_COLUMNS_
-              .MEDIA_TYPE - 1
-          ] || 'Image'
-        ).trim();
-
-
-      const contentType =
-        String(
-          row[
-            SOCIAL_COLUMNS_
-              .CONTENT_TYPE - 1
-          ] || 'Post'
-        ).trim();
-
-
-      const facebookCaption =
-        String(
-          row[
-            SOCIAL_COLUMNS_
-              .FACEBOOK_CAPTION - 1
-          ] || ''
-        ).trim();
-
-
-      const instagramCaption =
-        String(
-          row[
-            SOCIAL_COLUMNS_
-              .INSTAGRAM_CAPTION - 1
-          ] || ''
-        ).trim();
-
-
-      const hashtagBlock =
-        String(
-          row[
-            SOCIAL_COLUMNS_
-              .HASHTAGS - 1
-          ] || ''
-        ).trim();
-
-
-      /*
-       * Require image + both approved
-       * captions before Buffer.
-       */
-      if (
-        !mediaUrl ||
-        !facebookCaption ||
-        !instagramCaption
-      ) {
-
-        queue
-          .getRange(
-            rowNumber,
-            SOCIAL_COLUMNS_
-              .SOCIAL_STATUS
-          )
-          .setValue(
-            mediaUrl
-              ? 'Needs Copy'
-              : 'Needs Image'
-          );
-
-
-        queue
-          .getRange(
-            rowNumber,
-            SOCIAL_COLUMNS_
-              .ERROR
-          )
-          .setValue(
-            'Blocked before Buffer: media and both approved captions are required.'
-          );
-
-
-        summary.failed++;
-
-        break;
-      }
-
-
-      /*
-       * V1 deliberately publishes only
-       * standard image Posts.
-       *
-       * Reels/videos remain manual.
-       */
-      if (
-        contentType !== 'Post' ||
-        mediaType !== 'Image'
-      ) {
-
-        queue
-          .getRange(
-            rowNumber,
-            SOCIAL_COLUMNS_
-              .SOCIAL_STATUS
-          )
-          .setValue(
-            'Error'
-          );
-
-
-        queue
-          .getRange(
-            rowNumber,
-            SOCIAL_COLUMNS_
-              .ERROR
-          )
-          .setValue(
-            'V1 only auto-publishes image Posts. ' +
-            'Reel/video creation remains manual.'
-          );
-
-
-        summary.failed++;
-
-        break;
-      }
-
-
-      /*
-       * Existing IDs are preserved so a
-       * partial Facebook/Instagram failure
-       * can be retried without creating a
-       * duplicate on the successful side.
-       */
-      let fbId =
-        String(
-          row[
-            SOCIAL_COLUMNS_
-              .FB_BUFFER_POST_ID - 1
-          ] || ''
-        ).trim();
-
-
-      let igId =
-        String(
-          row[
-            SOCIAL_COLUMNS_
-              .IG_BUFFER_POST_ID - 1
-          ] || ''
-        ).trim();
-
-
-      try {
-
-        // Re-read under the existing ScriptLock. UI edits do not take that lock.
-        assertSocialSendRowUnchanged_(queue, rowNumber, row);
-
-        /*
-         * FACEBOOK
-         */
-        if (!fbId) {
-
-          const fbText =
-            facebookCaption +
-            (
-              hashtagBlock
-                ? '\n\n' +
-                  hashtagBlock
-                : ''
-            );
-
-
-          const fbPost =
-            createOrReconcileSocialPost_(
-              queue, rowNumber, row,
-              apiKey,
-              fbChannelId,
-              fbText,
-              mediaUrl,
-              'facebook'
-            );
-
-
-          fbId =
-            fbPost.id;
-
-
-          queue
-            .getRange(
-              rowNumber,
-              SOCIAL_COLUMNS_
-                .FB_BUFFER_POST_ID
-            )
-            .setValue(
-              fbId
-            );
-        }
-
-
-        /*
-         * INSTAGRAM
-         */
-        if (!igId) {
-
-          const igText =
-            instagramCaption +
-            (
-              hashtagBlock
-                ? '\n\n' +
-                  hashtagBlock
-                : ''
-            );
-
-
-          const igPost =
-            createOrReconcileSocialPost_(
-              queue, rowNumber, row,
-              apiKey,
-              igChannelId,
-              igText,
-              mediaUrl,
-              'instagram'
-            );
-
-
-          igId =
-            igPost.id;
-
-
-          queue
-            .getRange(
-              rowNumber,
-              SOCIAL_COLUMNS_
-                .IG_BUFFER_POST_ID
-            )
-            .setValue(
-              igId
-            );
-        }
-
-
-        /*
-         * BOTH CHANNELS SUCCEEDED
-         */
-        queue
-          .getRange(
-            rowNumber,
-            SOCIAL_COLUMNS_
-              .SOCIAL_STATUS
-          )
-          .setValue(
-            'Queued'
-          );
-
-
-        queue
-          .getRange(
-            rowNumber,
-            SOCIAL_COLUMNS_
-              .LAST_POSTED_AT
-          )
-          .setValue(
-            new Date()
-          );
-
-
-        queue
-          .getRange(
-            rowNumber,
-            SOCIAL_COLUMNS_
-              .ERROR
-          )
-          .clearContent();
-
-
-        summary.queued++;
-
-
-      } catch (error) {
-
-        /*
-         * Durable intent lives in the existing ID cell's note, BEFORE create.
-         * Error is the workbook's supported review state; never blind-retry.
-         */
-        queue
-          .getRange(
-            rowNumber,
-            SOCIAL_COLUMNS_
-              .SOCIAL_STATUS
-          )
-          .setValue(
-            'Error'
-          );
-
-
-        queue
-          .getRange(
-            rowNumber,
-            SOCIAL_COLUMNS_
-              .ERROR
-          )
-          .setValue(
-            'Buffer RECONCILE required (do not clear ID-cell notes): ' +
-            String(
-              error.message ||
-              error
-            ).slice(
-              0,
-              500
-            )
-          );
-
-
-        if (
-          fbId ||
-          igId
-        ) {
-
-          summary.partial++;
-
-        } else {
-
-          summary.failed++;
-        }
-      }
-
-
-      /*
-       * Critical:
-       *
-       * Never process a second Ready
-       * product in the same run.
-       */
-      break;
-    }
-
-
-    console.log(
-      JSON.stringify(
-        summary
-      )
-    );
-
-
-    return summary;
-
-
-  } finally {
-
-    lock.releaseLock();
-  }
+  return sendReadySocialMedia_();
 }
 
 
 
 /*
- * Returns true when a product was
- * successfully sent to BOTH Buffer
- * channels during the previous N days.
- *
- * LAST POSTED AT is only written after
- * Facebook + Instagram both succeed.
+ * First accepted channel/journal counts toward cadence, including partial sends.
  */
 
 
@@ -2256,7 +1218,7 @@ function readSocialBufferIntent_(cell) {
   if (!note) return null;
   let intent;
   try { intent = JSON.parse(note); } catch (_) { throw new Error('Unrecognized Buffer ID-cell note; review required.'); }
-  if (intent.kind !== 'INVICTA_BUFFER_INTENT_V1' || !intent.payload ||
+  if (!['INVICTA_BUFFER_INTENT_V1','INVICTA_BUFFER_INTENT_V2'].includes(intent.kind) || !intent.payload ||
       intent.operationKey !== socialOperationKey_(intent.payload) ||
       !intent.rowFingerprint || !['PUBLISHING', 'ACKNOWLEDGED'].includes(intent.state) ||
       !Number.isFinite(Date.parse(intent.startedAt)) ||
@@ -2298,8 +1260,18 @@ function readBufferPostsForReconciliation_(apiKey, channelIds) {
 
 function matchingSocialBufferPosts_(posts, payload) {
   return posts.filter(function(post) {
-    return String(post.channelId) === payload.channelId && String(post.text || '') === payload.text &&
-      post.assets.length === 1 && String(post.assets[0].source || '') === payload.mediaUrl;
+    if (String(post.channelId) !== payload.channelId || String(post.text || '') !== payload.text) return false;
+    // V1 audit only: old journals are never converted into new publish operations.
+    if (!payload.publicIds) return post.assets.length === 1 && String(post.assets[0].source || '') === payload.mediaUrl;
+    if (post.assets.length !== payload.publicIds.length) return false;
+    return post.assets.every(function(asset,index) {
+      const url = String(asset.source || '');
+      const prefix = 'https://res.cloudinary.com/' + payload.cloud + '/' +
+        (payload.mediaType === 'Reel' ? 'video' : 'image') + '/upload/';
+      if (url.indexOf(prefix) !== 0) return false;
+      const path = url.slice(prefix.length).replace(/^v[0-9]+\//,'').replace(/\.(jpg|mp4)$/,'');
+      return path === payload.publicIds[index];
+    });
   });
 }
 
@@ -2313,58 +1285,46 @@ function saveSocialBufferReceipt_(cell, intent, id) {
   if (String(cell.getValue()) !== String(id)) throw new Error('Buffer receipt write did not persist.');
 }
 
-function createOrReconcileSocialPost_(queue, rowNumber, row, apiKey, channelId, text, mediaUrl, service, options) {
-  assertSocialSendRowUnchanged_(queue, rowNumber, row);
-  const column = service === 'facebook' ? 14 : 15;
-  const cell = queue.getRange(rowNumber, column);
-  const payload = {productKey:String(row[0]).trim(), channelId:String(channelId),
-    text:text, mediaUrl:mediaUrl, sourceHash:String(row[17] || '')};
-  // Controlled acceptance may create a non-publishing draft; normal sender never passes this.
-  if (options && options.saveToDraft === true) payload.saveToDraft = true;
-  if (!/^https:\/\//i.test(mediaUrl) || !text.trim() || !payload.sourceHash || !payload.channelId) {
-    throw new Error('Malformed approved Buffer payload.');
+function createOrReconcileSocialPost_(queue, rowNumber, row, apiKey, channelId, text, media, service, options) {
+  if (!(options && options.saveToDraft === true) &&
+      PropertiesService.getScriptProperties().getProperty('SOCIAL_PUBLISHING_ENABLED') !== 'true') {
+    throw new Error('Social publishing disabled.');
   }
+  assertSocialSendRowUnchanged_(queue,rowNumber,row);
+  const cell = queue.getRange(rowNumber,service === 'facebook' ? 14 : 15);
+  const payload = socialMediaPayload_(row,channelId,text,media,options);
+  if (!text.trim() || !payload.sourceHash || !payload.channelId) throw new Error('Malformed approved Buffer payload.');
   let intent = readSocialBufferIntent_(cell);
-  if (intent && intent.operationKey !== socialOperationKey_(payload)) {
-    throw new Error('Buffer payload/channel changed; do not reuse an old operation.');
-  }
-  const matches = matchingSocialBufferPosts_(readBufferPostsForReconciliation_(apiKey, [channelId]), payload);
+  if (intent && intent.operationKey !== socialOperationKey_(payload)) throw new Error('Buffer payload/channel changed; do not reuse an old operation.');
+  const matches = matchingSocialBufferPosts_(readBufferPostsForReconciliation_(apiKey,[channelId]),payload);
   if (matches.length > 1) throw new Error('Multiple matching Buffer posts; owner review required.');
   if (matches.length === 1) {
-    if (!payload.saveToDraft && matches[0].status === 'draft') {
-      throw new Error('Matching Buffer draft is not a queued post; owner review required.');
-    }
-    if (payload.saveToDraft && matches[0].status !== 'draft') {
-      throw new Error('Draft acceptance found a non-draft; no mutation permitted.');
-    }
-    if (intent && intent.remoteId && String(intent.remoteId) !== String(matches[0].id)) {
-      throw new Error('Buffer receipt identity conflict; owner review required.');
-    }
-    intent = intent || {kind:'INVICTA_BUFFER_INTENT_V1', payload:payload,
-      operationKey:socialOperationKey_(payload), rowFingerprint:socialRowFingerprint_(row),
-      state:'PUBLISHING', startedAt:new Date().toISOString()};
-    assertSocialSendRowUnchanged_(queue, rowNumber, row);
-    saveSocialBufferReceipt_(cell, intent, matches[0].id);
-    return {id:matches[0].id, reconciled:true};
+    if (!payload.saveToDraft && ['draft','error','needs_approval'].includes(matches[0].status)) throw new Error('Matching Buffer draft/error is not a publication receipt; owner review required.');
+    if (payload.saveToDraft && matches[0].status !== 'draft') throw new Error('Draft acceptance found a non-draft; no mutation permitted.');
+    if (intent && intent.remoteId && String(intent.remoteId) !== String(matches[0].id)) throw new Error('Buffer receipt identity conflict; owner review required.');
+    intent = intent || {kind:'INVICTA_BUFFER_INTENT_V2',payload:payload,operationKey:socialOperationKey_(payload),
+      rowFingerprint:socialRowFingerprint_(row),state:'PUBLISHING',startedAt:new Date().toISOString()};
+    assertSocialSendRowUnchanged_(queue,rowNumber,row);
+    saveSocialBufferReceipt_(cell,intent,matches[0].id);
+    return {id:matches[0].id,reconciled:true};
   }
-  if (intent || /Buffer (send failed|RECONCILE|PUBLISHING)/i.test(String(row[18] || ''))) {
+  if (intent || (options && options.reconcileOnly) || /Buffer (send failed|RECONCILE|PUBLISHING)/i.test(String(row[18] || ''))) {
     throw new Error('Uncertain previous create has no provable remote match; manual review, NOT another create.');
   }
-  assertSocialSendRowUnchanged_(queue, rowNumber, row);
-  intent = {kind:'INVICTA_BUFFER_INTENT_V1', payload:payload,
-    operationKey:socialOperationKey_(payload), rowFingerprint:socialRowFingerprint_(row),
-    state:'PUBLISHING', startedAt:new Date().toISOString()};
+  assertSocialMediaCurrent_(queue,rowNumber,row,media.plan);
+  intent = {kind:'INVICTA_BUFFER_INTENT_V2',payload:payload,operationKey:socialOperationKey_(payload),
+    rowFingerprint:socialRowFingerprint_(row),state:'PUBLISHING',startedAt:new Date().toISOString()};
   cell.setNote(JSON.stringify(intent));
-  queue.getRange(rowNumber, 13).setValue('Error');
-  queue.getRange(rowNumber, 19).setValue('Buffer PUBLISHING — durable intent saved; reconcile before retry.');
+  queue.getRange(rowNumber,13).setValue('Error');
+  queue.getRange(rowNumber,19).setValue('Buffer PUBLISHING — durable intent saved; reconcile before retry.');
   SpreadsheetApp.flush();
-  if (cell.getNote() !== JSON.stringify(intent) || queue.getRange(rowNumber,13).getValue() !== 'Error') {
-    throw new Error('Publishing intent did not persist; remote create blocked.');
-  }
-  assertSocialSendRowUnchanged_(queue, rowNumber, row);
-  const post = createBufferImagePost_(apiKey, channelId, text, mediaUrl, service, options);
-  assertSocialSendRowUnchanged_(queue, rowNumber, row);
-  saveSocialBufferReceipt_(cell, intent, post.id);
+  if (cell.getNote() !== JSON.stringify(intent) || queue.getRange(rowNumber,13).getValue() !== 'Error') throw new Error('Publishing intent did not persist; remote create blocked.');
+  // Includes edits, archive, authoritative source stock, Airtable controls, and ordered Photos.
+  assertSocialMediaCurrent_(queue,rowNumber,row,media.plan);
+  const post = createBufferImagePost_(apiKey,channelId,text,media,service,options);
+  // Persist the accepted receipt even if stock/UI changes after the remote call.
+  // Subsequent channel still revalidates; never lose evidence of a successful create.
+  saveSocialBufferReceipt_(cell,intent,post.id);
   return post;
 }
 
@@ -2402,8 +1362,9 @@ function auditSocialBufferQueue() {
         const caption = String(row[side ? 10 : 9] || '').trim();
         const tags = String(row[11] || '').trim();
         const text = caption + (tags ? '\n\n' + tags : '');
-        const matches = matchingSocialBufferPosts_(posts, {channelId:channels[side],text:text,
-          mediaUrl:String(row[4] || '').trim()});
+        const intent = readSocialBufferIntent_(queue.getRange(index+2,14+side));
+        const matches = matchingSocialBufferPosts_(posts, intent ? intent.payload :
+          {channelId:channels[side],text:text,mediaUrl:String(row[4] || '').trim()});
         const savedId = String(row[13+side] || '').trim();
         evidence.channels.push({service:service, savedId:savedId,
           savedIdFound:!!savedId && posts.some(function(p){return p.id===savedId && p.channelId===channels[side];}),
@@ -2422,134 +1383,14 @@ function auditSocialBufferQueue() {
 /**
    * Creates one Buffer image post. Only the guarded sender calls this for real queue rows.
  */
-function createBufferImagePost_(
-  apiKey,
-  channelId,
-  text,
-  mediaUrl,
-  service,
-  options
-) {
-
-  const input = {
-
-  text:
-    text,
-
-  channelId:
-    channelId,
-
-  schedulingType:
-    'automatic',
-
-  mode:
-    'addToQueue',
-
-  aiAssisted:
-    true,
-
-  assets: [
-    {
-      image: {
-        url:
-          mediaUrl
-      }
-    }
-  ],
-
-  metadata:
-    service === 'facebook'
-      ? {
-          facebook: {
-            type: 'post'
-          }
-        }
-      : service === 'instagram'
-        ? {
-            instagram: {
-              type: 'post',
-              shouldShareToFeed: true
-            }
-          }
-        : undefined,
-
-  source:
-    'invicta-google-sheets'
-};
-  if (options && options.saveToDraft === true) input.saveToDraft = true;
-
-  const query = [
-
-    'mutation CreatePost($input: CreatePostInput!) {',
-
-    '  createPost(input: $input) {',
-
-    '    ... on PostActionSuccess {',
-
-    '      post { id dueAt }',
-
-    '    }',
-
-    '    ... on MutationError {',
-
-    '      message',
-
-    '    }',
-
-    '  }',
-
-    '}'
-
-  ].join('\n');
-
-
-  const data =
-    bufferGraphql_(
-      apiKey,
-      query,
-      {
-        input: input
-      }
-    );
-
-
-  const result =
-    data.createPost;
-
-
-  if (!result) {
-
-    throw new Error(
-      'Buffer returned no createPost result for ' +
-      service +
-      '.'
-    );
-  }
-
-
-  if (result.message) {
-
-    throw new Error(
-      service +
-      ': ' +
-      result.message
-    );
-  }
-
-
-  if (
-    !result.post ||
-    !result.post.id
-  ) {
-
-    throw new Error(
-      'Buffer did not return a post ID for ' +
-      service +
-      '.'
-    );
-  }
-
-
+function createBufferImagePost_(apiKey,channelId,text,media,service,options) {
+  const input = socialBufferInput_(channelId,text,media,service,options);
+  const data = bufferGraphql_(apiKey,
+    'mutation CreatePost($input: CreatePostInput!) { createPost(input: $input) { ... on PostActionSuccess { post { id dueAt } } ... on MutationError { message } } }',
+    {input:input});
+  const result = data.createPost;
+  // Do not persist raw remote error text: it can contain signed URLs/credentials.
+  if (!result || result.message || !result.post || !result.post.id) throw new Error('Buffer create did not return a confirmed receipt; reconcile before retry.');
   return result.post;
 }
 
@@ -2557,93 +1398,29 @@ function createBufferImagePost_(
 /**
  * Shared Buffer GraphQL helper.
  */
-function bufferGraphql_(
-  apiKey,
-  query,
-  variables
-) {
-
-  const response =
-    UrlFetchApp.fetch(
-      SOCIAL_CONFIG_
-        .BUFFER_ENDPOINT,
-      {
-        method:
-          'post',
-
-        contentType:
-          'application/json',
-
-        headers: {
-          Authorization:
-            'Bearer ' +
-            apiKey
-        },
-
-        payload:
-          JSON.stringify({
-            query:
-              query,
-
-            variables:
-              variables || {}
-          }),
-
-        muteHttpExceptions:
-          true
-      }
-    );
-
-
-  const statusCode =
-    response.getResponseCode();
-
-
-  const body =
-    response.getContentText();
-
-
-  if (
-    statusCode < 200 ||
-    statusCode >= 300
-  ) {
-
-    throw new Error(
-      'Buffer API HTTP ' +
-      statusCode +
-      ': ' +
-      body.slice(
-        0,
-        500
-      )
-    );
+function bufferGraphql_(apiKey, query, variables) {
+  let response;
+  try {
+    response = UrlFetchApp.fetch(SOCIAL_CONFIG_.BUFFER_ENDPOINT, {
+      method:'post', contentType:'application/json',
+      headers:{Authorization:'Bearer ' + apiKey},
+      payload:JSON.stringify({query:query,variables:variables || {}}),
+      muteHttpExceptions:true
+    });
+  } catch (_) {
+    throw new Error('Buffer transport failed; reconcile before retry.');
   }
-
-
-  const parsed =
-    JSON.parse(
-      body
-    );
-
-
-  if (
-    parsed.errors &&
-    parsed.errors.length
-  ) {
-
-    throw new Error(
-      'Buffer GraphQL: ' +
-      parsed.errors
-        .map(
-          function(error) {
-            return error.message;
-          }
-        )
-        .join(' | ')
-    );
+  const statusCode = response.getResponseCode();
+  if (statusCode < 200 || statusCode >= 300) {
+    throw new Error('Buffer API HTTP ' + statusCode + '; reconcile before retry.');
   }
-
-
+  let parsed;
+  try { parsed = JSON.parse(response.getContentText()); }
+  catch (_) { throw new Error('Malformed Buffer response; reconcile before retry.'); }
+  if (!parsed || parsed.errors && parsed.errors.length) {
+    throw new Error('Buffer GraphQL rejected operation; reconcile before retry.');
+  }
+  // Never include raw response/error messages; they may contain credentials/URLs.
   return parsed.data || {};
 }
 
@@ -2652,7 +1429,7 @@ function bufferGraphql_(
  * Reads Website Export using HEADER NAMES,
  * not fixed column positions.
  */
-function readSocialSourceMap_(
+function readSocialExportMap_(
   exportSheet
 ) {
 
@@ -2732,11 +1509,6 @@ function readSocialSourceMap_(
     highlights:
       col(
         'HIGHLIGHTS'
-      ),
-
-    image:
-      col(
-        'STOCK IMAGE URL'
       ),
 
     post:
@@ -2838,12 +1610,6 @@ function readSocialSourceMap_(
             ''
           ).trim(),
 
-        stockImageUrl:
-          String(
-            row[c.image] ||
-            ''
-          ).trim(),
-
         eligible:
           socialTruthy_(
             row[c.post]
@@ -2927,52 +1693,10 @@ function buildSocialPriceLabel_(
  * If these facts change later,
  * Ready -> Buffer is blocked.
  */
-function buildSocialSourceHash_(
-  source
-) {
-
-  const input = [
-
-    source.productKey,
-    source.displayName,
-    source.category,
-    source.priceLabel,
-    source.description,
-    source.highlights,
-    source.stockImageUrl,
-    source.eligible
-      ? '1'
-      : '0'
-
-  ].join('\n');
-
-
-  const bytes =
-    Utilities.computeDigest(
-      Utilities
-        .DigestAlgorithm
-        .SHA_256,
-
-      input,
-
-      Utilities
-        .Charset
-        .UTF_8
-    );
-
-
-  return Utilities
-    .base64EncodeWebSafe(
-      bytes
-    )
-    .replace(
-      /=+$/g,
-      ''
-    )
-    .slice(
-      0,
-      24
-    );
+function buildSocialSourceHash_(source) {
+  return socialOperationKey_([source.productKey,source.displayName,source.category,source.priceLabel,
+    source.description,source.highlights,(source.photos || []).map(function(photo) { return photo.id; }),
+    source.renderFacts || null,source.eligible ? '1' : '0']).slice(0,24);
 }
 
 
@@ -3439,50 +2163,17 @@ function setupDailySocialTriggers() {
 
 
 function hasSocialPostQueuedWithinHours_(hours) {
-  const sheet = SpreadsheetApp
-    .getActiveSpreadsheet()
-    .getSheetByName('Social Queue');
-
-  if (!sheet || sheet.getLastRow() < 2) {
-    return false;
-  }
-
-  const values = sheet.getDataRange().getValues();
-  const headers = values[0].map(function(h) {
-    return String(h).trim().toUpperCase();
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Social Queue');
+  if (!sheet || sheet.getLastRow() < 2) return false;
+  assertSocialQueueHeaders_(sheet);
+  const values = sheet.getRange(2,1,sheet.getLastRow()-1,19).getValues();
+  const cutoff = Date.now() - Number(hours)*3600000;
+  return values.some(function(row,index) {
+    // Any accepted/uncertain hand-off counts, even after a Skip or partial failure.
+    if (row[15] && Number.isFinite(new Date(row[15]).getTime()) && new Date(row[15]).getTime() > cutoff) return true;
+    return [14,15].some(function(column) {
+      const intent = readSocialBufferIntent_(sheet.getRange(index+2,column));
+      return !!intent && Date.parse(intent.startedAt) > cutoff;
+    });
   });
-
-  const idx = {};
-  headers.forEach(function(h, i) { idx[h] = i; });
-
-  const statusCol = idx['SOCIAL STATUS'];
-  const lastPostedCol = idx['LAST POSTED AT'];
-
-  if (statusCol == null || lastPostedCol == null) {
-    throw new Error(
-      'Social Queue is missing SOCIAL STATUS or LAST POSTED AT.'
-    );
-  }
-
-  const cutoffMs = Date.now() - (Number(hours) * 60 * 60 * 1000);
-
-  for (let r = 1; r < values.length; r++) {
-    const status = String(values[r][statusCol] || '').trim();
-    const lastPostedAt = values[r][lastPostedCol];
-
-    if (status !== 'Queued' || !lastPostedAt) {
-      continue;
-    }
-
-    const postedDate = new Date(lastPostedAt);
-    if (isNaN(postedDate.getTime())) {
-      continue;
-    }
-
-    if (postedDate.getTime() > cutoffMs) {
-      return true;
-    }
-  }
-
-  return false;
 }

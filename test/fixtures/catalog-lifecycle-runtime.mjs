@@ -96,13 +96,14 @@ export function createRuntime({now=Date.parse('2026-09-26T12:00:00Z'),key='STAGE
       base64EncodeWebSafe:b=>Buffer.from(b).toString('base64url')},
     UrlFetchApp:{fetch(){throw Error('Live requests forbidden');}},ScriptApp:{getProjectTriggers(){throw Error('Triggers forbidden');}}});
   for(const name of ['Config','CatalogSourceConfirmation','ProductCatalogLifecycle','ProductCatalogMaintenance','LegacyRepair','AdminTools',
-    'CatalogEnrichment','EnrichmentAdmin','WebsiteAirtableSync','BufferSocialSync']) {
+    'CatalogEnrichment','EnrichmentAdmin','WebsiteAirtableSync','BufferSocialSync','SocialMedia']) {
     vm.runInContext(fs.readFileSync(new URL('../../Invicta Appscript Files/'+name+'.js',import.meta.url),'utf8'),ctx,{filename:name+'.js'});
   }
   const realRequest=ctx.iwaRequest_,realFetch=ctx.iwaFetchAll_;
   ctx.iwaFetchAll_=()=>plain(records);
   ctx.iwaRequest_=(token,method,suffix,payload)=>{
     events.push(method);
+    if(method==='get') return {records:plain(records)};
     if(method==='delete') {
       const archived=ctx.readCatalogArchive_(ss);ctx.verifyCatalogArchive_(archived,key);
       records=records.filter(r=>r.id!==decodeURIComponent(suffix.split('=')[1]));
