@@ -1,151 +1,108 @@
-# Merchandise sold-out lifecycle — staging candidate
+# Active-only merchandise lifecycle
 
-Catalog / Export remain 29 columns; K2 owns AUTO BOX PRICE. Netlify and browser
-inventory remain read-only. Controlled Apps Script maintenance owns cleanup.
+Product Catalog and its formula-driven Website Export contain active lifecycles
+only. Both schemas remain 29 columns. Source/accounting sheets are read-only.
+Product Catalog Archive permanently retains sold-out identity/history.
 
-## Active versus historical
+## Immediate retirement and retained display
 
-Active: Product Catalog, Website Export, Airtable Website Products and customer
-inventory. Read-only history: retailer purchase/sales source sheets, Current
-Inventory transactions, Product Inventory buy/sold/batch aggregates, and Product
-Catalog Backup 2026-09-26. Social Queue keeps approvals/captions/Buffer history.
+Under the existing ScriptLock, the existing six-hour maintenance handler:
 
-Do not physically delete Catalog rows: this can move formula/reference positions
-and the K2 spill origin. Instead clear A:J and L:AC (header-resolved), preserving
-K, row positions and formatting. Blank slots are not active records; trailing
-slots may be reused. Old keys survive only in the separate archive.
+1. Requires unique permanent Product Keys and authoritative CONFIRMED ZERO.
+2. Forces the exact Catalog row's POST TO WEBSITE to No.
+3. Observes zero/Status Sold Out on an **existing** Airtable record, preserving
+   Photos, prices, display permission, and its first Sold Out Since. A missing
+   timestamp is stamped once. A malformed timestamp requires manual review.
+4. Writes one RETIRING archive snapshot, flushes, reads back, and verifies its
+   hash. It also freezes matching source rows and non-K Catalog values.
+5. Rechecks source evidence and the exact Catalog row. Concurrent owner edits
+   cause a safe hold, not a broad rewrite or a silent loss of curated fields.
+6. Marks every product social occurrence Skip, preserving captions, receipt
+   cells/notes and historical Buffer journals. Evergreen is never touched.
+7. Rechecks source evidence, clears only header-resolved non-K Catalog ranges,
+   flushes, and verifies absence from Catalog and active Website Export.
+8. Journals ARCHIVED: active retirement finished; remote retention pending.
 
-## Inventory / boundary
+No physical Catalog row deletion or K value/formula write is performed. K2 and
+its MAP spill remain workbook-owned. No source-derived rows are deleted.
 
-- Flooring: finite nonnegative Available Sq Ft, falling back to finite nonnegative
-  Quantity Available. Other categories use quantity.
-- Positive: In Stock, clear Sold Out Since, same active key/record. Deliberate
-  positive non-flooring Reserved/Draft holds remain exceptions.
-- Unknown/blank/null/invalid: Contact for Availability, clear timer, keep active.
-- Zero: Sold Out, first confirmed-zero UTC timestamp once; repeated zero never
-  resets it. Sold Out overrides the existing seven-day NEW badge.
-- Hide/cleanup eligibility: `now >= Date.parse(Sold Out Since) + 864000000`.
-  Ten full 24-hour days, not calendar days. Missing/invalid time fails open for
-  browsing and closed for deletion. Unknown/restocked products ignore old time.
-- Before backend cleanup, expired direct links can still show the sold-out item;
-  after fresh inventory no longer contains it they show not found. Normal caches
-  are not immediately purged across all devices. Cache v8 invalidates old status
-  mappings; open browsing tabs still rerender at the exact expiration boundary.
+Never-published products with no Airtable record are archived without creating
+one. Their verified absence is recorded in the archive's source manifest.
 
-## Lightweight archive / retry journal
+The website's read-only API selects Airtable Post to Website=true. For an old
+record, this flag means **retained sold-out display**, not active Catalog/social
+publication. Normal sync excludes all retired keys from writes and stale
+unpublishing; only lifecycle cleanup owns their fixed zero/timer observation.
+It never recreates an absent old key or merges identities by SKU.
 
-`Product Catalog Archive` has 18 header-resolved columns, not a full catalog copy:
-Product Key, Product ID, Retailer, Retail SKU, Display Name, Source Item, Category,
-Subcategory, Sold Out Since, Archived At, Removed At, final sell/comparable prices,
-final quantity, Product URL, Cleanup State, Airtable Record ID, Snapshot Hash.
+The migration may restore explicitly owner-approved old sold-out display
+permissions, without resetting Sold Out Since. There is no automatic permission
+grant for new/returned inventory or previously unpublished products.
 
-Order under the existing ScriptLock:
+## Exact retention and cleanup
 
-1. Require unique identities, fresh source quantity exactly zero, Airtable
-   confirmed zero, valid timestamp, and the complete retention interval.
-2. Archive metadata; flush/verify readback and immutable snapshot hash.
-3. Recheck source/remote identity, timestamp and stock; delete that exact Airtable
-   record and verify absence. Journal AIRTABLE REMOVED.
-4. Re-find catalog by permanent key, clear the two value ranges around K, verify
-   absence, then journal COMPLETE / Removed At.
+Retention is exactly `10 * 24 * 60 * 60 * 1000 = 864000000` milliseconds.
+Before `now >= Sold Out Since + 864000000`, remote records remain. At that exact
+boundary the backend requires:
 
-Archive failure retains both active records. Remote deletion failure retains
-Catalog and one ARCHIVED journal. Retries handle lost delete acknowledgements,
-partial catalog clearing and lost final acknowledgements without duplicate
-archives or key resurrection. This is a resumable transaction, not an atomic
-transaction across Sheets/Airtable. Stock is rechecked immediately before delete;
-external source edits are not locked by ScriptLock and cannot be made atomic.
+- valid archive/hash, exact permanent key, fixed timestamp and saved record ID;
+- unchanged zero evidence for the **old acquisition**, not aggregate new stock;
+- old key absent from active Catalog and Export;
+- fresh remote identity, zero quantity/coverage and matching timestamp.
 
-Before removal, a restock/unknown cancels a pending journal (CANCELLED). A later
-complete zero interval can re-arm that unsuccessful row. Completed archive
-history never changes. Missing archive identities/invalid states abort
-maintenance; corrupted snapshot hashes block destructive retries.
+Delete only that exact record ID, verify absence, journal AIRTABLE REMOVED, then
+COMPLETE / Removed At. A missing record is verified absent rather than recreated.
+A never-published lifecycle also completes after retention without a remote
+write. ARCHIVED does not require an active Catalog snapshot to finish cleanup.
 
-## Identity / export / enrichment / social
+RETIRING separates an interrupted first phase from completed active retirement.
+Retries finish partial non-K clearing, lost finalization and lost delete
+acknowledgements without duplicate archives. A finalized old key reappearing in
+Catalog blocks cleanup; it is never silently cleared/reactivated.
 
-Active SKU correction keeps permanent key and Airtable record. After COMPLETE,
-zero/unknown historical sources cannot recreate the product. Confirmed positive
-reacquisition receives ACQ-UUID, current retailer/SKU Product ID, and PENDING
-enrichment. Existing enrichment and manual publication approval still apply;
-no automatic approval is added. Upsert remains keyed only by Product Key.
-New record Date Added supports NEW; archived key/date is never reused.
+## Source evidence and new acquisitions
 
-Archive is not an enrichment input. Retired keys cannot enter Social Queue or
-publish via a stale export. Sync cannot recreate a deleted pending/complete key;
-existing pending records can still report restock or uncertainty.
+The archive adds one optional `SOURCE EVIDENCE` column; no Catalog/Export schema
+change. It stores a versioned source-row multiset and non-K Catalog snapshot.
+Its content participates in the existing immutable snapshot hash. Legacy archive
+hashes remain valid without that field; historical rows are never silently
+rehashed. Legacy histories lacking frozen evidence require manual review before
+opening a later acquisition.
 
-The source-confirmation remediation replaces the original Export selection;
-see `NATIVE_ACCEPTANCE_AND_RELEASE_GATES.md`. Export now selects active
-Catalog permanent keys and takes quantity from Lifecycle Inventory, populated
-from full source evidence. No positive accounting view is widened. Cleanup uses
-the same source helper. Missing or inconsistent source evidence is unknown.
+Every original source row must remain present and unchanged, including duplicate
+multiplicity and zero balance. Additional matching rows must have valid positive
+purchase quantities, reliable balances, and Buy Date strictly later than Archived
+At. Undated/same-day ambiguous additions, missing originals and accounting
+corrections fail closed. Aggregate positive inventory must be explainable by
+later acquisitions; it is not authority to cancel old history.
 
-The old Export qty>0 filter must go, but merely removing it is unsafe: its
-missing-catalog fallback exposes historical source keys. The prepared
-`test/fixtures/website-export-lifecycle.formula` includes zero/unknown ONLY with
-a nonblank active Catalog permanent key. No fallback identity.
-Quantity blanks are preserved;
-Available Sq Ft uses current quantity/current catalog pack size. U2:AC2's nine
-existing permanent-key lookups remain unchanged. This avoids Product Inventory
-J's old key lookup losing coverage with a new ACQ key; accounting formulas remain
-untouched. IFNA handles an empty active set.
+A confidently later positive acquisition can open `ACQ-<UUID>` while A is still
+ARCHIVED. B uses the current retailer/SKU Product ID, PENDING enrichment and blank
+manual publication permission. A and B may overlap in Airtable: A sold out, B
+active. B receives its own social occurrence and cannot reuse A's approval/media
+or receipts. B's positive quantity never prevents safe old-A deletion.
 
-Formula is prepared/contract-tested, NOT applied to production and NOT executed
-in native isolated Sheets yet. Native formula/spill acceptance is still required;
-the VM workbook model is not the Sheets engine.
+Before active clearing, an original-source correction can cancel an unfinished
+transition (CANCELLED). After clearing, original-source changes require manual
+recovery with preserved source/archive evidence; never resurrect the old key.
+UNKNOWN never starts a transition, clears Catalog, deletes remote records, or
+automatically creates a new lifecycle.
 
-## Opt-in / staging safety
+## Operations and verification
 
-`runSoldOutCatalogCleanup()` previews only. Applying requires explicit Script
-Property CATALOG_LIFECYCLE_CLEANUP_ENABLED=true and `{apply:true}`. Optional
-`productKeys` scopes the run. Existing catalog maintenance invokes cleanup under
-its lock only when enabled. No new trigger is installed. AIRTABLE_BASE_ID,
-AIRTABLE_ENVIRONMENT and AIRTABLE_WORKBOOK_ID must explicitly match an approved
-environment and actual workbook; there is no production fallback. Add Sold
-Out Since datetime to production before any separately approved release.
+`runSoldOutCatalogCleanup()` defaults to a full read-only preview, including
+action, archive state, timestamp, remote identity, social statuses/receipt flags,
+and later acquisition evidence. Optional productKeys scopes existing execution.
+Review all real migration keys before one controlled maintenance run.
 
-Live acceptance executes actual Apps Script in a VM, with durable isolated local
-workbook data and real staging Airtable. Clock advancement tests the ten-day
-boundary; it never fabricates a historical first-zero date. Only newly-created
-synthetic keys may mutate. This proves real upsert/delete, NOT a deployed bound
-project. Netlify secret retrieval can be unavailable; the authorized Airtable
-connector fulfills the transport without exposing/changing that secret.
+Keep `CATALOG_LIFECYCLE_CLEANUP_ENABLED=true`. No new flag or trigger is needed.
+The intended trigger set remains maintenance, Airtable sync, enrichment and
+social publishing. Their existing settings/cadence are unchanged by this change.
+Normal send-time stock/Photos validation remains the final social safety layer.
+ScriptLock does not lock external owner/source edits; fresh rechecks narrow, but
+cannot eliminate, the cross-service race window.
 
-No production workbook, Apps Script, triggers, Airtable, subscriber, email or
-social writes. Production prerequisites: native isolated formula/K2 acceptance,
-bound-project staging execution, archive permissions/backup, review of preview,
-explicit cleanup opt-in, proper Airtable schema/token permissions and release
-approval. Test suite: full units, Apps Script lifecycle/failures, Chromium and axe.
-
-## Production maintenance hardening
-
-The existing six-hour `runProductCatalogMaintenance` trigger runs enabled cleanup
-before normal maintenance under the same lock. Enable only after reviewing the
-full read-only preview, using `CATALOG_LIFECYCLE_CLEANUP_ENABLED=true`; no separate
-cleanup trigger is required. Retention remains exactly 864000000 milliseconds.
-
-Maintenance uses the shared authoritative source-confirmation index to turn an
-existing confirmed-zero product's `POST TO WEBSITE` from Yes to No. Positive or
-unknown inventory never grants permission, and restock remains No until the
-owner deliberately republishes. No identity, curated field or K value is changed
-by this override. The guard includes zero products absent from Product Inventory.
-
-Sync continues lifecycle observations on **existing** unpublished Airtable
-records, by record ID, without creating or republishing them. This preserves the
-first-zero timer, clears it on restock/uncertainty, and permits the normal ten-day
-cleanup. Photos and other Airtable-curated fields remain untouched.
-
-Apply uses an indexed initial eligibility snapshot, but still performs fresh
-source and Airtable checks immediately before deletion and retains all archive,
-hash, identity, deletion-verification and retry-journal safeguards. Logs separate
-guard correction keys, normal maintenance updates, and cleanup results.
-
-## Fulfillment (unchanged)
-
-Local Pickup Only • McKinney, TX
-
-Flooring is currently available for local pickup in McKinney, TX. We do not currently ship individual flooring orders.
-
-Local delivery is available for an additional fee. Contact us for a delivery quote.
-
-No customer-facing freight/pallet wording is restored.
+Backend-only releases use `[skip netlify]`, including their merge commit. Do not
+trigger a website deploy. Unit coverage includes immediate retirement, exact
+expiry, same-SKU overlap, unknown/corrections, owner edits and phase retries;
+existing Chromium regression checks remain required before rollout.

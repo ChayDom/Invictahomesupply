@@ -11,23 +11,23 @@ const changeArchive=(t,h,v)=>{const a=archive(t);a.sheet.data[1][a.map[h]]=v;};
 for(const offset of [-1,0,1])test('cleanup exact ten-day boundary '+offset+' ms',()=>{
   const t=createRuntime({now,since:new Date(now-D-offset).toISOString()});
   const s=t.cleanup();assert.equal(s.removed,offset<0?0:1);assert.equal(s.failures.length,0);
-  assert.equal(active(t).length,offset<0?1:0);assert.equal(t.records.length,offset<0?1:0);
+  assert.equal(active(t).length,0);assert.equal(t.records.length,offset<0?1:0);
 });
 for(const quantity of [null,undefined,'',-1,NaN,Infinity,5])test('unknown/positive source never archived: '+String(quantity),()=>{
   const t=createRuntime();t.setQuantity(quantity);assert.equal(t.cleanup().removed,0);
   assert.equal(archive(t).rows.length,0);assert.equal(t.records.length,1);assert.equal(active(t).length,1);
 });
 for(const since of [null,'','invalid'])test('missing/invalid timestamp never deleted: '+String(since),()=>{
-  const t=createRuntime({since});assert.equal(t.cleanup().removed,0);assert.equal(archive(t).rows.length,0);
+  const t=createRuntime({since});assert.equal(t.cleanup().removed,0);assert.equal(archive(t).rows.length,since==='invalid'?0:1);
 });
-test('archive verified before Airtable, catalog cleared last, history/K2/schema unchanged',()=>{
+test('archive verified before Catalog clear, remote deleted last, history/K2/schema unchanged',()=>{
   const t=createRuntime();const history=JSON.stringify(t.inventory.data),backup=JSON.stringify(t.sheets['Product Catalog Backup 2026-09-26'].data),formula=t.catalog.formula;
   const request=t.ctx.iwaRequest_;
   t.ctx.iwaRequest_=(...args)=>{
-    if(args[1]==='delete'){assert.equal(state(t),'ARCHIVED');assert.equal(active(t).length,1);}
+    if(args[1]==='delete'){assert.equal(state(t),'ARCHIVED');assert.equal(active(t).length,0);}
     return request(...args);
   };
-  t.catalog.beforeWrite=()=>{assert.equal(t.records.length,0);assert.equal(state(t),'AIRTABLE REMOVED');};
+  t.catalog.beforeWrite=op=>{if(op.method==='clearContent'){assert.equal(t.records.length,1);assert.equal(state(t),'RETIRING');}};
   assert.equal(t.cleanup().removed,1);assert.equal(state(t),'COMPLETE');assert.equal(archive(t).rows.length,1);
   assert.equal(t.catalog.formula,formula);assert.equal(t.catalog.getLastColumn(),29);
   assert.equal(JSON.stringify(t.inventory.data),history);assert.equal(JSON.stringify(t.sheets['Product Catalog Backup 2026-09-26'].data),backup);
@@ -46,23 +46,23 @@ test('archive write failure retains both active records and retries',()=>{
   assert.equal(t.cleanup().failures.length,1);assert.equal(t.records.length,1);assert.equal(active(t).length,1);
   a.beforeWrite=()=>{};assert.equal(t.cleanup().removed,1);
 });
-test('Airtable delete failure retains catalog and one retriable archive',()=>{
+test('Airtable delete failure retains sold-out record and one retriable archive, not active Catalog',()=>{
   const t=createRuntime(),request=t.ctx.iwaRequest_;
   t.ctx.iwaRequest_=(...a)=>{if(a[1]==='delete')throw Error('network failure');return request(...a);};
-  assert.equal(t.cleanup().failures.length,1);assert.equal(active(t).length,1);assert.equal(t.records.length,1);
+  assert.equal(t.cleanup().failures.length,1);assert.equal(active(t).length,0);assert.equal(t.records.length,1);
   assert.equal(state(t),'ARCHIVED');t.ctx.iwaRequest_=request;assert.equal(t.cleanup().removed,1);assert.equal(archive(t).rows.length,1);
 });
 test('successful remote deletion with failed acknowledgement resumes without recreation',()=>{
   const t=createRuntime(),request=t.ctx.iwaRequest_;let once=true;
   t.ctx.iwaRequest_=(...a)=>{const result=request(...a);if(a[1]==='delete'&&once){once=false;throw Error('connection lost after delete');}return result;};
-  assert.equal(t.cleanup().failures.length,1);assert.equal(t.records.length,0);assert.equal(active(t).length,1);
+  assert.equal(t.cleanup().failures.length,1);assert.equal(t.records.length,0);assert.equal(active(t).length,0);
   t.sync();assert.equal(t.records.length,0,'intervening sync must not resurrect deleted key');
   assert.equal(t.cleanup().removed,1);assert.equal(state(t),'COMPLETE');assert.equal(archive(t).rows.length,1);
 });
 test('catalog clear failure and partial clear safely resume',()=>{
   const t=createRuntime();let once=true;
   t.catalog.beforeWrite=op=>{if(op.c===12&&once){once=false;throw Error('second clear failed');}};
-  assert.equal(t.cleanup().failures.length,1);assert.equal(t.records.length,0);assert.equal(state(t),'AIRTABLE REMOVED');
+  assert.equal(t.cleanup().failures.length,1);assert.equal(t.records.length,1);assert.equal(state(t),'RETIRING');
   assert.equal(t.cleanup().removed,1);assert.equal(state(t),'COMPLETE');
 });
 test('crash after catalog clearing resumes journal-only completion',()=>{
@@ -75,7 +75,7 @@ test('crash after catalog clearing resumes journal-only completion',()=>{
 test('corrupted archive blocks retry deletion',()=>{
   const t=createRuntime(),request=t.ctx.iwaRequest_;t.ctx.iwaRequest_=()=>{throw Error('stop');};t.cleanup();
   changeArchive(t,'DISPLAY NAME','tampered');t.ctx.iwaRequest_=request;
-  assert.throws(()=>t.cleanup(),/Snapshot Hash/);assert.equal(active(t).length,1);assert.equal(t.records.length,1);
+  assert.throws(()=>t.cleanup(),/Snapshot Hash/);assert.equal(active(t).length,0);assert.equal(t.records.length,1);
 });
 test('duplicate cleanup and maintenance are idempotent and do not resurrect history',()=>{
   const t=createRuntime();t.cleanup();const before=JSON.stringify(archive(t).rows);
@@ -84,7 +84,7 @@ test('duplicate cleanup and maintenance are idempotent and do not resurrect hist
 });
 test('restock before cleanup preserves key/record and clears timer',()=>{
   const t=createRuntime({since:new Date(now-D+1).toISOString()});const id=t.records[0].id,key=t.records[0].fields['Product Key'];
-  assert.equal(t.cleanup().removed,0);t.setQuantity(4);t.sync();
+  t.setQuantity(4);assert.equal(t.cleanup().removed,0);t.sync();
   assert.equal(t.records[0].id,id);assert.equal(t.records[0].fields['Product Key'],key);
   assert.equal(t.records[0].fields['Sold Out Since'],null);assert.equal(t.records[0].fields.Status,'In Stock');
   assert.equal(t.ctx.runProductCatalogMaintenance().added,0);assert.equal(active(t).length,1);
@@ -93,14 +93,15 @@ test('unknown inventory clears timer and never starts or advances lifecycle',()=
   const t=createRuntime();t.setQuantity('');t.sync();assert.equal(t.records[0].fields['Sold Out Since'],null);
   assert.equal(t.records[0].fields.Status,'Contact for Availability');assert.equal(t.cleanup().removed,0);
 });
-test('cancelled delete attempt can restock then start a genuinely new zero interval',()=>{
-  const t=createRuntime(),request=t.ctx.iwaRequest_;t.ctx.iwaRequest_=()=>{throw Error('stop');};t.cleanup();
-  t.ctx.iwaRequest_=request;t.setQuantity(2);t.sync();t.cleanup();assert.equal(state(t),'CANCELLED');
+test('correction before Catalog clearing cancels transition; later zero can re-arm same journal',()=>{
+  const t=createRuntime(),write=t.ctx.writeCatalogArchive_;let once=true;
+  t.ctx.writeCatalogArchive_=(...args)=>{const a=write(...args);if(once){once=false;t.setQuantity(2);}return a;};
+  t.cleanup();assert.equal(active(t).length,1);assert.equal(state(t),'CANCELLED');t.sync();
   t.setQuantity(0);t.sync();const since=t.records[0].fields['Sold Out Since'];assert.equal(t.cleanup().removed,0);
   t.setClock(Date.parse(since)+D);assert.equal(t.cleanup().removed,1);assert.equal(archive(t).rows.length,1);
 });
 test('repurchase gets new permanent key/current ID/PENDING, never resurrects archived key',()=>{
-  const t=createRuntime();t.cleanup();const before=JSON.stringify(archive(t).rows);t.setQuantity(3);
+  const t=createRuntime();t.cleanup();const before=JSON.stringify(archive(t).rows);t.acquire(3);
   assert.equal(t.ctx.runProductCatalogMaintenance().added,1);const c=active(t)[0];
   assert.match(c[catalogHeaders.indexOf('PRODUCT KEY')],/^ACQ-/);
   assert.equal(c[catalogHeaders.indexOf('PRODUCT ID')],'HD-1001234567');assert.equal(c[catalogHeaders.indexOf('ENRICHMENT STATUS')],'PENDING');
