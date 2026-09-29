@@ -42,6 +42,7 @@ test('timezone or non-clock event drift is FAIL, unavailable minute/cadence is i
 test('missing review email is FAIL and never sends to an alternate address',()=>{const t=setup();delete t.properties.SOCIAL_REVIEW_EMAIL;assert.equal(health(t).status,'FAIL');t.ctx.runInvictaProductionHealthCheckAndAlert();assert.equal(t.emails.length,0);});
 test('cleanup false violates enabled production contract',()=>{const t=setup();t.properties.CATALOG_LIFECYCLE_CLEANUP_ENABLED='false';assert.ok(issues(health(t)).includes('BOOLEAN_CONTRACT'));});
 test('duplicate Catalog Product Key is FAIL',()=>{const t=setup();t.catalog.data.push(t.catalog.data[1].slice());assert.ok(issues(health(t)).includes('DUPLICATE PRODUCT KEY'));});
+test('date and numeric Catalog keys are reported, never converted or repaired',()=>{for(const key of [new Date(now),46291.8602015625]){const t=setup(),c=t.catalog.data[0].indexOf('PRODUCT KEY');t.catalog.data[1][c]=key;const r=health(t);assert.ok(issues(r).includes('NON_TEXT_PRODUCT_KEY'));assert.equal(t.catalog.data[1][c],key);assert.equal(t.catalog.writes.length,0);}});
 test('duplicate Export or Airtable key is FAIL',()=>{const t=setup();t.sheets['Website Export'].data.push(t.sheets['Website Export'].data[1].slice());assert.equal(health(t).status,'FAIL');const u=setup();u.records.push(plain(u.records[0]));assert.equal(health(u).status,'FAIL');});
 test('invalid archive hash is FAIL without repair',()=>{const t=setup();t.setQuantity(0);t.cleanup();const a=t.ctx.readCatalogArchive_(t.ss);a.sheet.data[1][a.map['SNAPSHOT HASH']]='bad';assert.equal(health(t).status,'FAIL');});
 test('exact K2 is required without writing a replacement',()=>{const t=setup();t.catalog.formula='=1';assert.ok(issues(health(t)).includes('K2_CHANGED'));assert.equal(t.catalog.formula,'=1');});
@@ -59,6 +60,20 @@ test('evergreen initialization does not refresh normal product generation age',(
   const r=health(t);assert.ok(issues(r).includes('STALE_PRODUCT_DRAFT_GENERATION'));assert.equal(r.sections.socialPreparation.latestProductGeneratedAt,new Date(now-10*86400000).toISOString());assert.equal(r.sections.socialQueue.evergreenRows,1);
 });
 test('sold-out Ready product is FAIL',()=>{const t=setup();social(t,{status:'Ready'});t.setQuantity(0);assert.ok(issues(health(t)).includes('INELIGIBLE_READY_PRODUCT'));});
+test('invalid Ready approval does not truncate queue counts or latest product/receipt timestamps',()=>{
+  const t=setup();social(t,{status:'Ready',generated:now-10*86400000});
+  const row=social(t,{status:'Draft',generated:now-3600000});row[0]='SECOND-PRODUCT';
+  const historical=social(t,{status:'Queued',receipts:true});historical[0]='HISTORICAL';historical[15]=new Date(now-7200000).toISOString();
+  const r=health(t);assert.ok(issues(r).includes('READY_VALIDATION_FAILED'));assert.ok(!issues(r).includes('READ_OR_VALIDATION_FAILED'));
+  assert.equal(r.sections.socialQueue.productRows,3);assert.equal(r.sections.socialQueue.counts.Ready,1);assert.equal(r.sections.socialQueue.counts.Draft,1);assert.equal(r.sections.socialQueue.counts.Queued,1);
+  assert.equal(r.sections.socialPreparation.latestProductGeneratedAt,new Date(now-3600000).toISOString());assert.equal(r.sections.socialPublishing.latestReceiptedHandoffAt,new Date(now-7200000).toISOString());
+});
+test('invalid evergreen Ready approval also preserves following product observations',()=>{
+  const t=setup(),headers=plain(vm.runInContext('EVERGREEN_HEADERS_',t.ctx)),seed=plain(t.ctx.evergreenSeedRows_()[0]);
+  t.sheets['Evergreen Social Content']=new Sheet('Evergreen Social Content',headers,[seed]);const item=t.ctx.evergreenReadLibrary_()[0],plan=t.ctx.evergreenPlan_(item,1);
+  const row=new Array(19).fill('');row[0]=plan.productKey;row[5]='Image';row[7]=seed[1];row[9]=item.caption;row[10]=item.caption;row[17]=plan.sourceHash;row[12]='Ready';t.sheets['Social Queue'].data.push(row);social(t);
+  const r=health(t);assert.ok(issues(r).includes('READY_VALIDATION_FAILED'));assert.equal(r.sections.socialQueue.evergreenRows,1);assert.equal(r.sections.socialQueue.productRows,1);assert.equal(r.sections.socialPreparation.latestProductGeneratedAt,new Date(now-86400000).toISOString());
+});
 test('already retired key with an actionable Draft is FAIL even without active Catalog stock',()=>{const t=setup();const r=social(t);t.setQuantity(0);t.cleanup();r[12]='Draft';assert.ok(issues(health(t)).includes('ACTIONABLE_SOLD_OUT_PRODUCT'));});
 test('retention archive is pending; at expiry report eligibility but never delete',()=>{const t=setup();t.setQuantity(0);t.records[0].fields['Sold Out Since']=new Date(now).toISOString();t.cleanup();let r=health(t);assert.equal(r.sections.lifecycle.pendingRetention,1);assert.equal(r.sections.lifecycle.eligibleDay10Cleanup,0);t.setClock(now+864000000);t.events.length=0;r=health(t);assert.equal(r.sections.lifecycle.eligibleDay10Cleanup,1);assert.equal(t.events.length,0);assert.equal(t.records.length,1);});
 test('unknown archived source cannot become cleanup eligible',()=>{const t=setup();t.setQuantity(0);t.cleanup();t.setQuantity('');t.setClock(now+864000000);assert.equal(health(t).sections.lifecycle.eligibleDay10Cleanup,0);});

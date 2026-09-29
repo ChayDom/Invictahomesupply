@@ -64,7 +64,9 @@ function runInvictaProductionHealthCheck() {
     if (sheet.getRange(2,11).getFormula() !== INVICTA_HEALTH_K2_) issue('catalog','FAIL','K2_CHANGED');
     catalog = readSheetTable_(sheet,'PRODUCT KEY');
     catalogIdentityFindings_(catalog.rows,catalog.map).forEach(function(f) { issue('catalog','FAIL',f.type,(f.key || '') + ' rows ' + f.rows.join(',')); });
-    catalog.rows.forEach(function(row) {
+    catalog.rows.forEach(function(row,i) {
+      const rawKey = row[catalog.map['PRODUCT KEY']];
+      if (rawKey !== '' && rawKey != null && typeof rawKey !== 'string') issue('catalog','FAIL','NON_TEXT_PRODUCT_KEY','Product Catalog row ' + (i+2));
       const key = normalizeKey_(row[catalog.map['PRODUCT KEY']]); if (!key) return;
       active.set(key,row);
       if (!evidence) throw new Error('Source read failed');
@@ -152,8 +154,17 @@ function runInvictaProductionHealthCheck() {
       if (status === 'Queued' && (row[13] || row[14]) && (!posted || !Number.isFinite(posted))) issue('socialQueue','WARNING','RECEIPT_TIMESTAMP_MISSING',key);
       const evergreen = evergreenIdentity_(key);
       if (key.startsWith('EVERGREEN|') && !evergreen) issue('socialQueue','FAIL','INVALID_EVERGREEN_IDENTITY');
+      // Collect totals/timestamps before per-row validation; a bad approval must
+      // not truncate subsequent observations or hide recent draft generation.
+      if (evergreen) s.evergreenRows++;
+      else {
+        s.productRows++;
+        const generated = row[16] ? new Date(row[16]).getTime() : 0;
+        latestGenerated = Math.max(latestGenerated,Number.isFinite(generated) ? generated : 0);
+        if (generated > now) issue('socialQueue','WARNING','FUTURE_PRODUCT_GENERATION_TIMESTAMP',key);
+      }
+      try {
       if (evergreen) {
-        s.evergreenRows++;
         const item = library.find(function(item) { return item.id === evergreen.id; });
         if (!item || item.type !== row[7]) issue('socialQueue','FAIL','INVALID_EVERGREEN_SOURCE',key);
         if (status === 'Ready') {
@@ -163,10 +174,6 @@ function runInvictaProductionHealthCheck() {
         }
         return;
       }
-      s.productRows++;
-      const generated = row[16] ? new Date(row[16]).getTime() : 0;
-      latestGenerated = Math.max(latestGenerated,Number.isFinite(generated) ? generated : 0);
-      if (generated > now) issue('socialQueue','WARNING','FUTURE_PRODUCT_GENERATION_TIMESTAMP',key);
       const source = sources.get(key), stock = stocks.get(normalizeKey_(key)), record = remote.get(normalizeKey_(key));
       let eligible = !!source && source.eligible && !!stock && stock.state === 'IN STOCK' && stock.quantity > 0 &&
         !!record && socialAirtableEligible_(record.fields) && socialTruthy_(active.get(normalizeKey_(key))[catalog.map['POST TO WEBSITE']]);
@@ -185,6 +192,9 @@ function runInvictaProductionHealthCheck() {
         }
       }
       if (eligible && !socialQueueHistory_(queue,i+2,row) && (status === 'Needs Copy' || status === 'Draft' && !String(row[9]).trim() && !String(row[10]).trim())) eligibleCaptions++;
+      } catch (_) {
+        issue('socialQueue','FAIL',status === 'Ready' ? 'READY_VALIDATION_FAILED' : 'ROW_VALIDATION_FAILED',key + ' row ' + (i+2));
+      }
     });
   });
   check('socialPreparation',function(s) {
