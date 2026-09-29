@@ -177,6 +177,32 @@ test('all existing rows reconciled, absent/sold-out rows retired and old Ready l
 test('same manifest preserves explicit Ready on subsequent preparation',()=>{
   const t=fixture();t.ctx.reconcileSocialQueue_(t.queue,new Map([[t.key,t.source]]));assert.equal(t.row[12],'Ready');
 });
+test('scoped legacy Ready Photos migration preserves captions/identity, clears URL and never publishes or writes Airtable',()=>{
+  const t=fixture(),before=t.row.slice();t.notes.delete('2:5');t.row[4]='https://images.thdstatic.com/legacy.jpg';
+  t.ctx.iwaRequest_=()=>{throw Error('No Airtable write/API call in reconciliation');};
+  const summary=t.ctx.reconcileSocialQueue_(t.queue,new Map([[t.key,t.source]]),[t.key]);
+  assert.equal(summary.added,0);assert.equal(summary.refreshed,1);assert.equal(t.queue.data.length,2);assert.equal(t.row[12],'Draft');assert.equal(t.row[4],'');
+  assert.deepEqual(JSON.parse(t.notes.get('2:5')),plain(t.plan));assert.equal(t.row[17],t.plan.sourceHash);
+  for(const i of [0,8,9,10,11,13,14,15,16,18])assert.equal(t.row[i],before[i]);assert.equal(t.inputs.length,0);
+});
+test('scoped reconciliation leaves all other values/notes, historical receipts and evergreen untouched',()=>{
+  const t=fixture();t.notes.delete('2:5');const historical=t.row.slice();historical[0]='HISTORY';historical[12]='Queued';historical[13]='old-receipt';historical[15]='2026-09-01';
+  const other=t.row.slice();other[0]='OTHER-READY';const editorial=t.row.slice();editorial[0]='EVERGREEN|EDU-01|1';
+  t.queue.data.push(historical,other,editorial);t.notes.set('3:13','historical status evidence');t.notes.set('3:14','historical journal');t.notes.set('4:5','other approval');
+  const before=plain(t.queue.data.slice(2)),notes=[...t.notes.entries()].filter(([k])=>!k.startsWith('2:'));
+  t.ctx.reconcileSocialQueue_(t.queue,new Map([[t.key,t.source],['NEW-SOURCE',{...t.source,productKey:'NEW-SOURCE'}]]),[t.key]);
+  assert.deepEqual(plain(t.queue.data.slice(2)),before);assert.deepEqual([...t.notes.entries()].filter(([k])=>!k.startsWith('2:')),notes);
+  assert.ok(t.queue.writes.every(w=>w.r===2));assert.equal(t.inputs.length,0);
+});
+test('scoped repair rejects history, missing/ineligible source, malformed scope and duplicates before any write',()=>{
+  const changes=[t=>{t.row[13]='receipt';},t=>{t.notes.set('2:14','journal');},t=>{t.source.eligible=false;},t=>{t.source.photos=[];},t=>{t.source.mediaError='bad';},t=>{t.queue.data.push(t.row.slice());}];
+  for(const change of changes){const t=fixture();change(t);const before=plain(t.queue.data),notes=[...t.notes];assert.throws(()=>t.ctx.reconcileSocialQueue_(t.queue,new Map([[t.key,t.source]]),[t.key]));assert.deepEqual(plain(t.queue.data),before);assert.deepEqual([...t.notes],notes);assert.equal(t.queue.writes.length,0);}
+  for(const scope of [[],null,{},['MISSING'],['SYNTH-SOCIAL','SYNTH-SOCIAL'],['EVERGREEN|EDU-01|1']]){const t=fixture();assert.throws(()=>t.ctx.reconcileSocialQueue_(t.queue,new Map([[t.key,t.source]]),scope));assert.equal(t.queue.writes.length,0);}
+});
+test('existing approved source-hash change still requires Needs Copy without discarding captions',()=>{
+  const t=fixture(),before=t.row.slice();t.row[17]='old-approved-fact-hash';t.ctx.reconcileSocialQueue_(t.queue,new Map([[t.key,t.source]]),[t.key]);
+  assert.equal(t.row[12],'Needs Copy');assert.equal(t.row[9],before[9]);assert.equal(t.row[10],before[10]);assert.equal(t.inputs.length,0);
+});
 test('receipt/error/legacy evidence is preserved during reconciliation, never reset into new operation',()=>{
   const t=fixture();t.row[13]='old-fb';t.row[18]='Buffer send failed: historical error';t.row[12]='Ready';
   t.notes.set('2:14','old journal evidence');const before=t.row.slice();

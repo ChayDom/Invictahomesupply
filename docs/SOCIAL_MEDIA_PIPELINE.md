@@ -46,6 +46,18 @@ derived asset IDs, render fingerprint and fact hash). No new queue columns.
 Prepare/review the media and both captions before deliberately setting Ready.
 Old Ready rows are not considered approval of the new Photos-only media.
 
+For an explicitly scoped operational repair, call
+`syncSocialQueueFromCatalog([productKey, ...])` with 1–10 unique existing product
+keys. This uses the normal reconciliation and authoritative source readers, but
+preflights the entire scope and refuses historical/journaled, missing, ineligible,
+or unusable-Photos rows before writing. It does not append rows or touch any
+out-of-scope row/value/note, including historical and evergreen rows. A legacy
+Ready row without a manifest becomes Draft with captions preserved. Current
+approved fact changes retain the existing Needs Copy rule. Normal no-argument
+daily reconciliation is unchanged. Run the existing preparation worker for each
+scoped key/strategy to create or reuse durable assets, then manually review before
+setting Ready; neither reconciliation nor the worker publishes.
+
 Mixed strategy:
 
 - One usable Photo: single image.
