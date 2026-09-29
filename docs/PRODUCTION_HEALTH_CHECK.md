@@ -7,6 +7,10 @@ identity, archive hash and social pure/read-only helpers remain authoritative.
 One projected Airtable pagination pass is shared by all sections; one Buffer
 GraphQL **query** tests account readability; one public inventory GET is used.
 Exceptions are converted to bounded error codes, never logged verbatim.
+Ready-row validation failures are isolated per row, so complete queue totals and
+product-only generation/receipt timestamps remain available. Non-text Catalog
+Product Keys (including date-valued cells) fail explicitly; the checker never
+converts, replaces or repairs a permanent identity.
 
 `runInvictaProductionHealthCheckAndAlert()` is the only alerting path. Install
 exactly one daily 7–8 AM America/Chicago trigger after reviewing the manual result.
