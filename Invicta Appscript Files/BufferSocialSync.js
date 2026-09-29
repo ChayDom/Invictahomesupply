@@ -106,13 +106,13 @@ const SOCIAL_REQUIRED_HEADERS_ =
  *
  * Rows are never automatically deleted.
  */
-function syncSocialQueueFromCatalog() {
+function syncSocialQueueFromCatalog(productKeys) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) throw new Error('Another Apps Script maintenance/social run is active.');
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet(), queue = getSocialQueueSheetOrThrow_(ss);
     assertSocialQueueHeaders_(queue);
-    return reconcileSocialQueue_(queue,readSocialSourceMap_(getInventorySheetOrThrow_(ss,SOCIAL_CONFIG_.EXPORT_SHEET)));
+    return reconcileSocialQueue_(queue,readSocialSourceMap_(getInventorySheetOrThrow_(ss,SOCIAL_CONFIG_.EXPORT_SHEET)),productKeys);
   } finally { lock.releaseLock(); }
 }
 

@@ -166,7 +166,16 @@ function retireCatalogSocialKey_(ss, productKey) {
 }
 
 /** Reconcile every existing row, including absent/zero sources, before appending. */
-function reconcileSocialQueue_(queue, sources) {
+function reconcileSocialQueue_(queue, sources, productKeys) {
+  // Optional controlled repair scope uses this same reconciliation engine.
+  // It may only refresh existing, non-historical, eligible Photos product rows.
+  let scope = null;
+  if (productKeys !== undefined) {
+    if (!Array.isArray(productKeys) || !productKeys.length || productKeys.length > 10 ||
+        productKeys.some(function(key) { return typeof key !== 'string' || !/^[A-Za-z0-9|_-]{1,150}$/.test(key) || key.startsWith('EVERGREEN|'); }) ||
+        new Set(productKeys).size !== productKeys.length) throw new Error('Explicit unique product repair scope required.');
+    scope = new Set(productKeys);
+  }
   const rows = queue.getLastRow() > 1 ? queue.getRange(2,1,queue.getLastRow()-1,19).getValues() : [];
   const seen = new Set(), summary = {added:0,refreshed:0,retired:0,held:0,needsImage:0};
   rows.forEach(function(row) {
@@ -174,8 +183,15 @@ function reconcileSocialQueue_(queue, sources) {
     if (key && seen.has(key)) throw new Error('Duplicate Social Queue Product Key; no reconciliation permitted.');
     if (key) seen.add(key);
   });
+  if (scope) scope.forEach(function(key) {
+    const index = rows.findIndex(function(row) { return String(row[0] || '').trim() === key; }), source = sources.get(key);
+    if (index < 0 || socialQueueHistory_(queue,index+2,rows[index]) || !source || !source.eligible || !source.photos.length || source.mediaError) {
+      throw new Error('Scoped repair requires existing non-historical eligible Photos rows; no changes applied.');
+    }
+  });
   rows.forEach(function(row,index) {
     const rowNumber = index+2, key = String(row[0] || '').trim(), source = sources.get(key);
+    if (scope && !scope.has(key)) return;
     if (!key) return;
     if (evergreenIdentity_(key)) return; // Explicit content-source path, never an inventory product.
     const history = socialQueueHistory_(queue,rowNumber,row);
@@ -209,6 +225,7 @@ function reconcileSocialQueue_(queue, sources) {
     if (reason) queue.getRange(rowNumber,13).setNote(reason);
   });
   sources.forEach(function(source,key) {
+    if (scope) return; // Controlled repairs never append any row.
     if (seen.has(key) || !source.eligible) return;
     const rowNumber = queue.getLastRow()+1;
     if (rowNumber > queue.getMaxRows()) queue.insertRowsAfter(queue.getMaxRows(),rowNumber-queue.getMaxRows());
