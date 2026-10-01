@@ -19,6 +19,10 @@ on:
         description: Prepare one explicit Evergreen v2 candidate (no approval/status change)
         default: false
         type: boolean
+      evergreen_v21:
+        description: Prepare one explicit Evergreen v2.1 candidate (no approval/status change)
+        default: false
+        type: boolean
       reel:
         description: Prepare optional silent Reel (4-6 Photos)
         default: false
@@ -72,6 +76,8 @@ jobs:
           CONTENT_ID: ${{ inputs.content_id }}
           CONTENT_HASH: ${{ inputs.content_hash }}
           EVERGREEN_V2: ${{ inputs.evergreen_v2 }}
+          EVERGREEN_V21: ${{ inputs.evergreen_v21 }}
+          EVERGREEN_V21_VISUAL_ACCEPTANCE: ${{ inputs.evergreen_v21 }}
           PREPARE_REEL: ${{ inputs.reel }}
           AIRTABLE_SOCIAL_READ_TOKEN: ${{ secrets.AIRTABLE_SOCIAL_READ_TOKEN }}
           CLOUDINARY_CLOUD_NAME: ${{ vars.CLOUDINARY_CLOUD_NAME }}
@@ -79,7 +85,9 @@ jobs:
           CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          if [ "$EVERGREEN_V2" = "true" ] && [ -n "$CONTENT_ID" ] && [ -z "$PRODUCT_KEY" ] && [ -n "$CONTENT_HASH" ] && [ "$PREPARE_REEL" != "true" ]; then
+          if [ "$EVERGREEN_V21" = "true" ] && [ -n "$CONTENT_ID" ] && [ -z "$PRODUCT_KEY" ] && [ -n "$CONTENT_HASH" ] && [ "$PREPARE_REEL" != "true" ]; then
+            node scripts/evergreen-v21-media-worker.mjs "$CONTENT_ID" "$CONTENT_HASH"
+          elif [ "$EVERGREEN_V2" = "true" ] && [ -n "$CONTENT_ID" ] && [ -z "$PRODUCT_KEY" ] && [ -n "$CONTENT_HASH" ] && [ "$PREPARE_REEL" != "true" ]; then
             node scripts/evergreen-v2-media-worker.mjs "$CONTENT_ID" "$CONTENT_HASH"
           elif [ -n "$CONTENT_ID" ] && [ -z "$PRODUCT_KEY" ] && [ -n "$CONTENT_HASH" ] && [ "$PREPARE_REEL" != "true" ]; then
             node scripts/evergreen-media-worker.mjs "$CONTENT_ID" "$CONTENT_HASH"

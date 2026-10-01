@@ -2038,7 +2038,7 @@ function prepareSocialApprovalCandidates_(runStartedAt) {
       if (evergreenIdentity_(row[0])) {
         const identity = evergreenIdentity_(row[0]);
         const item = evergreenReadLibrary_().find(function(value) { return value.id === identity.id; });
-        const expectedPlan = plan.kind === 'INVICTA_EVERGREEN_MEDIA_V2' ? evergreenV2Plan_(item,identity.occurrence) : evergreenPlan_(item,identity.occurrence);
+        const expectedPlan = plan.kind === 'INVICTA_EVERGREEN_MEDIA_V2' ? evergreenV2Plan_(item,identity.occurrence) : plan.kind === 'INVICTA_EVERGREEN_MEDIA_V21' ? evergreenV21Plan_(item,identity.occurrence) : evergreenPlan_(item,identity.occurrence);
         if (!item || item.status !== 'Enabled' || JSON.stringify(plan) !== JSON.stringify(expectedPlan) ||
             row[9] !== item.caption || row[10] !== item.caption) return;
       }
@@ -2064,7 +2064,7 @@ function prepareSocialApprovalCandidates_(runStartedAt) {
       if (plan.sourceHash === String(row[17]) && (!evergreenIdentity_(row[0]) || (function() {
         const identity = evergreenIdentity_(row[0]);
         const item = evergreenReadLibrary_().find(function(value) { return value.id === identity.id; });
-        const expectedPlan = plan.kind === 'INVICTA_EVERGREEN_MEDIA_V2' ? evergreenV2Plan_(item,identity.occurrence) : evergreenPlan_(item,identity.occurrence);
+      const expectedPlan = plan.kind === 'INVICTA_EVERGREEN_MEDIA_V2' ? evergreenV2Plan_(item,identity.occurrence) : plan.kind === 'INVICTA_EVERGREEN_MEDIA_V21' ? evergreenV21Plan_(item,identity.occurrence) : evergreenPlan_(item,identity.occurrence);
         return item && item.status === 'Enabled' && JSON.stringify(plan) === JSON.stringify(expectedPlan) &&
           row[9] === item.caption && row[10] === item.caption;
       })())) {

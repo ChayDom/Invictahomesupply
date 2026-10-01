@@ -3,6 +3,7 @@ const EVERGREEN_SHEET_ = 'Evergreen Social Content';
 const EVERGREEN_HEADERS_ = ['CONTENT ID','CONTENT TYPE','TITLE','CAPTION','SLIDE 1','SLIDE 2','SLIDE 3','SLIDE 4','STATUS','COOLDOWN DAYS','SOURCES'];
 const EVERGREEN_TEMPLATE_ = 'evergreen-v1';
 const EVERGREEN_V2_TEMPLATE_ = 'evergreen-v2';
+const EVERGREEN_V21_TEMPLATE_ = 'evergreen-v2-1';
 const EVERGREEN_ROTATION_ = ['Product','Educational','Product','Comparison','Product','Educational','Product','Brand/Tip'];
 
 function evergreenIdentity_(key) {
@@ -137,6 +138,22 @@ function evergreenV2Plan_(item,occurrence) {
     publicIds:['invicta-social/' + EVERGREEN_V2_TEMPLATE_ + '/' + renderHash]};
 }
 
+/** v2.1 keeps the AI background separate from the deterministic branded layout.
+ * V1/v2 identities and assets remain immutable. */
+function evergreenV21Plan_(item,occurrence) {
+  if (!['Educational','Comparison','Tip','Brand'].includes(item.type)) throw new Error('Evergreen v2.1 supports editorial content only.');
+  const logo = 'assets/brand/derived/invicta-logo-blue-white-wordmark-transparent.png';
+  const family = item.type === 'Tip' ? 'tip-curved' : item.type === 'Educational' ? 'educational-editorial' : item.type === 'Comparison' ? 'comparison-split' : 'brand-lifestyle';
+  const renderHash = socialOperationKey_([EVERGREEN_V21_TEMPLATE_,item.id,item.type,item.title,item.caption,item.slides,item.sources,
+    {width:1080,height:1350,brand:'Invicta Home Supply',cta:'invictahomesupply.com | McKinney, TX',palette:'forest-gold',compositionFamily:family,
+      logo:logo,promptVersion:'topic-aware-background-v1',overlayVersion:'deterministic-editorial-v1'}]);
+  const key = 'EVERGREEN|' + item.id + '|' + occurrence;
+  return {kind:'INVICTA_EVERGREEN_MEDIA_V21',sourceType:item.type,contentId:item.id,occurrence:occurrence,
+    productKey:key,photoIds:[],type:'Image',resourceType:'image',templateVersion:EVERGREEN_V21_TEMPLATE_,logoAsset:logo,
+    compositionFamily:family,renderHash:renderHash,sourceHash:socialOperationKey_([key,renderHash]),hashes:[renderHash],
+    publicIds:['invicta-social/' + EVERGREEN_V21_TEMPLATE_ + '/' + renderHash]};
+}
+
 /** Shared by the sender and review email; receipt notes count even after a partial send. */
 function evergreenNextSlot_(queue,rows) {
   if (!SpreadsheetApp.getActiveSpreadsheet().getSheetByName(EVERGREEN_SHEET_)) return {accepted:0,slot:'Product'};
@@ -162,7 +179,8 @@ function assertEvergreenCurrent_(queue,rowNumber,row,plan) {
     const error = new Error(message);error.socialEligibilityFailure = true;throw error;
   };
   if (!item || item.status !== 'Enabled') fail('Skip','Evergreen source missing/disabled; no publication.');
-  const expectedPlan = plan.kind === 'INVICTA_EVERGREEN_MEDIA_V2' ? evergreenV2Plan_(item,identity.occurrence) : evergreenPlan_(item,identity.occurrence);
+  const expectedPlan = plan.kind === 'INVICTA_EVERGREEN_MEDIA_V2' ? evergreenV2Plan_(item,identity.occurrence) :
+    plan.kind === 'INVICTA_EVERGREEN_MEDIA_V21' ? evergreenV21Plan_(item,identity.occurrence) : evergreenPlan_(item,identity.occurrence);
   if (row[7] !== item.type || row[5] !== 'Image' || row[9] !== item.caption || row[10] !== item.caption ||
       row[11] !== '' || row[17] !== plan.sourceHash ||
       JSON.stringify(expectedPlan) !== JSON.stringify(plan) ||
@@ -299,6 +317,35 @@ function finalizeEvergreenV2Media(contentId,renderHash) {
   return {productKey:plan.productKey,status:'Awaiting Approval'};
 }
 
+/** Controlled v2.1 rollout. Explicit IDs only; prepares Draft rows and never Ready. */
+function prepareEvergreenV21SocialQueue(contentIds) {
+  if(!Array.isArray(contentIds)||!contentIds.length||contentIds.length>3||new Set(contentIds).size!==contentIds.length) throw new Error('Explicit Evergreen v2.1 content IDs required; maximum three candidates.');
+  const lock=LockService.getScriptLock();if(!lock.tryLock(30000))throw new Error('Another social/maintenance operation is active.');
+  try {
+    const ss=SpreadsheetApp.getActiveSpreadsheet(),queue=getSocialQueueSheetOrThrow_(ss);assertSocialQueueHeaders_(queue),library=evergreenReadLibrary_(),rows=evergreenQueueRows_(queue),history=evergreenHistory_(queue,rows),manifests=[];
+    contentIds.forEach(function(id){
+      const item=library.find(function(value){return value.id===id;});
+      if(!item||item.status!=='Enabled'||!['Educational','Comparison','Tip','Brand'].includes(item.type))throw new Error('Invalid enabled v2.1 editorial content ID.');
+      const pending=rows.map(function(row,index){return {row:row,index:index};}).filter(function(entry){const identity=evergreenIdentity_(entry.row[0]);if(!identity||identity.id!==id||socialQueueHistory_(queue,entry.index+2,entry.row)||entry.row[12]==='Skip')return false;try{return socialReadMediaPlan_(queue,entry.index+2).kind==='INVICTA_EVERGREEN_MEDIA_V21';}catch(_){return false;}});
+      if(pending.length>1)throw new Error('Duplicate pending Evergreen v2.1 source.');
+      const existing=pending[0],occurrence=existing?evergreenIdentity_(existing.row[0]).occurrence:(history.get(id)||{maxOccurrence:0}).maxOccurrence+1,plan=evergreenV21Plan_(item,occurrence);
+      evergreenPublishSnapshotV21_(item,plan);const rowNumber=existing?existing.index+2:queue.getLastRow()+1;
+      if(rowNumber>queue.getMaxRows())queue.insertRowsAfter(queue.getMaxRows(),rowNumber-queue.getMaxRows());
+      evergreenQueueTypeValidation_(queue,rowNumber,item.type);
+      queue.getRange(rowNumber,1,1,19).setValues([[plan.productKey,item.title,'Evergreen','','','Image','https://invictahomesupply.com',item.type,item.title,item.caption,item.caption,'','Draft','','','',new Date(),plan.sourceHash,'']]);
+      queue.getRange(rowNumber,5).setNote(JSON.stringify(plan));manifests.push({contentId:id,occurrence:occurrence,renderHash:plan.renderHash,productKey:plan.productKey});
+    });
+    SpreadsheetApp.flush();return {prepared:manifests.length,manifests:manifests,awaitingApproval:0};
+  } finally {lock.releaseLock();}
+}
+
+/** Promote exactly one verified v2.1 Draft to Awaiting Approval; never Ready. */
+function finalizeEvergreenV21Media(contentId,renderHash) {
+  const queue=getSocialQueueSheetOrThrow_(SpreadsheetApp.getActiveSpreadsheet()),rows=evergreenQueueRows_(queue),matches=rows.map(function(row,index){return {row:row,index:index};}).filter(function(value){const identity=evergreenIdentity_(value.row[0]);if(!identity||identity.id!==contentId||value.row[12]!=='Draft')return false;try{const plan=socialReadMediaPlan_(queue,value.index+2);return plan&&plan.kind==='INVICTA_EVERGREEN_MEDIA_V21'&&plan.renderHash===renderHash&&plan.publicIds.length===1&&/^invicta-social\/evergreen-v2-1\/[A-Za-z0-9_-]+$/.test(plan.publicIds[0]);}catch(_){return false;}});
+  if(matches.length!==1)throw new Error(matches.length?'Duplicate exact Evergreen v2.1 occurrences; manual review required.':'Exact Evergreen v2.1 occurrence not prepared.');
+  const entry=matches[0],plan=socialReadMediaPlan_(queue,entry.index+2);socialResolveCloudinary_(plan);queue.getRange(entry.index+2,13).setValue('Awaiting Approval');queue.getRange(entry.index+2,19).clearContent();SpreadsheetApp.flush();return {productKey:plan.productKey,status:'Awaiting Approval'};
+}
+
 /** Only provably owned earlier occurrence receipts may be excluded on intentional reuse.
  * Unrecognized remote matches still block; product V1/V2 reconciliation is unchanged.
  */
@@ -376,6 +423,28 @@ function evergreenPublishSnapshotV2_(item,plan) {
   } catch (_) {
     throw new Error('Evergreen v2 immutable snapshot preparation failed; inspect configuration/source without exposing API responses.');
   }
+}
+
+function evergreenPublishSnapshotV21_(item,plan) {
+  try {
+    const props=PropertiesService.getScriptProperties(),cloud=props.getProperty('CLOUDINARY_CLOUD_NAME'),key=props.getProperty('CLOUDINARY_API_KEY'),secret=props.getProperty('CLOUDINARY_API_SECRET');
+    if(!cloud||!/^[a-z0-9_-]+$/i.test(cloud)||!key||!secret) throw new Error('Secure Cloudinary configuration required.');
+    const id='invicta-social/evergreen-sources-v2-1/'+plan.renderHash+'.json';
+    const lookup=function(){
+      const r=UrlFetchApp.fetch('https://api.cloudinary.com/v1_1/'+cloud+'/resources/raw/upload/'+encodeURIComponent(id)+'?context=true',{headers:{Authorization:'Basic '+Utilities.base64Encode(key+':'+secret)},muteHttpExceptions:true});
+      if(r.getResponseCode()===404)return null;if(r.getResponseCode()!==200)throw new Error('Evergreen v2.1 snapshot lookup failed.');
+      const asset=JSON.parse(r.getContentText());
+      if(asset.public_id!==id||asset.resource_type!=='raw'||asset.type!=='upload'||!asset.context||!asset.context.custom||asset.context.custom.source_hash!==plan.renderHash||!Number.isInteger(asset.version)||asset.version<1||!(asset.bytes>0&&asset.bytes<20000))throw new Error('Snapshot identity conflict.');
+      return asset;
+    };
+    if(lookup())return;
+    const params={public_id:id,overwrite:'false',context:'source_hash='+plan.renderHash,timestamp:String(Math.floor(Date.now()/1000))};
+    const signing=Object.keys(params).sort().map(function(name){return name+'='+params[name];}).join('&')+secret;
+    const signature=Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,signing,Utilities.Charset.UTF_8).map(function(b){return ('0'+((b+256)%256).toString(16)).slice(-2);}).join('');
+    const body=JSON.stringify({kind:'INVICTA_EVERGREEN_SOURCE_V21',templateVersion:EVERGREEN_V21_TEMPLATE_,renderHash:plan.renderHash,content:{id:item.id,type:item.type,title:item.title,caption:item.caption,slides:item.slides,sources:item.sources}});
+    const response=UrlFetchApp.fetch('https://api.cloudinary.com/v1_1/'+cloud+'/raw/upload',{method:'post',payload:Object.assign({},params,{api_key:key,signature:signature,file:Utilities.newBlob(body,'application/json','content.json')}),muteHttpExceptions:true});
+    if(response.getResponseCode()!==200||!lookup())throw new Error('Snapshot upload not verified; no queue approval.');
+  } catch (_) { throw new Error('Evergreen v2.1 immutable snapshot preparation failed; inspect configuration/source without exposing API responses.'); }
 }
 
 /** Manual, additive seed; never overwrites an existing library. Not an activation function. */
