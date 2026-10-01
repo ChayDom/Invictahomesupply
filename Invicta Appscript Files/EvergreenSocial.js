@@ -240,11 +240,16 @@ function prepareEvergreenV2SocialQueue(contentIds) {
     contentIds.forEach(function(id) {
       const item = library.find(function(value) { return value.id === id; });
       if (!item || item.status !== 'Enabled' || !['Educational','Comparison','Tip','Brand'].includes(item.type)) throw new Error('Invalid enabled v2 editorial content ID.');
-      const pending = rows.map(function(row,index) { return {row:row,index:index}; }).filter(function(entry) {
-        const identity = evergreenIdentity_(entry.row[0]); return identity && identity.id === id && !socialQueueHistory_(queue,entry.index+2,entry.row) && entry.row[12] !== 'Skip';
+      const pendingV2 = rows.map(function(row,index) { return {row:row,index:index}; }).filter(function(entry) {
+        const identity = evergreenIdentity_(entry.row[0]);
+        if (!identity || identity.id !== id || socialQueueHistory_(queue,entry.index+2,entry.row) || entry.row[12] === 'Skip') return false;
+        let plan = null;
+        try { plan = socialReadMediaPlan_(queue,entry.index+2); } catch (_) { return false; }
+        return plan && plan.kind === 'INVICTA_EVERGREEN_MEDIA_V2';
       });
-      if (pending.length > 1) throw new Error('Duplicate pending evergreen v2 source.');
-      const existing = pending[0], occurrence = existing ? evergreenIdentity_(existing.row[0]).occurrence : (history.get(id) || {maxOccurrence:0}).maxOccurrence+1;
+      if (pendingV2.length > 1) throw new Error('Duplicate pending evergreen v2 source.');
+      // Never rewrite a v1 occurrence. A v2 rollout gets its own occurrence key.
+      const existing = pendingV2[0], occurrence = existing ? evergreenIdentity_(existing.row[0]).occurrence : (history.get(id) || {maxOccurrence:0}).maxOccurrence+1;
       const plan = evergreenV2Plan_(item,occurrence); evergreenPublishSnapshotV2_(item,plan);
       const rowNumber = existing ? existing.index+2 : queue.getLastRow()+1;
       if (rowNumber > queue.getMaxRows()) queue.insertRowsAfter(queue.getMaxRows(),rowNumber-queue.getMaxRows());
@@ -259,14 +264,28 @@ function prepareEvergreenV2SocialQueue(contentIds) {
 
 /** Called only after the external v2 worker verifies the immutable Cloudinary asset. */
 function finalizeEvergreenV2Media(contentId,renderHash) {
-  const queue = getSocialQueueSheetOrThrow_(SpreadsheetApp.getActiveSpreadsheet()), rows = evergreenQueueRows_(queue);
-  const entry = rows.map(function(row,index) { return {row:row,index:index}; }).find(function(value) {
-    const identity = evergreenIdentity_(value.row[0]);
-    return identity && identity.id === contentId && value.row[12] === 'Draft';
-  });
-  if (!entry) throw new Error('Draft Evergreen v2 row not found.');
+  let queue = getSocialQueueSheetOrThrow_(SpreadsheetApp.getActiveSpreadsheet()), rows = evergreenQueueRows_(queue);
+  const findExact = function() {
+    return rows.map(function(row,index) { return {row:row,index:index}; }).filter(function(value) {
+      const identity = evergreenIdentity_(value.row[0]);
+      if (!identity || identity.id !== contentId || value.row[12] !== 'Draft') return false;
+      let plan = null;
+      try { plan = socialReadMediaPlan_(queue,value.index+2); } catch (_) { return false; }
+      return plan && plan.kind === 'INVICTA_EVERGREEN_MEDIA_V2' && plan.renderHash === renderHash &&
+        Array.isArray(plan.publicIds) && plan.publicIds.length === 1 &&
+        /^invicta-social\/evergreen-v2\/[A-Za-z0-9_-]+$/.test(String(plan.publicIds[0]));
+    });
+  };
+  let matches = findExact();
+  if (!matches.length) {
+    // Only v1/historical occurrences exist: allocate a new v2 occurrence; never mutate them.
+    prepareEvergreenV2SocialQueue([contentId]);
+    queue = getSocialQueueSheetOrThrow_(SpreadsheetApp.getActiveSpreadsheet()); rows = evergreenQueueRows_(queue); matches = findExact();
+  }
+  if (matches.length > 1) throw new Error('Duplicate exact Evergreen v2 occurrences; manual review required.');
+  const entry = matches[0];
+  if (!entry) throw new Error('Exact Evergreen v2 occurrence could not be prepared.');
   const plan = socialReadMediaPlan_(queue,entry.index+2);
-  if (plan.kind !== 'INVICTA_EVERGREEN_MEDIA_V2' || plan.renderHash !== renderHash) throw new Error('Evergreen v2 manifest/hash mismatch.');
   socialResolveCloudinary_(plan); queue.getRange(entry.index+2,13).setValue('Awaiting Approval'); queue.getRange(entry.index+2,19).clearContent(); SpreadsheetApp.flush();
   return {productKey:plan.productKey,status:'Awaiting Approval'};
 }

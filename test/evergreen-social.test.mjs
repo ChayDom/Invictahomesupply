@@ -350,4 +350,25 @@ await test('verified v2 media reconciles the matching Draft to Awaiting Approval
   assert.equal(result.productKey,'EVERGREEN|TIP-01|1');assert.equal(result.status,'Awaiting Approval');
   assert.equal(row[12],'Awaiting Approval');
 });
+await test('v1 row before exact v2 row selects the exact v2 occurrence',()=>{
+  const t=fixture({history:false});t.ctx.evergreenPublishSnapshotV2_=()=>{};
+  t.ctx.prepareEvergreenV2SocialQueue(['TIP-01']);
+  const v2=t.row('TIP-01'),plan=JSON.parse(t.notes.get((t.queue.data.indexOf(v2)+1)+':5'));
+  const v1=v2.slice();v1[0]='EVERGREEN|TIP-01|1';v1[12]='Draft';t.queue.data.splice(1,0,v1);t.notes.set('2:5',JSON.stringify(t.ctx.evergreenPlan_(t.ctx.evergreenContent_(plain(t.ctx.evergreenSeedRows_())[26]),1)));t.notes.set((t.queue.data.indexOf(v2)+1)+':5',JSON.stringify(plan));
+  const result=t.ctx.finalizeEvergreenV2Media('TIP-01',plan.renderHash);assert.equal(result.productKey,v2[0]);assert.equal(v1[12],'Draft');assert.equal(v2[12],'Awaiting Approval');
+});
+await test('content ID match with a different hash or v1 manifest is rejected and gets a new v2 occurrence',()=>{
+  const t=fixture({history:false});t.ctx.evergreenPublishSnapshotV2_=()=>{};
+  const item=t.ctx.evergreenContent_(plain(t.ctx.evergreenSeedRows_())[26]),v1=t.ctx.evergreenPlan_(item,1),row=new Array(19).fill('');Object.assign(row,{0:v1.productKey,1:item.title,5:'Carousel',7:item.type,9:item.caption,10:item.caption,12:'Draft',17:v1.sourceHash});t.queue.data.push(row);t.notes.set((t.queue.data.length)+':5',JSON.stringify(v1));
+  const expected=t.ctx.evergreenV2Plan_(item,2),result=t.ctx.finalizeEvergreenV2Media('TIP-01',expected.renderHash);assert.equal(result.productKey,'EVERGREEN|TIP-01|2');assert.equal(row[12],'Draft');
+});
+await test('multiple exact v2 occurrences fail safely',()=>{
+  const t=fixture({history:false});t.ctx.evergreenPublishSnapshotV2_=()=>{};t.ctx.prepareEvergreenV2SocialQueue(['TIP-01']);
+  const row=t.row('TIP-01'),duplicate=row.slice();duplicate[0]='EVERGREEN|TIP-01|2';t.queue.data.push(duplicate);const plan=JSON.parse(t.notes.get((t.queue.data.indexOf(row)+1)+':5'));t.notes.set((t.queue.data.length)+':5',JSON.stringify(plan));
+  assert.throws(()=>t.ctx.finalizeEvergreenV2Media('TIP-01',plan.renderHash),/Duplicate exact Evergreen v2/);assert.equal(row[12],'Draft');assert.equal(duplicate[12],'Draft');
+});
+await test('v2 reconciliation never auto-sets Ready and leaves v1 row unchanged',()=>{
+  const t=fixture({history:false});t.ctx.evergreenPublishSnapshotV2_=()=>{};const old=new Array(19).fill('');Object.assign(old,{0:'EVERGREEN|TIP-01|1',7:'Tip',12:'Queued',13:'old-fb',15:new Date()});t.queue.data.push(old);
+  const plan=t.ctx.evergreenV2Plan_(t.ctx.evergreenContent_(plain(t.ctx.evergreenSeedRows_())[26]),2),result=t.ctx.finalizeEvergreenV2Media('TIP-01',plan.renderHash);const fresh=t.queue.data.find(r=>r[0]===result.productKey);assert.equal(result.status,'Awaiting Approval');assert.equal(fresh[12],'Awaiting Approval');assert.equal(old[12],'Queued');assert.equal(old[13],'old-fb');
+});
 console.log(`${pass} passed, ${fail} failed`);if(fail)process.exitCode=1;
