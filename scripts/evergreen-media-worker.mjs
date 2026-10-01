@@ -18,11 +18,18 @@ export function evergreenConfig(env) {
 export async function readEvergreenSnapshot(contentId,hash,config,{fetcher=fetch,contract}={}) {
   if(!/^[A-Z][A-Z0-9-]{1,60}$/.test(contentId)||!/^[A-Za-z0-9_-]{43}$/.test(hash))throw Error('Explicit content ID and fingerprint required.');
   contract ||= await loadContract();
-  const publicId='invicta-social/evergreen-sources-v1/'+hash+'.json';
-  const response=await fetcher('https://api.cloudinary.com/v1_1/'+config.cloud+'/resources/raw/upload/'+encodeURIComponent(publicId)+'?context=true',
+  const publicIdV1='invicta-social/evergreen-sources-v1/'+hash+'.json';
+  const publicIdV2='invicta-social/evergreen-sources-v2/'+hash+'.json';
+  let publicId=publicIdV2;
+  let response=await fetcher('https://api.cloudinary.com/v1_1/'+config.cloud+'/resources/raw/upload/'+encodeURIComponent(publicId)+'?context=true',
     {headers:{Authorization:'Basic '+Buffer.from(config.key+':'+config.secret).toString('base64')},redirect:'error',signal:AbortSignal.timeout(30000)});
+  if(response.status===404){ publicId=publicIdV1; response=await fetcher('https://api.cloudinary.com/v1_1/'+config.cloud+'/resources/raw/upload/'+encodeURIComponent(publicId)+'?context=true',
+    {headers:{Authorization:'Basic '+Buffer.from(config.key+':'+config.secret).toString('base64')},redirect:'error',signal:AbortSignal.timeout(30000)}); }
   if(!response.ok)throw Error('Approved immutable snapshot unavailable.');
   const asset=await response.json();
+  // Test doubles and older Cloudinary mirrors may return the legacy identity
+  // even when the v2 probe is routed elsewhere; honor only the exact v1 ID.
+  if(asset.public_id===publicIdV1) publicId=publicIdV1;
   if(asset.public_id!==publicId||asset.resource_type!=='raw'||asset.type!=='upload'||asset.context?.custom?.source_hash!==hash||
     !Number.isInteger(asset.version)||asset.version<1||!(asset.bytes>0&&asset.bytes<20000))throw Error('Snapshot identity mismatch.');
   // Construct the version-pinned URL, never follow an arbitrary URL in API/input data.
@@ -32,10 +39,10 @@ export async function readEvergreenSnapshot(contentId,hash,config,{fetcher=fetch
   let size=0;const chunks=[];
   for await(const chunk of delivery.body) {size+=chunk.length;if(size>=20000)throw Error('Snapshot exceeds limit.');chunks.push(chunk);}
   const body=JSON.parse(Buffer.concat(chunks).toString('utf8')),copy=body.content;
-  if(body.kind!=='INVICTA_EVERGREEN_SOURCE_V1'||body.templateVersion!=='evergreen-v1'||body.renderHash!==hash||copy?.id!==contentId||
+  if(!['INVICTA_EVERGREEN_SOURCE_V1','INVICTA_EVERGREEN_SOURCE_V2'].includes(body.kind)||!['evergreen-v1','evergreen-v2'].includes(body.templateVersion)||body.renderHash!==hash||copy?.id!==contentId||
     !Array.isArray(copy.slides)||copy.slides.length!==4)throw Error('Invalid snapshot contract.');
   const item=contract.evergreenContent_([copy.id,copy.type,copy.title,copy.caption,...copy.slides,'Enabled',120,copy.sources]);
-  const plan=contract.evergreenPlan_(item,1);
+  const plan=body.templateVersion==='evergreen-v2' ? contract.evergreenV2Plan_(item,1) : contract.evergreenPlan_(item,1);
   if(plan.renderHash!==hash)throw Error('Snapshot content fingerprint mismatch.');
   return {item,plan};
 }

@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createRuntime,Sheet,plain} from './fixtures/catalog-lifecycle-runtime.mjs';
 import {loadContract} from '../scripts/social-media-worker.mjs';
 import {prepareEvergreen,readEvergreenSnapshot,graphicText,renderEvergreen} from '../scripts/evergreen-media-worker.mjs';
+import {prepareEvergreenV2,v2Prompt} from '../scripts/evergreen-v2-media-worker.mjs';
 
 const headers=['PRODUCT KEY','PRODUCT NAME','CATEGORY','PRICE','MEDIA URL','MEDIA TYPE','PRODUCT URL','CONTENT TYPE',
   'HOOK','FACEBOOK CAPTION','INSTAGRAM CAPTION','HASHTAGS','SOCIAL STATUS','FB BUFFER POST ID','IG BUFFER POST ID',
@@ -291,5 +293,30 @@ await test('manual workflow uses read-only permissions, no schedule, no Buffer/N
   const workflow=await fs.readFile(new URL('../.github/workflows/social-media-prepare.yml',import.meta.url),'utf8');
   assert.match(workflow,/contents: read/);assert.match(workflow,/persist-credentials: false/);assert.doesNotMatch(workflow,/schedule:|BUFFER_API_KEY|NETLIFY_AUTH_TOKEN/);
   assert.match(workflow,/node scripts\/evergreen-media-worker.mjs "\$CONTENT_ID" "\$CONTENT_HASH"/);
+});
+
+await test('v2 uses a separate immutable namespace and the approved repository logo derivative',()=>{
+  const t=fixture(),item=t.ctx.evergreenContent_(plain(t.ctx.evergreenSeedRows_())[0]),v1=t.ctx.evergreenPlan_(item,1),v2=t.ctx.evergreenV2Plan_(item,1);
+  assert.equal(v2.templateVersion,'evergreen-v2');assert.equal(v2.type,'Image');assert.equal(v2.publicIds.length,1);
+  assert.match(v2.publicIds[0],/invicta-social\/evergreen-v2\//);assert.notDeepEqual(v2.publicIds,v1.publicIds);
+  assert.equal(v2.logoAsset,'assets/brand/derived/invicta-logo-blue-white-wordmark-transparent.png');
+});
+await test('v2 prompt reserves the logo and forbids AI branding',()=>{
+  const t=fixture(),item=t.ctx.evergreenContent_(plain(t.ctx.evergreenSeedRows_())[0]),prompt=v2Prompt(item);
+  assert.match(prompt,/logo-safe region/);assert.match(prompt,/Do not generate the Invicta logo/);assert.match(prompt,/Composition family/);
+});
+await test('v2 worker uploads one verified image and never touches Buffer',async()=>{
+  const t=fixture(),item=t.ctx.evergreenContent_(plain(t.ctx.evergreenSeedRows_())[0]),plan=t.ctx.evergreenV2Plan_(item,1),config={cloud:'test-cloud',key:'test-key',secret:'test-secret',openai:'test-openai'};
+  let uploaded=false,posts=0;const snapshot={kind:'INVICTA_EVERGREEN_SOURCE_V2',templateVersion:'evergreen-v2',renderHash:plan.renderHash,content:{id:item.id,type:item.type,title:item.title,caption:item.caption,slides:item.slides,sources:item.sources}};
+  const asset=()=>({public_id:plan.publicIds[0],resource_type:'image',type:'upload',format:'jpg',version:1,width:1080,height:1350,bytes:20000,context:{custom:{source_hash:plan.hashes[0]}}});
+  const fetcher=async(url,options={})=>{
+    if(url.includes('/resources/raw/')) return Response.json({public_id:'invicta-social/evergreen-sources-v2/'+plan.renderHash+'.json',resource_type:'raw',type:'upload',version:1,bytes:1000,context:{custom:{source_hash:plan.renderHash}}});
+    if(url.includes('res.cloudinary.com')&&!url.includes('/resources/')) return Response.json(snapshot);
+    if(url.includes('/resources/image/')) return uploaded?Response.json(asset()):new Response('',{status:404});
+    if(options.method==='POST'){uploaded=true;posts++;return Response.json({});}
+    throw Error('unexpected request');
+  };
+  const result=await prepareEvergreenV2(item.id,plan.renderHash,{config,contract:t.ctx,fetcher,renderer:async()=>Buffer.from('background'),ffmpeg:args=>{fsSync.writeFileSync(args.at(-1),'final');}});
+  assert.equal(result.prepared,1);assert.equal(posts,1);assert.equal(result.asset.width,1080);assert.equal(result.asset.height,1350);
 });
 console.log(`${pass} passed, ${fail} failed`);if(fail)process.exitCode=1;

@@ -74,7 +74,7 @@ function socialReadMediaPlan_(queue, rowNumber) {
   try { plan = JSON.parse(queue.getRange(rowNumber,5).getNote()); } catch (_) {
     throw new Error('Photos approval manifest missing; prepare media and approve again.');
   }
-  if (plan && plan.kind === 'INVICTA_EVERGREEN_MEDIA_V1' && evergreenIdentity_(plan.productKey)) return plan;
+  if (plan && ['INVICTA_EVERGREEN_MEDIA_V1','INVICTA_EVERGREEN_MEDIA_V2'].includes(plan.kind) && evergreenIdentity_(plan.productKey)) return plan;
   if (!plan || plan.kind !== 'INVICTA_SOCIAL_MEDIA_V1' || !Array.isArray(plan.photoIds) || !plan.photoIds.length) {
     throw new Error('Invalid Photos approval manifest.');
   }
@@ -215,7 +215,7 @@ function reconcileSocialQueue_(queue, sources, productKeys) {
       queue.getRange(rowNumber,6,1,3).setValues([[plan.type === 'Reel' ? 'Video' : 'Image',
         SOCIAL_CONFIG_.WEBSITE_BASE_URL + encodeURIComponent(key),plan.type === 'Reel' ? 'Reel' : 'Post']]);
       queue.getRange(rowNumber,18).setValue(hash);
-      if (changed || !['Draft','Ready','Needs Copy'].includes(status)) {
+      if (changed || !['Draft','Awaiting Approval','Ready','Needs Copy'].includes(status)) {
         status = previous && String(row[17]) !== hash ? 'Needs Copy' : 'Draft';
         reason = 'New Photos/strategy/facts require media preparation and intentional Ready approval.';
       }
@@ -281,7 +281,7 @@ function socialResolveCloudinary_(plan) {
   const cloud = props.getProperty('CLOUDINARY_CLOUD_NAME'), key = props.getProperty('CLOUDINARY_API_KEY'), secret = props.getProperty('CLOUDINARY_API_SECRET');
   if (!cloud || !/^[a-z0-9_-]+$/i.test(cloud) || !key || !secret) throw new Error('Cloudinary secure configuration required; publishing blocked.');
   const urls = plan.publicIds.map(function(id,index) {
-    if (!/^invicta-social\/(photos-v1|reel-v1|evergreen-v1)\/[A-Za-z0-9_-]+$/.test(id)) throw new Error('Invalid derived media identity.');
+    if (!/^invicta-social\/(photos-v1|reel-v1|evergreen-v1|evergreen-v2)\/[A-Za-z0-9_-]+$/.test(id)) throw new Error('Invalid derived media identity.');
     let response;
     try {
       response = UrlFetchApp.fetch('https://api.cloudinary.com/v1_1/' + cloud + '/resources/' + plan.resourceType + '/upload/' + encodeURIComponent(id) + '?context=true&media_metadata=true',
@@ -316,7 +316,7 @@ function socialMediaPayload_(row, channelId, text, media, options) {
     sourceHash:String(row[17] || ''), cloud:media.cloud, mediaType:media.plan.type,
     publicIds:media.plan.publicIds, photoIds:media.plan.photoIds, renderHash:media.plan.renderHash,
     saveToDraft:!!(options && options.saveToDraft === true), mode:options && options.saveToDraft === true ? 'addToQueue' : 'shareNow'};
-  if (media.plan.kind === 'INVICTA_EVERGREEN_MEDIA_V1') {
+  if (['INVICTA_EVERGREEN_MEDIA_V1','INVICTA_EVERGREEN_MEDIA_V2'].includes(media.plan.kind)) {
     payload.sourceType = media.plan.sourceType;payload.contentId = media.plan.contentId;payload.occurrence = media.plan.occurrence;
     payload.priorReceiptIds = evergreenPriorReceipts_(media.plan);
   }

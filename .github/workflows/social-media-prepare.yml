@@ -15,6 +15,10 @@ on:
         description: Immutable renderHash returned by prepareEvergreenSocialQueue
         required: false
         type: string
+      evergreen_v2:
+        description: Prepare one explicit Evergreen v2 candidate (no approval/status change)
+        default: false
+        type: boolean
       reel:
         description: Prepare optional silent Reel (4-6 Photos)
         default: false
@@ -32,7 +36,7 @@ jobs:
     # Standard public-repository runner; never a paid larger runner.
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    environment: social-media
+    environment: Social-Media
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -42,18 +46,42 @@ jobs:
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y ffmpeg fonts-dejavu-core
           ffmpeg -version | head -n 1
+      - name: Verify required media credentials are available
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CLOUDINARY_CLOUD_NAME: ${{ vars.CLOUDINARY_CLOUD_NAME }}
+          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+        run: |
+          set -euo pipefail
+          check_available() {
+            if [ -n "$2" ]; then
+              echo "$1 available: yes"
+            else
+              echo "$1 available: no"
+              return 1
+            fi
+          }
+          check_available OPENAI_API_KEY "$OPENAI_API_KEY"
+          check_available CLOUDINARY_CLOUD_NAME "$CLOUDINARY_CLOUD_NAME"
+          check_available CLOUDINARY_API_KEY "$CLOUDINARY_API_KEY"
+          check_available CLOUDINARY_API_SECRET "$CLOUDINARY_API_SECRET"
       - name: Prepare immutable media only
         env:
           PRODUCT_KEY: ${{ inputs.product_key }}
           CONTENT_ID: ${{ inputs.content_id }}
           CONTENT_HASH: ${{ inputs.content_hash }}
+          EVERGREEN_V2: ${{ inputs.evergreen_v2 }}
           PREPARE_REEL: ${{ inputs.reel }}
           AIRTABLE_SOCIAL_READ_TOKEN: ${{ secrets.AIRTABLE_SOCIAL_READ_TOKEN }}
           CLOUDINARY_CLOUD_NAME: ${{ vars.CLOUDINARY_CLOUD_NAME }}
           CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
           CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          if [ -n "$CONTENT_ID" ] && [ -z "$PRODUCT_KEY" ] && [ -n "$CONTENT_HASH" ] && [ "$PREPARE_REEL" != "true" ]; then
+          if [ "$EVERGREEN_V2" = "true" ] && [ -n "$CONTENT_ID" ] && [ -z "$PRODUCT_KEY" ] && [ -n "$CONTENT_HASH" ] && [ "$PREPARE_REEL" != "true" ]; then
+            node scripts/evergreen-v2-media-worker.mjs "$CONTENT_ID" "$CONTENT_HASH"
+          elif [ -n "$CONTENT_ID" ] && [ -z "$PRODUCT_KEY" ] && [ -n "$CONTENT_HASH" ] && [ "$PREPARE_REEL" != "true" ]; then
             node scripts/evergreen-media-worker.mjs "$CONTENT_ID" "$CONTENT_HASH"
           elif [ -z "$CONTENT_ID" ] && [ -z "$CONTENT_HASH" ] && [ -n "$PRODUCT_KEY" ] && [ "$PREPARE_REEL" = "true" ]; then
             node scripts/social-media-worker.mjs "$PRODUCT_KEY" --reel
