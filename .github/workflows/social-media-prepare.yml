@@ -12,7 +12,7 @@ on:
         required: false
         type: string
       content_hash:
-        description: Immutable renderHash returned by prepareEvergreenSocialQueue
+        description: Immutable renderHash returned by prepareEvergreenV2SocialQueue (v2) or prepareEvergreenSocialQueue (v1)
         required: false
         type: string
       evergreen_v2:
