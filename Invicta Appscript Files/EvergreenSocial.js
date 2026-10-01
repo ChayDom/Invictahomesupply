@@ -186,6 +186,7 @@ function evergreenQueueTypeValidation_(queue,rowNumber,type) {
   // first value is written; product-row validation remains untouched.
   if (!rule) {
     cell.setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(supported,true).build());
+    SpreadsheetApp.flush();
     return;
   }
   if (rule.getCriteriaType() !== SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST) throw new Error('Unexpected queue content-type validation; owner review required.');
@@ -195,6 +196,7 @@ function evergreenQueueTypeValidation_(queue,rowNumber,type) {
   if (options.includes(type)) return;
   // Only this editorial row: preserve strictness/UI and all product-row validation.
   cell.setDataValidation(rule.copy().requireValueInList(supported,criteria[1]).build());
+  SpreadsheetApp.flush();
 }
 
 function prepareEvergreenSocialQueue() {
