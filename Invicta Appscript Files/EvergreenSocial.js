@@ -193,8 +193,9 @@ function evergreenQueueTypeValidation_(queue,rowNumber,type) {
   // The workbook currently applies the legacy list as a column rule. Extend
   // that same validation consistently so the new editorial value is accepted
   // without leaving product rows with a conflicting inherited rule.
-  queue.getRange(2,8,Math.max(queue.getMaxRows()-1,rowNumber-1),1)
-    .setDataValidation(rule.copy().requireValueInList(supported,criteria[1]).build());
+  const validationRange = queue.getRange(2,8,Math.max(queue.getMaxRows()-1,rowNumber-1),1);
+  validationRange.setDataValidation(null);
+  validationRange.setDataValidation(rule.copy().requireValueInList(supported,criteria[1]).build());
   SpreadsheetApp.flush();
 }
 
