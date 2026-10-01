@@ -179,10 +179,17 @@ function assertEvergreenCurrent_(queue,rowNumber,row,plan) {
 /** Explicit owner invocation; no triggers, Gemini, Buffer or inventory changes. */
 function evergreenQueueTypeValidation_(queue,rowNumber,type) {
   const cell = queue.getRange(rowNumber,8), rule = cell.getDataValidation();
-  if (!rule) return;
+  const supported = ['Post','Reel','Educational','Comparison','Tip','Brand'];
+  // A newly appended physical row can have no cell-level rule even when the
+  // surrounding queue column still enforces the legacy Post/Reel list. Give
+  // this editorial cell the same narrow, explicit supported list before its
+  // first value is written; product-row validation remains untouched.
+  if (!rule) {
+    cell.setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(supported,true).build());
+    return;
+  }
   if (rule.getCriteriaType() !== SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST) throw new Error('Unexpected queue content-type validation; owner review required.');
   const criteria = rule.getCriteriaValues(), options = criteria[0];
-  const supported = ['Post','Reel','Educational','Comparison','Tip','Brand'];
   if (!Array.isArray(options) || !options.includes('Post') || !options.includes('Reel') ||
       options.some(function(value) { return !supported.includes(value); })) throw new Error('Unknown queue content-type options; owner review required.');
   if (options.includes(type)) return;
