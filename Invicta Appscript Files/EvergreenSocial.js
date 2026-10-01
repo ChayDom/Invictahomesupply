@@ -185,6 +185,7 @@ function evergreenQueueTypeValidation_(queue,rowNumber,type) {
   // this editorial cell the same narrow, explicit supported list before its
   // first value is written; product-row validation remains untouched.
   if (!rule) {
+    cell.clearDataValidations();
     cell.setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(supported,true).build());
     SpreadsheetApp.flush();
     return;
@@ -195,6 +196,7 @@ function evergreenQueueTypeValidation_(queue,rowNumber,type) {
       options.some(function(value) { return !supported.includes(value); })) throw new Error('Unknown queue content-type options; owner review required.');
   if (options.includes(type)) return;
   // Only this editorial row: preserve strictness/UI and all product-row validation.
+  cell.clearDataValidations();
   cell.setDataValidation(rule.copy().requireValueInList(supported,criteria[1]).build());
   SpreadsheetApp.flush();
 }
