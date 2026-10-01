@@ -323,14 +323,31 @@ function evergreenUploadSnapshot_(item,plan) {
 }
 
 function evergreenPublishSnapshotV2_(item,plan) {
-  const props = PropertiesService.getScriptProperties(), cloud=props.getProperty('CLOUDINARY_CLOUD_NAME'), key=props.getProperty('CLOUDINARY_API_KEY'), secret=props.getProperty('CLOUDINARY_API_SECRET');
-  if (!cloud || !key || !secret) throw new Error('Secure Cloudinary configuration required.');
-  const id='invicta-social/evergreen-sources-v2/'+plan.renderHash+'.json', params={public_id:id,overwrite:'false',context:'source_hash='+plan.renderHash,timestamp:String(Math.floor(Date.now()/1000))};
-  const signing=Object.keys(params).sort().map(function(name){return name+'='+params[name];}).join('&')+secret;
-  const signature=Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,signing,Utilities.Charset.UTF_8).map(function(b){return ('0'+((b+256)%256).toString(16)).slice(-2);}).join('');
-  const body=JSON.stringify({kind:'INVICTA_EVERGREEN_SOURCE_V2',templateVersion:EVERGREEN_V2_TEMPLATE_,renderHash:plan.renderHash,content:{id:item.id,type:item.type,title:item.title,caption:item.caption,slides:item.slides,sources:item.sources}});
-  const response=UrlFetchApp.fetch('https://api.cloudinary.com/v1_1/'+cloud+'/raw/upload',{method:'post',payload:Object.assign({},params,{api_key:key,signature:signature,file:Utilities.newBlob(body,'application/json','content.json')}),muteHttpExceptions:true});
-  if(response.getResponseCode()!==200) throw new Error('Evergreen v2 snapshot upload failed.');
+  try {
+    const props = PropertiesService.getScriptProperties(), cloud=props.getProperty('CLOUDINARY_CLOUD_NAME'), key=props.getProperty('CLOUDINARY_API_KEY'), secret=props.getProperty('CLOUDINARY_API_SECRET');
+    if (!cloud || !/^[a-z0-9_-]+$/i.test(cloud) || !key || !secret) throw new Error('Secure Cloudinary configuration required.');
+    const id='invicta-social/evergreen-sources-v2/'+plan.renderHash+'.json';
+    const lookup = function() {
+      const r=UrlFetchApp.fetch('https://api.cloudinary.com/v1_1/'+cloud+'/resources/raw/upload/'+encodeURIComponent(id)+'?context=true',
+        {headers:{Authorization:'Basic '+Utilities.base64Encode(key+':'+secret)},muteHttpExceptions:true});
+      if (r.getResponseCode() === 404) return null;
+      if (r.getResponseCode() !== 200) throw new Error('Evergreen v2 snapshot lookup failed.');
+      const asset=JSON.parse(r.getContentText());
+      if (asset.public_id !== id || asset.resource_type !== 'raw' || asset.type !== 'upload' ||
+          !asset.context || !asset.context.custom || asset.context.custom.source_hash !== plan.renderHash ||
+          !Number.isInteger(asset.version) || asset.version < 1 || !(asset.bytes > 0 && asset.bytes < 20000)) throw new Error('Snapshot identity conflict.');
+      return asset;
+    };
+    if (lookup()) return;
+    const params={public_id:id,overwrite:'false',context:'source_hash='+plan.renderHash,timestamp:String(Math.floor(Date.now()/1000))};
+    const signing=Object.keys(params).sort().map(function(name){return name+'='+params[name];}).join('&')+secret;
+    const signature=Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,signing,Utilities.Charset.UTF_8).map(function(b){return ('0'+((b+256)%256).toString(16)).slice(-2);}).join('');
+    const body=JSON.stringify({kind:'INVICTA_EVERGREEN_SOURCE_V2',templateVersion:EVERGREEN_V2_TEMPLATE_,renderHash:plan.renderHash,content:{id:item.id,type:item.type,title:item.title,caption:item.caption,slides:item.slides,sources:item.sources}});
+    const response=UrlFetchApp.fetch('https://api.cloudinary.com/v1_1/'+cloud+'/raw/upload',{method:'post',payload:Object.assign({},params,{api_key:key,signature:signature,file:Utilities.newBlob(body,'application/json','content.json')}),muteHttpExceptions:true});
+    if(response.getResponseCode() !== 200 || !lookup()) throw new Error('Snapshot upload not verified; no queue approval.');
+  } catch (_) {
+    throw new Error('Evergreen v2 immutable snapshot preparation failed; inspect configuration/source without exposing API responses.');
+  }
 }
 
 /** Manual, additive seed; never overwrites an existing library. Not an activation function. */

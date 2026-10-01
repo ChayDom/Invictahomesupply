@@ -319,4 +319,35 @@ await test('v2 worker uploads one verified image and never touches Buffer',async
   const result=await prepareEvergreenV2(item.id,plan.renderHash,{config,contract:t.ctx,fetcher,renderer:async()=>Buffer.from('background'),ffmpeg:args=>{fsSync.writeFileSync(args.at(-1),'final');}});
   assert.equal(result.prepared,1);assert.equal(posts,1);assert.equal(result.asset.width,1080);assert.equal(result.asset.height,1350);
 });
+await test('v2 Apps Script preparation creates one immutable snapshot and reuses it',()=>{
+  const t=fixture();
+  Object.assign(t.properties,{CLOUDINARY_CLOUD_NAME:'test-cloud',CLOUDINARY_API_KEY:'test-key',CLOUDINARY_API_SECRET:'test-secret'});
+  t.ctx.Utilities.base64Encode=value=>Buffer.from(value).toString('base64');
+  t.ctx.Utilities.newBlob=()=>({});
+  let snapshotExists=false,uploads=0,lookups=0;
+  t.ctx.UrlFetchApp.fetch=(url,options={})=>{
+    if(url.includes('/resources/raw/')) {
+      lookups++;
+      return snapshotExists ? {getResponseCode:()=>200,getContentText:()=>JSON.stringify({
+        public_id:'invicta-social/evergreen-sources-v2/'+t.ctx.evergreenV2Plan_(t.ctx.evergreenContent_(plain(t.ctx.evergreenSeedRows_())[26]),1).renderHash+'.json',
+        resource_type:'raw',type:'upload',version:1,bytes:1000,context:{custom:{source_hash:t.ctx.evergreenV2Plan_(t.ctx.evergreenContent_(plain(t.ctx.evergreenSeedRows_())[26]),1).renderHash}}
+      })} : {getResponseCode:()=>404,getContentText:()=>''};
+    }
+    if(options.method==='post') { uploads++;snapshotExists=true;return {getResponseCode:()=>200,getContentText:()=>''}; }
+    throw Error('unexpected request');
+  };
+  const first=t.ctx.prepareEvergreenV2SocialQueue(['TIP-01']);
+  assert.equal(first.prepared,1);assert.equal(t.row('TIP-01')[12],'Draft');assert.equal(uploads,1);
+  const second=t.ctx.prepareEvergreenV2SocialQueue(['TIP-01']);
+  assert.equal(second.prepared,1);assert.equal(uploads,1);assert.ok(lookups>=3);
+});
+await test('verified v2 media reconciles the matching Draft to Awaiting Approval only',()=>{
+  const t=fixture();
+  t.ctx.evergreenPublishSnapshotV2_=()=>{};
+  t.ctx.prepareEvergreenV2SocialQueue(['TIP-01']);
+  const row=t.row('TIP-01'),plan=JSON.parse(t.notesFor?'' : t.notes.get((t.queue.data.indexOf(row)+1)+':5'));
+  const result=t.ctx.finalizeEvergreenV2Media('TIP-01',plan.renderHash);
+  assert.equal(result.productKey,'EVERGREEN|TIP-01|1');assert.equal(result.status,'Awaiting Approval');
+  assert.equal(row[12],'Awaiting Approval');
+});
 console.log(`${pass} passed, ${fail} failed`);if(fail)process.exitCode=1;
