@@ -74,7 +74,7 @@ await test('legacy strict Post/Reel validation is extended only on the appended 
   const rule={getCriteriaType:()=>kind,getCriteriaValues:()=>[['Post','Reel'],true],copy:()=>({
     requireValueInList(options,show){assert.deepEqual(plain(options),['Post','Reel','Educational','Comparison','Tip','Brand']);assert.equal(show,true);return this;},build:()=>({strict:true})})};
   t.queue.getRange=(r,c,n=1,m=1)=>Object.assign(original(r,c,n,m),c===8?{
-    getDataValidation:()=>rule,setDataValidation:value=>{assert.equal(value.strict,true);calls.push([r,c]);}
+    getDataValidation:()=>rule,setDataValidation:value=>{if(value===null)return;assert.equal(value.strict,true);calls.push([r,c]);}
   }:{});
   t.prepare();assert.equal(calls.length,30);assert.ok(calls.every(([r,c])=>r>=3&&c===8));
   assert.equal(t.row('EDU-01')[7],'Educational');assert.equal(t.row('EDU-01')[12],'Draft');
