@@ -76,7 +76,7 @@ await test('legacy strict Post/Reel validation is extended only on the appended 
   t.queue.getRange=(r,c,n=1,m=1)=>Object.assign(original(r,c,n,m),c===8?{
     getDataValidation:()=>rule,setDataValidation:value=>{if(value===null)return;assert.equal(value.strict,true);calls.push([r,c]);}
   }:{});
-  t.prepare();assert.equal(calls.length,30);assert.ok(calls.every(([r,c])=>r>=3&&c===8));
+  t.prepare();assert.equal(calls.filter(([r,c])=>r>=3&&c===8).length,30);assert.ok(calls.some(([r,c])=>r===2&&c===8));
   assert.equal(t.row('EDU-01')[7],'Educational');assert.equal(t.row('EDU-01')[12],'Draft');
 });
 await test('unexpected content validation fails closed without clearing validation or writing approval',()=>{

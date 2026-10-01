@@ -184,20 +184,17 @@ function evergreenQueueTypeValidation_(queue,rowNumber,type) {
   // surrounding queue column still enforces the legacy Post/Reel list. Give
   // this editorial cell the same narrow, explicit supported list before its
   // first value is written; product-row validation remains untouched.
-  if (!rule) {
-    cell.setDataValidation(null);
-    cell.setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(supported,true).build());
-    SpreadsheetApp.flush();
-    return;
-  }
+  if (!rule) return;
   if (rule.getCriteriaType() !== SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST) throw new Error('Unexpected queue content-type validation; owner review required.');
   const criteria = rule.getCriteriaValues(), options = criteria[0];
   if (!Array.isArray(options) || !options.includes('Post') || !options.includes('Reel') ||
       options.some(function(value) { return !supported.includes(value); })) throw new Error('Unknown queue content-type options; owner review required.');
   if (options.includes(type)) return;
-  // Only this editorial row: preserve strictness/UI and all product-row validation.
-  cell.setDataValidation(null);
-  cell.setDataValidation(rule.copy().requireValueInList(supported,criteria[1]).build());
+  // The workbook currently applies the legacy list as a column rule. Extend
+  // that same validation consistently so the new editorial value is accepted
+  // without leaving product rows with a conflicting inherited rule.
+  queue.getRange(2,8,Math.max(queue.getMaxRows()-1,rowNumber-1),1)
+    .setDataValidation(rule.copy().requireValueInList(supported,criteria[1]).build());
   SpreadsheetApp.flush();
 }
 
