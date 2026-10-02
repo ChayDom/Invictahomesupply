@@ -31,6 +31,10 @@ on:
         description: Generate one isolated freeform asset with a safe corner logo badge (no queue/status change)
         default: false
         type: boolean
+      evergreen_logo_safe_area_test:
+        description: Generate one isolated freeform asset with safe text margins and a flush top-right logo panel (no queue/status change)
+        default: false
+        type: boolean
       reel:
         description: Prepare optional silent Reel (4-6 Photos)
         default: false
@@ -88,6 +92,7 @@ jobs:
           EVERGREEN_V21_VISUAL_ACCEPTANCE: ${{ inputs.evergreen_v21 }}
           EVERGREEN_FREEFORM_TEST: ${{ inputs.evergreen_freeform_test }}
           EVERGREEN_LOGO_BADGE_TEST: ${{ inputs.evergreen_logo_badge_test }}
+          EVERGREEN_LOGO_SAFE_AREA_TEST: ${{ inputs.evergreen_logo_safe_area_test }}
           PREPARE_REEL: ${{ inputs.reel }}
           AIRTABLE_SOCIAL_READ_TOKEN: ${{ secrets.AIRTABLE_SOCIAL_READ_TOKEN }}
           CLOUDINARY_CLOUD_NAME: ${{ vars.CLOUDINARY_CLOUD_NAME }}
@@ -95,7 +100,9 @@ jobs:
           CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          if [ "$EVERGREEN_LOGO_BADGE_TEST" = "true" ] && [ -n "$CONTENT_ID" ] && [ -z "$PRODUCT_KEY" ] && [ -n "$CONTENT_HASH" ] && [ "$PREPARE_REEL" != "true" ]; then
+          if [ "$EVERGREEN_LOGO_SAFE_AREA_TEST" = "true" ] && [ -n "$CONTENT_ID" ] && [ -z "$PRODUCT_KEY" ] && [ -n "$CONTENT_HASH" ] && [ "$PREPARE_REEL" != "true" ]; then
+            node scripts/evergreen-logo-safe-area-test-worker.mjs "$CONTENT_ID" "$CONTENT_HASH"
+          elif [ "$EVERGREEN_LOGO_BADGE_TEST" = "true" ] && [ -n "$CONTENT_ID" ] && [ -z "$PRODUCT_KEY" ] && [ -n "$CONTENT_HASH" ] && [ "$PREPARE_REEL" != "true" ]; then
             node scripts/evergreen-logo-badge-test-worker.mjs "$CONTENT_ID" "$CONTENT_HASH"
           elif [ "$EVERGREEN_FREEFORM_TEST" = "true" ] && [ -n "$CONTENT_ID" ] && [ -z "$PRODUCT_KEY" ] && [ -n "$CONTENT_HASH" ] && [ "$PREPARE_REEL" != "true" ]; then
             node scripts/evergreen-freeform-test-worker.mjs "$CONTENT_ID" "$CONTENT_HASH"

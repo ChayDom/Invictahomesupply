@@ -34,7 +34,7 @@ export function freeformPrompt(item) {
     'Use modern home-improvement styling with deep forest green, warm gold/orange accents, clean white typography, realistic relevant imagery, concise on-image copy, strong hierarchy, generous margins, and a professional editorial advertising feel.',
     context,
     'Use the approved topic and supporting meaning as the source of truth. Keep the copy concise. You may choose the composition, typography scale, panels, curves, split treatment, and placement naturally; do not force a rigid grid or coordinate-based layout.',
-    'Reserve one calm, natural, uncluttered branding area where the authentic Invicta logo can be added afterward. Do not place important copy in that area.',
+    'Keep every headline and body line safely inside the canvas with an approximately 8–10% safe margin from the top, left, and right edges. Never place headline text flush against the top crop boundary; no letters may touch or extend beyond any canvas edge. Reserve the top-right area for the authentic logo badge; do not place headline, body copy, icons, or important imagery in that reserved logo area.',
     'Do not generate, redraw, imitate, spell out, or substitute the Invicta Home Supply logo. Do not add a separate business-name wordmark or duplicate Invicta branding; the real repository logo will be overlaid afterward.',
     'Avoid clipped text, awkward margins, duplicate branding, text collisions, generic unrelated flooring imagery, misleading product visuals, product packaging, SKUs, watermarks, and signage containing words.'
   ].join(' ');
