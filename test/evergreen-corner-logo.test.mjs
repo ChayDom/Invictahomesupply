@@ -3,7 +3,7 @@ import {cornerLogoHash,cornerLogoPlacement,cornerLogoPrompt} from '../scripts/ev
 const p=cornerLogoPlacement();
 assert.equal(cornerLogoHash('TIP-01','a'),cornerLogoHash('TIP-01','a'));
 assert.notEqual(cornerLogoHash('TIP-01','a'),cornerLogoHash('TIP-01','b'));
-assert.equal(p.x+p.width,1080); assert.equal(p.y,0); assert.equal(p.logoX+p.logoWidth,300); assert.equal(p.logoY,10); assert.equal(p.logoWidth,p.logoHeight);
+assert.equal(p.x+p.width,1080); assert.equal(p.y,0); assert.equal(p.logoX+p.logoWidth,360); assert.equal(p.logoY,10); assert.equal(p.logoWidth,p.logoHeight); assert.equal(p.width,380); assert.equal(p.height,300);
 assert.match(cornerLogoPrompt({type:'Tip'}),/top 12%/);
 assert.match(cornerLogoPrompt({type:'Tip'}),/bottom 12%/);
 console.log('Evergreen corner-logo tests passed: 5');

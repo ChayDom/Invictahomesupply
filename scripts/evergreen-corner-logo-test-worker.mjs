@@ -11,13 +11,13 @@ import {freeformPrompt,loadCandidate} from './evergreen-freeform-test-worker.mjs
 const MODEL='gpt-image-2.5-flare';
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const LOGO_PATH=path.join(ROOT,'assets/brand/derived/invicta-logo-blue-transparent.png');
-const NAMESPACE='invicta-social/evergreen-freeform-corner-logo-safe-area-test';
+const NAMESPACE='invicta-social/evergreen-freeform-corner-logo-panel-v6-test';
 
 export function cornerLogoHash(contentId,sourceHash) {
-  return crypto.createHash('sha256').update('evergreen-freeform-corner-logo-safe-area-test|'+contentId+'|'+sourceHash+'|logo-corner-v5').digest('base64url');
+  return crypto.createHash('sha256').update('evergreen-freeform-corner-logo-panel-v6-test|'+contentId+'|'+sourceHash+'|logo-corner-v6').digest('base64url');
 }
 export function cornerLogoPlacement() {
-  return {corner:'top-right',x:760,y:0,width:320,height:220,anchoredTop:true,anchoredRight:true,logoX:120,logoY:10,logoWidth:180,logoHeight:180,roundedCorner:'organic-inner-edge'};
+  return {corner:'top-right',x:700,y:0,width:380,height:300,anchoredTop:true,anchoredRight:true,logoX:180,logoY:10,logoWidth:180,logoHeight:180,roundedCorner:'organic-inner-edge'};
 }
 export function cornerLogoPrompt(item) {
   return freeformPrompt(item)+' Keep the entire top 12% and bottom 12% of the 1080x1350 canvas clear of all text, labels, icons, and important imagery. Keep every important text block at least 10% from the top, left, right, and bottom edges so center-cropping to the final 4:5 canvas cannot clip it. Keep the full composition comfortably inside the canvas with generous lower breathing room. The top-right branding zone is reserved for the compact curved cream panel; do not put any text there. Never clip or touch any canvas edge.';
@@ -32,7 +32,7 @@ async function generate(item,config,fetcher=fetch) {
 }
 async function panelSvg(cwd) {
   const logo=await fs.readFile(LOGO_PATH),p=cornerLogoPlacement();
-  const shape='M0 0H320V220C270 212 218 191 180 159C132 118 96 64 0 48Z';
+  const shape='M0 0H380V300C320 294 260 270 205 230C140 185 90 110 0 68Z';
   const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${p.width}" height="${p.height}" viewBox="0 0 ${p.width} ${p.height}"><path d="${shape}" fill="#fffaf0" stroke="#eadfca" stroke-width="2"/><image href="data:image/png;base64,${logo.toString('base64')}" x="${p.logoX}" y="${p.logoY}" width="${p.logoWidth}" height="${p.logoHeight}" preserveAspectRatio="xMidYMid meet"/></svg>`;
   const file=path.join(cwd,'logo-corner-panel.svg'); await fs.writeFile(file,svg); return file;
 }
