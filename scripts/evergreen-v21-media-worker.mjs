@@ -36,13 +36,15 @@ export function v21Prompt(item) {
     Brand:'a warm, premium Invicta Home Supply home-improvement brand story'
   }[item.type];
   return [
-    'Create one premium editorial background image for a 4:5 social graphic, 1080x1350 composition.',
+    'Create one finished premium editorial 4:5 social-media graphic for Invicta Home Supply, 1080x1350 composition.',
+    'Design freely like an experienced home-improvement advertising creative director; the result should be approval-ready without manual redesign.',
     'Subject and topic: '+topic+'.',
-    'Use the approved title and supporting meaning as creative context, but do not render any copy into the image: title '+JSON.stringify(item.title)+'; supporting slides '+JSON.stringify(item.slides)+'.',
-    'Use high-quality home-improvement or residential flooring photography, deep forest green and warm gold/orange visual accents, and a polished professional social-ad feel.',
-    'Leave a calm, uncluttered logo-safe region in the upper-left and clear negative space for a deterministic overlay. Composition family: '+family+'.',
-    'No text, letters, words, typography, logos, brand marks, watermarks, signage containing words, labels, packaging, SKU screenshots, or invented product claims.',
-    'Do not generate, imitate, redraw, spell out, or substitute the Invicta Home Supply logo. The authentic repository logo will be added after generation.'
+    'Use the approved title and supporting meaning as the source of truth for concise on-image copy: title '+JSON.stringify(item.title)+'; supporting slides '+JSON.stringify(item.slides)+'.',
+    'Use high-quality topic-relevant home-improvement or residential flooring photography, deep forest green and warm gold/orange accents, strong headline hierarchy, clean white typography, and a polished professional social-ad feel. Composition family: '+family+'.',
+    'Keep every headline and body line safely inside the canvas with approximately 8–10% safe margins from the top, left, right, and bottom edges. Never place text flush against or touching any crop boundary. Keep generous lower breathing room.',
+    'Reserve a calm logo-safe region in the top-right for a compact curved cream branding panel anchored flush to the top and right edges. Do not place headline, body copy, icons, or important imagery in that reserved area.',
+    'Do not generate, imitate, redraw, spell out, or substitute the Invicta Home Supply logo. The authentic repository logo will be overlaid afterward.',
+    'No text, letters, words, or generated typography outside the concise approved message. Do not create unrelated generic flooring imagery, misleading construction details, product packaging, SKU screenshots, watermarks, or signage containing words.',
   ].join(' ');
 }
 
@@ -92,34 +94,22 @@ async function generateBackground(item,config,fetcher=fetch) {
   return Buffer.from(encoded,'base64');
 }
 
-export async function renderEvergreenV21(background,item,cwd,{ffmpeg=runFFmpeg,font=process.env.SOCIAL_GRAPHIC_FONT_PATH||'/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'}={}) {
-  await fs.copyFile(font,path.join(cwd,'font.ttf'));
-  await fs.writeFile(path.join(cwd,'brand.txt'),'INVICTA HOME SUPPLY');
-  await fs.writeFile(path.join(cwd,'type.txt'),item.type.toUpperCase());
-  await fs.writeFile(path.join(cwd,'title.txt'),item.title);
-  await fs.writeFile(path.join(cwd,'body.txt'),item.slides.filter(Boolean).slice(0,2).join('\n'));
-  await fs.writeFile(path.join(cwd,'footer.txt'),'invictahomesupply.com  |  McKinney, TX');
-  const family=v21LayoutFamily(item.type);
-  const accent=family==='comparison-split'?'0xc8752a':'0xd47a24';
-  const lower=family==='educational-editorial'?'y=970':'y=1010';
-  const decoration=family==='comparison-split' ? 'drawbox=x=540:y=330:w=6:h=500:color='+accent+':t=fill,' :
-    family==='tip-curved' ? 'drawbox=x=72:y=278:w=520:h=3:color='+accent+':t=fill,' :
-    family==='educational-editorial' ? 'drawbox=x=72:y=675:w=420:h=4:color='+accent+':t=fill,' :
-    'drawbox=x=72:y=278:w=280:h=3:color='+accent+':t=fill,';
-  const graph='[0:v]scale=1080:1350:force_original_aspect_ratio=increase,crop=1080:1350,setsar=1,'+
-    'drawbox=x=0:y=0:w=1080:h=1350:color=0x163226@0.18:t=fill,'+
-    'drawbox=x=0:y=0:w=1080:h=245:color=0x163226@0.86:t=fill,'+
-    'drawbox=x=0:'+lower+':w=1080:h=340:color=0x163226@0.88:t=fill,'+
-    decoration+'drawbox=x=72:y=292:w=390:h=54:color='+accent+':t=fill,'+
-    'drawtext=fontfile=font.ttf:textfile=brand.txt:expansion=none:fontsize=34:fontcolor=white:x=82:y=45,'+
-    'drawtext=fontfile=font.ttf:textfile=type.txt:expansion=none:fontsize=23:fontcolor=white:x=96:y=307,'+
-    'drawtext=fontfile=font.ttf:textfile=title.txt:expansion=none:fontsize=61:fontcolor=white:x=72:y=405:line_spacing=8,'+
-    'drawtext=fontfile=font.ttf:textfile=body.txt:expansion=none:fontsize=31:fontcolor=white:x=72:y=720:line_spacing=11,'+
-    'drawtext=fontfile=font.ttf:textfile=footer.txt:expansion=none:fontsize=26:fontcolor=white:x=72:y=1280[base];'+
-    '[1:v]scale=230:-1[logo];[base][logo]overlay=72:70:format=auto,format=yuvj420p[out]';
-  // Keep the real logo as a separate input and preserve its aspect ratio/transparency.
+export function v21CornerPanel() {
+  return {x:700,y:0,width:380,height:300,logoX:180,logoY:10,logoWidth:180,logoHeight:180,corner:'top-right'};
+}
+
+async function writeV21CornerPanel(cwd) {
+  const logo=await fs.readFile(LOGO_PATH),p=v21CornerPanel();
+  const shape='M0 0H380V300C320 294 260 270 205 230C140 185 90 110 0 68Z';
+  const svg='<svg xmlns="http://www.w3.org/2000/svg" width="'+p.width+'" height="'+p.height+'" viewBox="0 0 '+p.width+' '+p.height+'"><path d="'+shape+'" fill="#fffaf0" stroke="#eadfca" stroke-width="2"/><image href="data:image/png;base64,'+logo.toString('base64')+'" x="'+p.logoX+'" y="'+p.logoY+'" width="'+p.logoWidth+'" height="'+p.logoHeight+'" preserveAspectRatio="xMidYMid meet"/></svg>';
+  const panel=path.join(cwd,'evergreen-v21-corner-panel.svg'); await fs.writeFile(panel,svg); return panel;
+}
+
+export async function renderEvergreenV21(background,item,cwd,{ffmpeg=runFFmpeg}={}) {
+  const p=v21CornerPanel(),panel=await writeV21CornerPanel(cwd);
+  const graph='[0:v]scale=1080:1350:force_original_aspect_ratio=increase,crop=1080:1350,setsar=1[base];[1:v]format=rgba[panel];[base][panel]overlay='+p.x+':'+p.y+':format=auto,format=yuvj420p[out]';
   const output=path.join(cwd,'evergreen-v2-1.jpg');
-  ffmpeg(['-hide_banner','-loglevel','error','-y','-i',background,'-i',LOGO_PATH,'-filter_complex',graph,'-map','[out]','-frames:v','1','-q:v','3',output],cwd);
+  ffmpeg(['-hide_banner','-loglevel','error','-y','-i',background,'-i',panel,'-filter_complex',graph,'-map','[out]','-frames:v','1','-q:v','3',output],cwd);
   return output;
 }
 

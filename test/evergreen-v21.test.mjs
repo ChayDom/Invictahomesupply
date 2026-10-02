@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {createRuntime,plain} from './fixtures/catalog-lifecycle-runtime.mjs';
 import {loadContract} from '../scripts/social-media-worker.mjs';
-import {v21LayoutFamily,v21Prompt,renderEvergreenV21,V21_LOGO} from '../scripts/evergreen-v21-media-worker.mjs';
+import {v21LayoutFamily,v21Prompt,renderEvergreenV21,v21CornerPanel,V21_LOGO} from '../scripts/evergreen-v21-media-worker.mjs';
 
 let pass=0,fail=0;
 async function test(name,fn){try{await fn();pass++;console.log('ok - '+name);}catch(error){fail++;console.log('NOT OK - '+name);console.error(error);}}
@@ -26,20 +26,23 @@ await test('v2.1 prompt uses approved topic meaning and forbids generated brandi
   assert.match(prompt,/No text, letters, words/);
   assert.match(prompt,/packaging, SKU screenshots/);
 });
-await test('v2.1 deterministic overlay uses the real logo and controlled text layers',async()=>{
+await test('v2.1 uses the approved freeform composition and curved top-right logo panel',async()=>{
   const cwd=await fs.mkdtemp(path.join(os.tmpdir(),'evergreen-v21-test-'));
   try {
-    const font=path.join(cwd,'font.fixture');await fs.writeFile(font,'font');
     const background=path.join(cwd,'background.png');await fs.writeFile(background,'background');
     let args;
-    const output=await renderEvergreenV21(background,item,cwd,{font,ffmpeg:received=>{args=received;return fs.writeFile(path.join(cwd,'evergreen-v2-1.jpg'),'rendered');}});
+    const output=await renderEvergreenV21(background,item,cwd,{ffmpeg:received=>{args=received;return fs.writeFile(path.join(cwd,'evergreen-v2-1.jpg'),'rendered');}});
     assert.equal(output.endsWith('evergreen-v2-1.jpg'),true);
     assert.match(args.join(' '),/1080:1350/);
-    assert.match(args.join(' '),/drawtext=fontfile=font\.ttf:textfile=title\.txt/);
-    assert.match(args.join(' '),/drawtext=fontfile=font\.ttf:textfile=footer\.txt/);
-    assert.match(args.join(' '),/overlay=72:70/);
+    assert.doesNotMatch(args.join(' '),/drawtext=/);
+    assert.match(args.join(' '),/overlay=700:0/);
+    assert.deepEqual(v21CornerPanel(),{x:700,y:0,width:380,height:300,logoX:180,logoY:10,logoWidth:180,logoHeight:180,corner:'top-right'});
     assert.equal(args.includes(V21_LOGO),false); // the logo is an input path, not a generated text layer
-    assert.match(args.join(' '),/invicta-logo-blue-white-wordmark-transparent\.png/);
+    const panel=await fs.readFile(path.join(cwd,'evergreen-v21-corner-panel.svg'),'utf8');
+    assert.match(panel,/fill="#fffaf0"/);
+    assert.match(panel,/preserveAspectRatio="xMidYMid meet"/);
+    assert.match(panel,/href="data:image\/png;base64,/); // logo is embedded from the real repository asset
+    assert.match(panel,/x="180" y="10" width="180" height="180"/);
   } finally { await fs.rm(cwd,{recursive:true,force:true}); }
 });
 await test('v2.1 contract is separate, immutable, and approval-only',async()=>{
