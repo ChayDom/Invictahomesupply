@@ -27,6 +27,10 @@ on:
         description: Generate one isolated freeform visual experiment asset (no queue/status change)
         default: false
         type: boolean
+      evergreen_logo_badge_test:
+        description: Generate one isolated freeform asset with a safe corner logo badge (no queue/status change)
+        default: false
+        type: boolean
       reel:
         description: Prepare optional silent Reel (4-6 Photos)
         default: false
@@ -83,6 +87,7 @@ jobs:
           EVERGREEN_V21: ${{ inputs.evergreen_v21 }}
           EVERGREEN_V21_VISUAL_ACCEPTANCE: ${{ inputs.evergreen_v21 }}
           EVERGREEN_FREEFORM_TEST: ${{ inputs.evergreen_freeform_test }}
+          EVERGREEN_LOGO_BADGE_TEST: ${{ inputs.evergreen_logo_badge_test }}
           PREPARE_REEL: ${{ inputs.reel }}
           AIRTABLE_SOCIAL_READ_TOKEN: ${{ secrets.AIRTABLE_SOCIAL_READ_TOKEN }}
           CLOUDINARY_CLOUD_NAME: ${{ vars.CLOUDINARY_CLOUD_NAME }}
@@ -90,7 +95,9 @@ jobs:
           CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          if [ "$EVERGREEN_FREEFORM_TEST" = "true" ] && [ -n "$CONTENT_ID" ] && [ -z "$PRODUCT_KEY" ] && [ -n "$CONTENT_HASH" ] && [ "$PREPARE_REEL" != "true" ]; then
+          if [ "$EVERGREEN_LOGO_BADGE_TEST" = "true" ] && [ -n "$CONTENT_ID" ] && [ -z "$PRODUCT_KEY" ] && [ -n "$CONTENT_HASH" ] && [ "$PREPARE_REEL" != "true" ]; then
+            node scripts/evergreen-logo-badge-test-worker.mjs "$CONTENT_ID" "$CONTENT_HASH"
+          elif [ "$EVERGREEN_FREEFORM_TEST" = "true" ] && [ -n "$CONTENT_ID" ] && [ -z "$PRODUCT_KEY" ] && [ -n "$CONTENT_HASH" ] && [ "$PREPARE_REEL" != "true" ]; then
             node scripts/evergreen-freeform-test-worker.mjs "$CONTENT_ID" "$CONTENT_HASH"
           elif [ "$EVERGREEN_V21" = "true" ] && [ -n "$CONTENT_ID" ] && [ -z "$PRODUCT_KEY" ] && [ -n "$CONTENT_HASH" ] && [ "$PREPARE_REEL" != "true" ]; then
             node scripts/evergreen-v21-media-worker.mjs "$CONTENT_ID" "$CONTENT_HASH"

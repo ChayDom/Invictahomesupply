@@ -40,7 +40,7 @@ export function freeformPrompt(item) {
   ].join(' ');
 }
 
-async function loadCandidate(contentId,sourceHash,contract) {
+export async function loadCandidate(contentId,sourceHash,contract) {
   const ctx=vm.createContext({socialOperationKey_:input=>crypto.createHash('sha256').update(JSON.stringify(input)).digest('base64url'),Utilities:{}});
   vm.runInContext(await fs.readFile(new URL('../Invicta Appscript Files/SocialMedia.js',import.meta.url),'utf8'),ctx);
   vm.runInContext(await fs.readFile(new URL('../Invicta Appscript Files/EvergreenSocial.js',import.meta.url),'utf8'),ctx);
@@ -53,7 +53,7 @@ async function loadCandidate(contentId,sourceHash,contract) {
   return item;
 }
 
-async function generateFreeform(item,config,fetcher=fetch) {
+export async function generateFreeform(item,config,fetcher=fetch) {
   const prompt=freeformPrompt(item);
   const response=await fetcher('https://api.openai.com/v1/images/generations',{method:'POST',headers:{Authorization:'Bearer '+config.openai,'Content-Type':'application/json'},body:JSON.stringify({model:MODEL,prompt,size:'1024x1536',quality:'high',background:'opaque',output_format:'png'}),signal:AbortSignal.timeout(180000),redirect:'error'});
   if(!response.ok) throw Error('OpenAI image generation failed; no test asset uploaded.');
