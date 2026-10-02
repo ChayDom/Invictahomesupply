@@ -43,6 +43,10 @@ on:
         description: Generate one isolated freeform asset with inward logo padding and reinforced top safe area (no queue/status change)
         default: false
         type: boolean
+      evergreen_corner_logo_test:
+        description: Generate one isolated freeform asset with the logo anchored toward the top-right inside the curved panel (no queue/status change)
+        default: false
+        type: boolean
       reel:
         description: Prepare optional silent Reel (4-6 Photos)
         default: false
@@ -103,6 +107,7 @@ jobs:
           EVERGREEN_LOGO_SAFE_AREA_TEST: ${{ inputs.evergreen_logo_safe_area_test }}
           EVERGREEN_CURVED_PANEL_TEST: ${{ inputs.evergreen_curved_panel_test }}
           EVERGREEN_SAFE_LOGO_FIX_TEST: ${{ inputs.evergreen_safe_logo_fix_test }}
+          EVERGREEN_CORNER_LOGO_TEST: ${{ inputs.evergreen_corner_logo_test }}
           PREPARE_REEL: ${{ inputs.reel }}
           AIRTABLE_SOCIAL_READ_TOKEN: ${{ secrets.AIRTABLE_SOCIAL_READ_TOKEN }}
           CLOUDINARY_CLOUD_NAME: ${{ vars.CLOUDINARY_CLOUD_NAME }}
@@ -110,7 +115,9 @@ jobs:
           CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          if [ "$EVERGREEN_SAFE_LOGO_FIX_TEST" = "true" ] && [ -n "$CONTENT_ID" ] && [ -z "$PRODUCT_KEY" ] && [ -n "$CONTENT_HASH" ] && [ "$PREPARE_REEL" != "true" ]; then
+          if [ "$EVERGREEN_CORNER_LOGO_TEST" = "true" ] && [ -n "$CONTENT_ID" ] && [ -z "$PRODUCT_KEY" ] && [ -n "$CONTENT_HASH" ] && [ "$PREPARE_REEL" != "true" ]; then
+            node scripts/evergreen-corner-logo-test-worker.mjs "$CONTENT_ID" "$CONTENT_HASH"
+          elif [ "$EVERGREEN_SAFE_LOGO_FIX_TEST" = "true" ] && [ -n "$CONTENT_ID" ] && [ -z "$PRODUCT_KEY" ] && [ -n "$CONTENT_HASH" ] && [ "$PREPARE_REEL" != "true" ]; then
             node scripts/evergreen-safe-logo-fix-test-worker.mjs "$CONTENT_ID" "$CONTENT_HASH"
           elif [ "$EVERGREEN_CURVED_PANEL_TEST" = "true" ] && [ -n "$CONTENT_ID" ] && [ -z "$PRODUCT_KEY" ] && [ -n "$CONTENT_HASH" ] && [ "$PREPARE_REEL" != "true" ]; then
             node scripts/evergreen-curved-panel-test-worker.mjs "$CONTENT_ID" "$CONTENT_HASH"
