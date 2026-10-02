@@ -11,16 +11,16 @@ import {freeformPrompt,loadCandidate} from './evergreen-freeform-test-worker.mjs
 const MODEL='gpt-image-2.5-flare';
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const LOGO_PATH=path.join(ROOT,'assets/brand/derived/invicta-logo-blue-transparent.png');
-const NAMESPACE='invicta-social/evergreen-freeform-corner-logo-clarity-test';
+const NAMESPACE='invicta-social/evergreen-freeform-corner-logo-safe-area-test';
 
 export function cornerLogoHash(contentId,sourceHash) {
-  return crypto.createHash('sha256').update('evergreen-freeform-corner-logo-clarity-test|'+contentId+'|'+sourceHash+'|logo-corner-v4').digest('base64url');
+  return crypto.createHash('sha256').update('evergreen-freeform-corner-logo-safe-area-test|'+contentId+'|'+sourceHash+'|logo-corner-v5').digest('base64url');
 }
 export function cornerLogoPlacement() {
   return {corner:'top-right',x:760,y:0,width:320,height:220,anchoredTop:true,anchoredRight:true,logoX:120,logoY:10,logoWidth:180,logoHeight:180,roundedCorner:'organic-inner-edge'};
 }
 export function cornerLogoPrompt(item) {
-  return freeformPrompt(item)+' Keep the entire top 12% of the 1080x1350 canvas clear of all text, labels, icons, and important imagery. Keep every important text block at least 10% from the top, left, and right edges. The top-right branding zone is reserved for the compact curved cream panel; do not put any text there. Never clip or touch the canvas edge.';
+  return freeformPrompt(item)+' Keep the entire top 12% and bottom 12% of the 1080x1350 canvas clear of all text, labels, icons, and important imagery. Keep every important text block at least 10% from the top, left, right, and bottom edges so center-cropping to the final 4:5 canvas cannot clip it. Keep the full composition comfortably inside the canvas with generous lower breathing room. The top-right branding zone is reserved for the compact curved cream panel; do not put any text there. Never clip or touch any canvas edge.';
 }
 async function generate(item,config,fetcher=fetch) {
   const prompt=cornerLogoPrompt(item);
