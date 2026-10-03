@@ -43,7 +43,7 @@ export default defineConfig({
     video: "off",
   },
   webServer: {
-    command: `python3 -m http.server ${PORT}`,
+    command: `node test/e2e-static-server.mjs ${PORT}`,
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 15000,

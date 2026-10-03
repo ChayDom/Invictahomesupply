@@ -981,15 +981,10 @@ function priceBlock(item) {
   const unitLabel = perUnitLabels[item.sellUnit] || "each";
   const isPerUnit = item.sellUnit === "box" || item.sellUnit === "roll";
   const priceText = isPerUnit && typeof item.price === "number" ? money2(item.price) : money(item.price);
-  const availParts = [];
-  if (validComparableRetail(item)) availParts.push(`Comparable Retail ${money(item.wasPrice)}`);
-  if (typeof item.qtyAvailable === "number") {
-    const unitWord = item.qtyAvailable === 1 ? singularWords[item.sellUnit] : pluralWords[item.sellUnit];
-    availParts.push(`${item.qtyAvailable}${unitWord || ""} available`);
-  }
   return `<div class="product-price">
     <div class="price-line">${priceText} <span class="price-unit">${unitLabel}</span></div>
-    ${availParts.length ? `<div class="price-avail">${availParts.join(" &middot; ")}</div>` : ""}
+    ${validComparableRetail(item) ? `<div class="comparable-retail">Comparable Retail ${money(item.wasPrice)}</div>` : ""}
+    ${typeof item.qtyAvailable === "number" ? `<div class="price-avail">${item.qtyAvailable}${item.qtyAvailable === 1 ? (singularWords[item.sellUnit] || "") : (pluralWords[item.sellUnit] || "")} available</div>` : ""}
   </div>`;
 }
 

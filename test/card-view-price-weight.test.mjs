@@ -2,17 +2,9 @@
 // ===================================================================
 // Regression coverage for Card View's price-expression bold weight.
 //
-// Background: verified (via getComputedStyle in a real Playwright
-// render, at both 1440px and 390px) that priceBlock()'s ".price-line"
-// and its child ".price-unit" were already both font-weight: 700 for
-// both Flooring ("$2.01 / sq ft") and non-Flooring ("$199 each") cards,
-// and that the quantity/availability line (".price-avail", e.g. "8
-// available") was already font-weight: 500 — i.e. this task's requested
-// formatting already matched the spec exactly, with no code change
-// needed. Nothing in inventory.js or styles.css changed for this task;
-// this file exists only so that already-correct contract can't silently
-// regress later (no prior test asserted these three weights or that the
-// price number and its unit share one weight).
+// The card contract keeps the primary price, Comparable Retail, and
+// available quantity as separate rows for non-flooring products while
+// preserving Flooring's richer square-foot/box availability presentation.
 //
 // The Contractor View is untouched by this task and already covered by
 // test/contractor-availability-format.test.mjs — not duplicated here.
@@ -134,8 +126,8 @@ test("CSS: .product-price .price-avail (quantity/availability text) is font-weig
   assert.doesNotMatch(body, /font-weight:\s*700/);
 });
 
-// --- priceBlock() HTML structure: number and unit both land inside the
-//     bold-weight classes; quantity text never does. ----------------------
+// --- priceBlock() HTML structure: number/unit, retail comparison, and
+//     quantity land in separate blocks; Flooring remains unchanged. -------
 
 test("priceBlock: Flooring wraps the number in .price-line and the unit in .price-unit, both present for \"$2.01 / sq ft\"", () => {
   const html = priceBlock(flooringItem());
@@ -151,13 +143,28 @@ test("priceBlock: non-Flooring quantity text (\"8 available\") is rendered in .p
   const html = priceBlock(nonFlooringItem());
   const priceLineMatch = html.match(/<div class="price-line">.*?<\/div>/s);
   assert.equal(priceLineMatch[0].includes("available"), false);
-  assert.match(html, /<div class="price-avail">Comparable Retail \$249 &middot; 8 available<\/div>/);
+  assert.match(html, /<div class="comparable-retail">Comparable Retail \$249<\/div>/);
+  assert.match(html, /<div class="price-avail">8 available<\/div>/);
 });
 
 test("priceBlock: singular quantity wording (\"1 available\") also stays out of the bold price-line", () => {
   const html = priceBlock(nonFlooringItem({ qtyAvailable: 1, wasPrice: undefined }));
   const priceLineMatch = html.match(/<div class="price-line">.*?<\/div>/s);
   assert.equal(priceLineMatch[0].includes("available"), false);
+  assert.match(html, /<div class="price-avail">1 available<\/div>/);
+});
+
+test("priceBlock: non-Flooring quantity 2+ and long Comparable Retail stay separate and wrap-safe", () => {
+  const html = priceBlock(nonFlooringItem({ price: 1299, wasPrice: 2899, qtyAvailable: 2 }));
+  assert.match(html, /<div class="price-line">\$1,299 <span class="price-unit">each<\/span><\/div>/);
+  assert.match(html, /<div class="comparable-retail">Comparable Retail \$2,899<\/div>/);
+  assert.match(html, /<div class="price-avail">2 available<\/div>/);
+  assert.doesNotMatch(html, /Comparable Retail .*&middot;.*available/);
+});
+
+test("priceBlock: non-Flooring without Comparable Retail still gives quantity its own row", () => {
+  const html = priceBlock(nonFlooringItem({ wasPrice: undefined, qtyAvailable: 1 }));
+  assert.doesNotMatch(html, /comparable-retail/);
   assert.match(html, /<div class="price-avail">1 available<\/div>/);
 });
 
