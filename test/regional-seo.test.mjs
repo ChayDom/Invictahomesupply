@@ -37,6 +37,15 @@ for (const { route, html } of documents) {
 assert.equal(titles.size, 3);
 assert.equal(descriptions.size, 3);
 
+const northwest = read("northwest-arkansas");
+assert.match(northwest, /limited, changing selection available in Bentonville/i);
+assert.match(northwest, /regularly travels between Texas and Northwest Arkansas/i);
+assert.match(northwest, /may be brought to Bentonville when arranged in advance/i);
+assert.match(northwest, /timing and available transport capacity/i);
+assert.match(northwest, /Bentonville, Rogers, Springdale, and Fayetteville/i);
+assert.match(northwest, /currently available in Bentonville, may be available for a future transfer, or is currently available only through the Texas inventory/i);
+assert.doesNotMatch(northwest, /showroom|private address|same-day|free delivery/i);
+
 const homepage = fs.readFileSync(path.join(root, "index.html"), "utf8");
 assert.match(homepage, /"name": "McKinney"/);
 assert.match(homepage, /Dallas-Fort Worth \/ North Texas/);
