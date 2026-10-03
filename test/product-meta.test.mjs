@@ -57,6 +57,12 @@ const VALID_PRODUCT_FIELDS = {
   "Name": "Test Oak LVP Flooring",
   "Category": "Flooring",
   "Details": "Waterproof luxury vinyl plank flooring, brand-new overstock.",
+  "Brand": "Test Floors",
+  "Price": 2.49,
+  "Quantity Available": 420,
+  "Status": "In Stock",
+  "Unit Type": "Box",
+  "Retail SKU": "RETAIL-001",
   "Photos": [{ url: "https://example.com/full.jpg", thumbnails: { large: { url: "https://example.com/large.jpg" } } }],
   "Post to Website": true,
 };
@@ -270,13 +276,47 @@ await test("an invalid page still links back to Inventory (unchanged static mark
   assert.equal(html.includes('href="/shop"'), true);
 });
 
-await test("no Product structured data (JSON-LD) is emitted for a valid or an invalid product page (deferred per spec)", async () => {
-  for (const query of ["id=LEG-HD-001157", "id=UNKNOWN"]) {
-    airtableRecords = query.includes("UNKNOWN") ? [] : [airtableRecordFor(VALID_PRODUCT_FIELDS)];
-    const res = await run(query);
-    const html = await res.text();
-    assert.equal(/"@type"\s*:\s*"Product"/.test(html), false);
-  }
+await test("valid products receive Product and BreadcrumbList JSON-LD using actual price and stock", async () => {
+  const res = await run("id=LEG-HD-001157");
+  const html = await res.text();
+  const match = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
+  assert.ok(match, "expected JSON-LD script");
+  const graph = JSON.parse(match[1]);
+  const product = graph["@graph"].find((node) => node["@type"] === "Product");
+  const breadcrumb = graph["@graph"].find((node) => node["@type"] === "BreadcrumbList");
+  assert.equal(product.name, "Test Oak LVP Flooring");
+  assert.equal(product.sku, "LEG-HD-001157");
+  assert.equal(product.offers.price, 2.49);
+  assert.equal(product.offers.priceSpecification.unitText, "sq ft");
+  assert.equal(product.offers.availability, "https://schema.org/InStock");
+  assert.equal(product.brand.name, "Test Floors");
+  assert.deepEqual(breadcrumb.itemListElement.map((item) => item.name), ["Home", "Inventory", "Test Oak LVP Flooring"]);
+});
+
+await test("invalid product pages do not receive Product or BreadcrumbList JSON-LD", async () => {
+  airtableRecords = [];
+  const res = await run("id=UNKNOWN");
+  const html = await res.text();
+  assert.equal(/application\/ld\+json/.test(html), false);
+});
+
+await test("out-of-stock and unknown stock map safely without inventing availability", async () => {
+  airtableRecords = [airtableRecordFor({ ...VALID_PRODUCT_FIELDS, "Quantity Available": 0 })];
+  let html = await (await run("id=LEG-HD-001157")).text();
+  assert.equal(/OutOfStock/.test(html), true);
+  airtableRecords = [airtableRecordFor({ ...VALID_PRODUCT_FIELDS, "Quantity Available": undefined })];
+  html = await (await run("id=LEG-HD-001157")).text();
+  const match = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
+  const graph = JSON.parse(match[1]);
+  const product = graph["@graph"].find((node) => node["@type"] === "Product");
+  assert.equal("availability" in product.offers, false);
+});
+
+await test("JSON-LD payload escapes script-breaking characters", async () => {
+  airtableRecords = [airtableRecordFor({ ...VALID_PRODUCT_FIELDS, Name: "Flooring </script><script>alert(1)</script>" })];
+  const html = await (await run("id=LEG-HD-001157")).text();
+  const jsonLd = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)?.[1] || "";
+  assert.equal(jsonLd.includes("</script>"), false);
 });
 
 await test("a request with no query string at all never calls Airtable", async () => {

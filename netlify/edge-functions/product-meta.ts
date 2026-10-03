@@ -91,7 +91,12 @@ interface ProductMeta {
   name: string;
   category: string;
   description: string;
-  imageUrl: string | null;
+  imageUrls: string[];
+  brand: string | null;
+  price: number | null;
+  quantityAvailable: number | null;
+  status: string;
+  unitType: string;
 }
 
 // Thrown only for a genuine backend/network failure (Airtable
@@ -101,14 +106,28 @@ interface ProductMeta {
 // invalid/unpublished" apart from "temporary failure".
 class ProductLookupError extends Error {}
 
-function firstImageUrl(f: Record<string, unknown>): string | null {
+function isHttpUrl(value: unknown): value is string {
+  if (typeof value !== "string" || !value.trim()) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function imageUrls(f: Record<string, unknown>): string[] {
   const photos = f["Photos"];
-  if (Array.isArray(photos) && photos.length > 0) {
-    const p = photos[0] as { url?: string; thumbnails?: { large?: { url?: string } } };
-    return p?.thumbnails?.large?.url || p?.url || null;
+  if (Array.isArray(photos)) {
+    const urls = photos.flatMap((photo) => {
+      const p = photo as { url?: unknown; thumbnails?: { large?: { url?: unknown } } };
+      const url = p?.thumbnails?.large?.url || p?.url;
+      return isHttpUrl(url) ? [url] : [];
+    });
+    if (urls.length > 0) return [...new Set(urls)];
   }
   const ref = f["Reference Image URL"];
-  return typeof ref === "string" && ref ? ref : null;
+  return isHttpUrl(ref) ? [ref] : [];
 }
 
 function fieldsToCategoryLabel(f: Record<string, unknown>): string {
@@ -131,6 +150,27 @@ function descriptionFor(name: string, category: string, f: Record<string, unknow
   return category
     ? `${name} — ${category} at Invicta Home Supply. Local pickup in McKinney, TX and DFW delivery available.`
     : `${name} at Invicta Home Supply. Local pickup in McKinney, TX and DFW delivery available.`;
+}
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function stockFor(category: string, f: Record<string, unknown>): number | null {
+  const values = category === "Flooring"
+    ? [f["Available Sq Ft"], f["Quantity Available"]]
+    : [f["Quantity Available"]];
+  for (const value of values) {
+    const number = finiteNumber(value);
+    if (number !== null && number >= 0) return number;
+  }
+  return null;
+}
+
+function unitTypeFor(category: string, f: Record<string, unknown>): string {
+  if (category === "Flooring") return "sq ft";
+  const raw = typeof f["Unit Type"] === "string" ? f["Unit Type"].trim().toLowerCase() : "";
+  return ["box", "roll", "sq ft", "each"].includes(raw) ? raw : "each";
 }
 
 // Returns null for "no such published product" (missing/unknown/
@@ -176,14 +216,72 @@ async function lookupPublishedProduct(productKey: string): Promise<ProductMeta |
   if (!name) return null; // no usable display name — treat as not found rather than emit blank metadata
 
   const category = fieldsToCategoryLabel(f);
+  const brand = typeof f["Brand"] === "string" && f["Brand"].trim() ? f["Brand"].trim() : null;
 
   return {
     productKey,
     name,
     category,
     description: descriptionFor(name, category, f),
-    imageUrl: firstImageUrl(f),
+    imageUrls: imageUrls(f),
+    brand,
+    price: finiteNumber(f["Price"]),
+    quantityAvailable: stockFor(category, f),
+    status: typeof f["Status"] === "string" ? f["Status"].trim() : "",
+    unitType: unitTypeFor(category, f),
   };
+}
+
+function jsonLdScript(value: unknown): string {
+  const json = JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+  return `<script type="application/ld+json">${json}</script>`;
+}
+
+function structuredDataFor(product: ProductMeta, canonicalUrl: string): string {
+  const productNode: Record<string, unknown> = {
+    "@type": "Product",
+    "@id": `${canonicalUrl}#product`,
+    name: product.name,
+    description: truncate(product.description, 5000),
+    sku: product.productKey,
+  };
+  if (product.category) productNode.category = product.category;
+  if (product.imageUrls.length) productNode.image = product.imageUrls;
+  if (product.brand) productNode.brand = { "@type": "Brand", name: product.brand };
+  if (product.price !== null && product.price >= 0) {
+    productNode.offers = {
+      "@type": "Offer",
+      url: canonicalUrl,
+      price: product.price,
+      priceCurrency: "USD",
+      priceSpecification: {
+        "@type": "UnitPriceSpecification",
+        price: product.price,
+        priceCurrency: "USD",
+        unitText: product.unitType,
+      },
+      ...(product.quantityAvailable === 0 ? { availability: "https://schema.org/OutOfStock" } :
+        product.quantityAvailable !== null ? {
+          availability: product.status.toLowerCase() === "reserved"
+            ? "https://schema.org/LimitedAvailability"
+            : "https://schema.org/InStock",
+        } : {}),
+    };
+  }
+  const breadcrumb = {
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: `${PRODUCTION_ORIGIN}/` },
+      { "@type": "ListItem", position: 2, name: "Inventory", item: `${PRODUCTION_ORIGIN}/shop` },
+      { "@type": "ListItem", position: 3, name: product.name, item: canonicalUrl },
+    ],
+  };
+  return jsonLdScript({ "@context": "https://schema.org", "@graph": [productNode, breadcrumb] });
 }
 
 function applyProductMetadata(html: string, opts: {
@@ -192,6 +290,7 @@ function applyProductMetadata(html: string, opts: {
   canonicalUrl: string;
   ogType: string;
   image: string;
+  structuredData: string;
 }): string {
   const safeTitle = escapeHtmlAttr(opts.title);
   const safeDesc = escapeHtmlAttr(opts.description);
@@ -220,6 +319,7 @@ function applyProductMetadata(html: string, opts: {
     `<meta name="twitter:description" content="${safeDesc}">`);
   out = replaceTag(out, /<meta\s+name=["']twitter:image["']\s+content=(?:"[^"]*"|'[^']*')>/i,
     `<meta name="twitter:image" content="${safeImage}">`);
+  out = out.replace(/<\/head>/i, `${opts.structuredData}\n</head>`);
   return out;
 }
 
@@ -277,7 +377,8 @@ export default async (req: Request, context: Context) => {
     const canonicalUrl = `${PRODUCTION_ORIGIN}/product.html?id=${encodeURIComponent(product.productKey)}`;
     const title = `${product.name} | Invicta Home Supply`;
     const description = truncate(product.description, 300);
-    const image = product.imageUrl || FALLBACK_IMAGE;
+    const image = product.imageUrls[0] || FALLBACK_IMAGE;
+    const structuredData = structuredDataFor(product, canonicalUrl);
 
     const rewritten = applyProductMetadata(html, {
       title,
@@ -285,6 +386,7 @@ export default async (req: Request, context: Context) => {
       canonicalUrl,
       ogType: "product",
       image,
+      structuredData,
     });
 
     return new Response(rewritten, { status: response.status, headers: response.headers });
