@@ -92,6 +92,9 @@ interface ProductMeta {
   category: string;
   description: string;
   imageUrl: string | null;
+  brand: string;
+  price: number | null;
+  quantityAvailable: number | null;
 }
 
 // Thrown only for a genuine backend/network failure (Airtable
@@ -177,13 +180,104 @@ async function lookupPublishedProduct(productKey: string): Promise<ProductMeta |
 
   const category = fieldsToCategoryLabel(f);
 
+  const brandField = f["Brand"];
+  const brand = typeof brandField === "string"
+    ? brandField.trim()
+    : brandField && typeof brandField === "object" && "name" in (brandField as object)
+      ? String((brandField as { name: unknown }).name).trim()
+      : "";
+
+  const priceRaw = f["Price"];
+  const price = typeof priceRaw === "number" && Number.isFinite(priceRaw) && priceRaw > 0 ? priceRaw : null;
+
+  const quantityRaw = f["Quantity Available"];
+  const quantityAvailable = typeof quantityRaw === "number" && Number.isFinite(quantityRaw) && quantityRaw >= 0
+    ? quantityRaw
+    : null;
+
   return {
     productKey,
     name,
     category,
     description: descriptionFor(name, category, f),
     imageUrl: firstImageUrl(f),
+    brand,
+    price,
+    quantityAvailable,
   };
+}
+
+function productStructuredData(product: ProductMeta, canonicalUrl: string, image: string): string {
+  const productNode: Record<string, unknown> = {
+    "@type": "Product",
+    "@id": `${canonicalUrl}#product`,
+    name: product.name,
+    description: truncate(product.description, 500),
+    sku: product.productKey,
+    category: product.category || undefined,
+    image: [image],
+    url: canonicalUrl,
+  };
+
+  if (product.brand) {
+    productNode.brand = { "@type": "Brand", name: product.brand };
+  }
+
+  if (product.price !== null) {
+    const offer: Record<string, unknown> = {
+      "@type": "Offer",
+      url: canonicalUrl,
+      priceCurrency: "USD",
+      price: product.price,
+      seller: {
+        "@type": "Organization",
+        name: "Invicta Home Supply",
+        url: PRODUCTION_ORIGIN,
+      },
+    };
+    if (product.quantityAvailable !== null) {
+      offer.availability = product.quantityAvailable > 0
+        ? "https://schema.org/InStock"
+        : "https://schema.org/OutOfStock";
+    }
+    productNode.offers = offer;
+  }
+
+  const data = {
+    "@context": "https://schema.org",
+    "@graph": [
+      productNode,
+      {
+        "@type": "BreadcrumbList",
+        "@id": `${canonicalUrl}#breadcrumb`,
+        itemListElement: [
+          {
+            "@type": "ListItem",
+            position: 1,
+            name: "Home",
+            item: `${PRODUCTION_ORIGIN}/`,
+          },
+          {
+            "@type": "ListItem",
+            position: 2,
+            name: "Inventory",
+            item: `${PRODUCTION_ORIGIN}/shop`,
+          },
+          {
+            "@type": "ListItem",
+            position: 3,
+            name: product.name,
+            item: canonicalUrl,
+          },
+        ],
+      },
+    ],
+  };
+
+  // Prevent a malicious Airtable string containing "</script>" from
+  // terminating the JSON-LD script element early.
+  const json = JSON.stringify(data).replace(/</g, "\\u003c");
+  return `<script type="application/ld+json" data-product-structured>${json}</script>`;
 }
 
 function applyProductMetadata(html: string, opts: {
@@ -279,13 +373,16 @@ export default async (req: Request, context: Context) => {
     const description = truncate(product.description, 300);
     const image = product.imageUrl || FALLBACK_IMAGE;
 
-    const rewritten = applyProductMetadata(html, {
+    let rewritten = applyProductMetadata(html, {
       title,
       description,
       canonicalUrl,
       ogType: "product",
       image,
     });
+
+    const structuredData = productStructuredData(product, canonicalUrl, image);
+    rewritten = rewritten.replace(/<\/head>/i, `${structuredData}\n</head>`);
 
     return new Response(rewritten, { status: response.status, headers: response.headers });
   } catch (err) {
