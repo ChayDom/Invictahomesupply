@@ -140,7 +140,7 @@ function runInvictaProductionHealthCheck() {
   let queue, rows = [], latestGenerated = 0, latestPosted = 0, eligibleCaptions = 0;
   check('socialQueue',function(s) {
     queue = getSocialQueueSheetOrThrow_(ss); assertSocialQueueHeaders_(queue); rows = evergreenQueueRows_(queue);
-    s.counts = {Draft:0,Ready:0,Queued:0,'Needs Image':0,'Needs Copy':0,Skip:0,Error:0}; s.productRows = 0; s.evergreenRows = 0;
+    s.counts = {Draft:0,Ready:0,'Awaiting Approval':0,Queued:0,'Needs Image':0,'Needs Copy':0,Skip:0,Error:0}; s.productRows = 0; s.evergreenRows = 0;
     const sources = readSocialExportMap_(getInventorySheetOrThrow_(ss,IWA_SYNC_HARDENED.EXPORT_SHEET));
     const library = evergreenReadLibrary_(), seen = new Set();
     rows.forEach(function(row,i) {
