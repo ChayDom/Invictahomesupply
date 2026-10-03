@@ -2,7 +2,7 @@ import type { Context, Config } from "@netlify/edge-functions";
 
 const PRODUCTION_HOSTS = new Set(["invictahomesupply.com", "www.invictahomesupply.com"]);
 const PRODUCTION_ORIGIN = "https://invictahomesupply.com";
-const STATIC_PATHS = ["/", "/shop", "/about.html", "/contact.html"];
+const STATIC_PATHS = ["/", "/shop", "/about.html", "/contact.html", "/service-area/dfw-north-texas", "/service-area/durant-ok", "/service-area/northwest-arkansas"];
 const DEFAULT_TABLE_NAME = "Website Products";
 
 function validProductKey(value: unknown): value is string {

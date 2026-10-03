@@ -50,6 +50,9 @@ const HTML_ROUTES = [
   "/product.html",
   "/subscribe-confirmed.html",
   "/unsubscribed.html",
+  "/service-area/dfw-north-texas",
+  "/service-area/durant-ok",
+  "/service-area/northwest-arkansas",
 ];
 
 export default async (req: Request, context: Context) => {

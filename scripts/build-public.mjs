@@ -5,7 +5,8 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 export const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 export const publicFiles=['index.html','shop.html','product.html','contact.html','about.html',
-  'subscribe-confirmed.html','unsubscribed.html','app.js','inventory.js','styles.css','favicon.ico','robots.txt','sitemap.xml'];
+  'subscribe-confirmed.html','unsubscribed.html','app.js','inventory.js','styles.css','favicon.ico','robots.txt','sitemap.xml',
+  'service-area/dfw-north-texas/index.html','service-area/durant-ok/index.html','service-area/northwest-arkansas/index.html'];
 export const stagingSite='d3be279a-c141-4c6d-9dbc-853cda5c22f5';
 export function buildPublic({staging=false,siteId=process.env.SITE_ID||'',context=process.env.CONTEXT||''}={}) {
   if(siteId && siteId!==stagingSite && (staging || context==='branch-deploy' || context==='deploy-preview'))throw Error('Production-site preview contexts are unsafe until credentials are hardened.');
@@ -15,7 +16,7 @@ export function buildPublic({staging=false,siteId=process.env.SITE_ID||'',contex
   const output=path.join(root,'dist-public');
   if(path.dirname(output)!==root||path.basename(output)!=='dist-public')throw Error('Unsafe output path');
   fs.rmSync(output,{recursive:true,force:true});fs.mkdirSync(output);
-  for(const file of publicFiles)fs.copyFileSync(path.join(root,file),path.join(output,file));
+  for(const file of publicFiles){const target=path.join(output,file);fs.mkdirSync(path.dirname(target),{recursive:true});fs.copyFileSync(path.join(root,file),target);}
   // Netlify rewrites HTML links/form markup; retain a verifiable candidate tag.
   for(const file of publicFiles.filter(file=>file.endsWith('.html'))){const target=path.join(output,file);const html=fs.readFileSync(target,'utf8');if(!/<head>/i.test(html))throw Error('Missing page head: '+file);fs.writeFileSync(target,html.replace(/<head>/i,'<head>\n<meta name="invicta-candidate" content="'+sha.stdout.trim()+'">'));}
   function assets(dir,relative='assets'){

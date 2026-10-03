@@ -37,7 +37,11 @@ assert.match(xml, /<urlset/);
 assert.match(xml, /product\.html\?id=EDU-1/);
 assert.match(xml, /product\.html\?id=A%26B%20%3CFloor%3E/);
 assert.match(xml, /product\.html\?id=SKU%202/);
+assert.match(xml, /https:\/\/invictahomesupply\.com\/service-area\/dfw-north-texas/);
+assert.match(xml, /https:\/\/invictahomesupply\.com\/service-area\/durant-ok/);
+assert.match(xml, /https:\/\/invictahomesupply\.com\/service-area\/northwest-arkansas/);
 assert.equal((xml.match(/product\.html\?id=EDU-1/g) || []).length, 1);
+assert.equal((xml.match(/<url>/g) || []).length, (xml.match(/<\/url>/g) || []).length);
 assert.equal(xml.includes("NOPE"), false);
 assert.equal(calls, 2);
 
