@@ -8,6 +8,21 @@ const INVICTA_HEALTH_EXPORT_HEADERS_ = ['PRODUCT KEY','DISPLAY NAME','CATEGORY',
   'PRODUCT URL','STOCK IMAGE URL','POST TO WEBSITE','ENRICHMENT STATUS','IN STOCK','COMPARABLE RETAIL PRICE','BOX PRICE',
   'SUBCATEGORY','THICKNESS MM','WEAR LAYER MIL','UNDERLAYMENT ATTACHED','WATER RESISTANCE','CARD SPEC 1','CARD SPEC 2','CARD SPEC 3'];
 
+function socialHealthHasQueuedWithinHours_(sheet,rows,columns,hours) {
+  if (!sheet || !columns) return false;
+  const cutoff = Date.now() - Number(hours) * 3600000;
+  return rows.some(function(row,index) {
+    const posted = row[columns['LAST POSTED AT']];
+    if (posted && Number.isFinite(new Date(posted).getTime()) && new Date(posted).getTime() > cutoff) return true;
+    return ['FB BUFFER POST ID','IG BUFFER POST ID'].some(function(header) {
+      const value = row[columns[header]];
+      if (!value) return false;
+      const intent = readSocialBufferIntent_(sheet.getRange(index + 2, columns[header] + 1));
+      return !!intent && Date.parse(intent.startedAt) > cutoff;
+    });
+  });
+}
+
 function runInvictaProductionHealthCheck() {
   const now = Date.now(), ss = SpreadsheetApp.getActiveSpreadsheet(), props = PropertiesService.getScriptProperties();
   const result = {status:'GREEN',checkedAt:new Date(now).toISOString(),summary:{checksPassed:0,warnings:0,failures:0},sections:{}};
@@ -137,21 +152,36 @@ function runInvictaProductionHealthCheck() {
     });
     s.incompleteJournals = s.journalStates.RETIRING + s.journalStates.ARCHIVED + s.journalStates['AIRTABLE REMOVED'];
   });
-  let queue, rows = [], latestGenerated = 0, latestPosted = 0, eligibleCaptions = 0;
+  let queue, rows = [], socialColumns = null, latestGenerated = 0, latestPosted = 0, eligibleCaptions = 0;
   check('socialQueue',function(s) {
-    queue = getSocialQueueSheetOrThrow_(ss); assertSocialQueueHeaders_(queue); rows = evergreenQueueRows_(queue);
+    queue = getSocialQueueSheetOrThrow_(ss);
+    const headerValues = queue.getRange(1,1,1,queue.getLastColumn()).getDisplayValues()[0];
+    socialColumns = {};
+    headerValues.forEach(function(header,index) {
+      const normalized = String(header || '').trim().toUpperCase();
+      if (!normalized) return;
+      if (socialColumns[normalized] !== undefined) throw new Error('Duplicate Social Queue header: ' + normalized);
+      socialColumns[normalized] = index;
+    });
+    const missing = SOCIAL_REQUIRED_HEADERS_.filter(function(header) { return socialColumns[header] === undefined; });
     s.counts = {Draft:0,Ready:0,'Awaiting Approval':0,Queued:0,'Needs Image':0,'Needs Copy':0,Skip:0,Error:0}; s.productRows = 0; s.evergreenRows = 0;
+    if (missing.length) {
+      issue('socialQueue','WARNING','MISSING_COLUMN',missing.join(', '));
+      rows = [];
+      return;
+    }
+    rows = queue.getLastRow() > 1 ? queue.getRange(2,1,queue.getLastRow()-1,queue.getLastColumn()).getValues() : [];
     const sources = readSocialExportMap_(getInventorySheetOrThrow_(ss,IWA_SYNC_HARDENED.EXPORT_SHEET));
     const library = evergreenReadLibrary_(), seen = new Set();
     rows.forEach(function(row,i) {
-      const key = String(row[0] || '').trim(); if (!key) return;
+      const key = String(row[socialColumns['PRODUCT KEY']] || '').trim(); if (!key) return;
       if (seen.has(key)) issue('socialQueue','FAIL','DUPLICATE_OCCURRENCE',key); seen.add(key);
-      const status = String(row[12]).trim(); if (s.counts[status] !== undefined) s.counts[status]++; else issue('socialQueue','WARNING','UNKNOWN_STATUS',key);
-      const posted = row[15] ? new Date(row[15]).getTime() : 0;
+      const status = String(row[socialColumns['SOCIAL STATUS']] || '').trim(); if (s.counts[status] !== undefined) s.counts[status]++; else issue('socialQueue','WARNING','UNKNOWN_STATUS',key);
+      const posted = row[socialColumns['LAST POSTED AT']] ? new Date(row[socialColumns['LAST POSTED AT']]).getTime() : 0;
       // LAST POSTED AT is an accepted hand-off timestamp, not proof of public delivery.
-      if (row[13] || row[14]) latestPosted = Math.max(latestPosted,Number.isFinite(posted) ? posted : 0);
-      if (status === 'Queued' && !(row[13] || row[14])) issue('socialQueue','WARNING','QUEUED_WITHOUT_RECEIPT',key);
-      if (status === 'Queued' && (row[13] || row[14]) && (!posted || !Number.isFinite(posted))) issue('socialQueue','WARNING','RECEIPT_TIMESTAMP_MISSING',key);
+      if (row[socialColumns['FB BUFFER POST ID']] || row[socialColumns['IG BUFFER POST ID']]) latestPosted = Math.max(latestPosted,Number.isFinite(posted) ? posted : 0);
+      if (status === 'Queued' && !(row[socialColumns['FB BUFFER POST ID']] || row[socialColumns['IG BUFFER POST ID']])) issue('socialQueue','WARNING','QUEUED_WITHOUT_RECEIPT',key);
+      if (status === 'Queued' && (row[socialColumns['FB BUFFER POST ID']] || row[socialColumns['IG BUFFER POST ID']]) && (!posted || !Number.isFinite(posted))) issue('socialQueue','WARNING','RECEIPT_TIMESTAMP_MISSING',key);
       const evergreen = evergreenIdentity_(key);
       if (key.startsWith('EVERGREEN|') && !evergreen) issue('socialQueue','FAIL','INVALID_EVERGREEN_IDENTITY');
       // Collect totals/timestamps before per-row validation; a bad approval must
@@ -159,18 +189,19 @@ function runInvictaProductionHealthCheck() {
       if (evergreen) s.evergreenRows++;
       else {
         s.productRows++;
-        const generated = row[16] ? new Date(row[16]).getTime() : 0;
+        const generated = row[socialColumns['GENERATED AT']] ? new Date(row[socialColumns['GENERATED AT']]).getTime() : 0;
         latestGenerated = Math.max(latestGenerated,Number.isFinite(generated) ? generated : 0);
         if (generated > now) issue('socialQueue','WARNING','FUTURE_PRODUCT_GENERATION_TIMESTAMP',key);
       }
       try {
       if (evergreen) {
         const item = library.find(function(item) { return item.id === evergreen.id; });
-        if (!item || item.type !== row[7]) issue('socialQueue','FAIL','INVALID_EVERGREEN_SOURCE',key);
+        if (!item || item.type !== row[socialColumns['CONTENT TYPE']]) issue('socialQueue','FAIL','INVALID_EVERGREEN_SOURCE',key);
         if (status === 'Ready') {
           const plan = item && evergreenPlan_(item,evergreen.occurrence);
-          if (!item || item.status !== 'Enabled' || row[5] !== 'Image' || row[11] !== '' || row[9] !== item.caption || row[10] !== item.caption ||
-              row[17] !== plan.sourceHash || JSON.stringify(socialReadMediaPlan_(queue,i+2)) !== JSON.stringify(plan)) issue('socialQueue','FAIL','STALE_EVERGREEN_APPROVAL',key);
+          if (!item || item.status !== 'Enabled' || row[socialColumns['MEDIA TYPE']] !== 'Image' || row[socialColumns['HASHTAGS']] !== '' ||
+              row[socialColumns['FACEBOOK CAPTION']] !== item.caption || row[socialColumns['INSTAGRAM CAPTION']] !== item.caption ||
+              row[socialColumns['SOURCE HASH']] !== plan.sourceHash || JSON.stringify(socialReadMediaPlan_(queue,i+2)) !== JSON.stringify(plan)) issue('socialQueue','FAIL','STALE_EVERGREEN_APPROVAL',key);
         }
         return;
       }
@@ -186,12 +217,12 @@ function runInvictaProductionHealthCheck() {
         if (!eligible) issue('socialQueue','FAIL','INELIGIBLE_READY_PRODUCT',key);
         else {
           const plan = socialReadMediaPlan_(queue,i+2);
-          if (!String(row[9]).trim() || !String(row[10]).trim() ||
-              row[5] !== (plan.type === 'Reel' ? 'Video' : 'Image') || row[7] !== (plan.type === 'Reel' ? 'Reel' : 'Post') ||
-              JSON.stringify(plan) !== JSON.stringify(socialMediaPlan_(source,plan.type === 'Reel')) || row[17] !== buildSocialSourceHash_(source)) issue('socialQueue','FAIL','STALE_PRODUCT_APPROVAL',key);
+          if (!String(row[socialColumns['FACEBOOK CAPTION']]).trim() || !String(row[socialColumns['INSTAGRAM CAPTION']]).trim() ||
+              row[socialColumns['MEDIA TYPE']] !== (plan.type === 'Reel' ? 'Video' : 'Image') || row[socialColumns['CONTENT TYPE']] !== (plan.type === 'Reel' ? 'Reel' : 'Post') ||
+              JSON.stringify(plan) !== JSON.stringify(socialMediaPlan_(source,plan.type === 'Reel')) || row[socialColumns['SOURCE HASH']] !== buildSocialSourceHash_(source)) issue('socialQueue','FAIL','STALE_PRODUCT_APPROVAL',key);
         }
       }
-      if (eligible && !socialQueueHistory_(queue,i+2,row) && (status === 'Needs Copy' || status === 'Draft' && !String(row[9]).trim() && !String(row[10]).trim())) eligibleCaptions++;
+      if (eligible && !socialQueueHistory_(queue,i+2,row) && (status === 'Needs Copy' || status === 'Draft' && !String(row[socialColumns['FACEBOOK CAPTION']]).trim() && !String(row[socialColumns['INSTAGRAM CAPTION']]).trim())) eligibleCaptions++;
       } catch (_) {
         issue('socialQueue','FAIL',status === 'Ready' ? 'READY_VALIDATION_FAILED' : 'ROW_VALIDATION_FAILED',key + ' row ' + (i+2));
       }
@@ -209,8 +240,8 @@ function runInvictaProductionHealthCheck() {
   check('socialPublishing',function(s) {
     s.triggerPresent = triggers.some(function(t) { return t.getHandlerFunction() === 'sendReadySocialPostsToBuffer'; });
     s.latestReceiptedHandoffAt = latestPosted ? new Date(latestPosted).toISOString() : null; s.publicDeliveryVerified = false;
-    s.ready = rows.filter(function(row) { return row[12] === 'Ready'; }).length;
-    s.gate48HoursBlocked = hasSocialPostQueuedWithinHours_(48);
+    s.ready = socialColumns ? rows.filter(function(row) { return row[socialColumns['SOCIAL STATUS']] === 'Ready'; }).length : 0;
+    s.gate48HoursBlocked = socialHealthHasQueuedWithinHours_(queue,rows,socialColumns,48);
     const connection = bufferGraphql_(props.getProperty('BUFFER_API_KEY'),'query InvictaHealth { account { id } }',{});
     if (!connection.account || !connection.account.id) throw new Error('Buffer unreadable'); s.bufferReadable = true;
     s.historicalQueuedAreNotRemotePending = true;
