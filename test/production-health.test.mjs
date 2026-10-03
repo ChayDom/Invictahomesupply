@@ -48,6 +48,27 @@ test('invalid archive hash is FAIL without repair',()=>{const t=setup();t.setQua
 test('exact K2 is required without writing a replacement',()=>{const t=setup();t.catalog.formula='=1';assert.ok(issues(health(t)).includes('K2_CHANGED'));assert.equal(t.catalog.formula,'=1');});
 test('confirmed zero active Catalog/Export is FAIL',()=>{const t=setup();t.setQuantity(0);assert.ok(issues(health(t)).includes('ACTIVE_CONFIRMED_ZERO'));});
 test('historical Queued receipts remain healthy and are not counted as pending remote posts',()=>{const t=setup();social(t,{status:'Queued',receipts:true});const r=health(t);assert.equal(r.status,'GREEN');assert.equal(r.sections.socialPublishing.historicalQueuedAreNotRemotePending,true);assert.equal(r.sections.socialPublishing.publicDeliveryVerified,false);});
+test('Awaiting Approval is a recognized Social Queue review status',()=>{const t=setup();social(t,{status:'Awaiting Approval'});const r=health(t);assert.equal(r.status,'GREEN');assert.equal(r.sections.socialQueue.counts['Awaiting Approval'],1);assert.ok(!issues(r).includes('UNKNOWN_STATUS'));});
+test('all workflow Social Queue statuses are recognized by health checks',()=>{
+  for(const status of ['Draft','Ready','Awaiting Approval','Queued','Needs Image','Needs Copy','Skip','Error']){
+    const t=setup();const row=social(t,{status,receipts:status==='Queued'});row[0]='STATUS-'+status.replace(/ /g,'-');
+    assert.ok(!issues(health(t)).includes('UNKNOWN_STATUS'),status);
+  }
+});
+test('Social Queue health lookup follows headers when columns are reordered',()=>{
+  const t=setup();social(t,{status:'Awaiting Approval'});
+  const sheet=t.sheets['Social Queue'],headers=sheet.data[0],order=['SOCIAL STATUS','PRODUCT KEY',...headers.filter(h=>!['SOCIAL STATUS','PRODUCT KEY'].includes(h))];
+  const indexes=order.map(h=>headers.indexOf(h));sheet.data=[order,...sheet.data.slice(1).map(row=>indexes.map(i=>row[i]))];
+  const r=health(t);assert.equal(r.status,'GREEN');assert.equal(r.sections.socialQueue.counts['Awaiting Approval'],1);assert.equal(r.sections.socialQueue.productRows,1);
+});
+test('missing Social Status header fails safely without positional fallback',()=>{
+  const t=setup();social(t,{status:'Awaiting Approval'});const sheet=t.sheets['Social Queue'],drop=sheet.data[0].indexOf('SOCIAL STATUS');
+  sheet.data=sheet.data.map(row=>row.filter((_,i)=>i!==drop));const r=health(t);assert.equal(r.status,'WARNING');assert.ok(issues(r).includes('MISSING_COLUMN'));assert.ok(!issues(r).includes('UNKNOWN_STATUS'));
+});
+test('unknown and blank Social Queue statuses are distinguished',()=>{
+  const t=setup();social(t,{status:'NOT_A_STATUS'});const blank=social(t,{status:''});blank[0]='';const r=health(t);
+  assert.equal(r.status,'WARNING');assert.equal(issues(r).filter(code=>code==='UNKNOWN_STATUS').length,1);assert.equal(r.sections.socialQueue.counts.Draft,0);
+});
 test('Queued row missing both receipts is WARNING',()=>{const t=setup();social(t,{status:'Queued'});assert.ok(issues(health(t)).includes('QUEUED_WITHOUT_RECEIPT'));});
 test('old generation with complete drafts has no false stale warning',()=>{const t=setup();social(t,{generated:now-10*86400000});assert.equal(health(t).status,'GREEN');});
 test('old generation and eligible missing copy warns',()=>{const t=setup();social(t,{generated:now-10*86400000,copy:false});assert.ok(issues(health(t)).includes('STALE_PRODUCT_DRAFT_GENERATION'));});
