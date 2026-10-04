@@ -2,6 +2,527 @@
 const EVERGREEN_SHEET_ = 'Evergreen Social Content';
 const EVERGREEN_HEADERS_ = ['CONTENT ID','CONTENT TYPE','TITLE','CAPTION','SLIDE 1','SLIDE 2','SLIDE 3','SLIDE 4','STATUS','COOLDOWN DAYS','SOURCES'];
 const EVERGREEN_TEMPLATE_ = 'evergreen-v1';
+const EVERGREEN_V2_TEMPLATE_ = 'evergreen-v2';
+const EVERGREEN_V21_TEMPLATE_ = 'evergreen-v2-1';
+const EVERGREEN_MANUAL_ASSET_SHEET_ = 'Evergreen Social Assets';
+const EVERGREEN_MANUAL_ASSET_HEADERS_ = ['CONTENT ID','MEDIA VERSION','CLOUDINARY PUBLIC ID','SOURCE HASH','RESOURCE TYPE','STATUS'];
+const EVERGREEN_ROTATION_ = ['Product','Educational','Product','Comparison','Product','Educational','Product','Brand/Tip'];
+
+/** Create the owner-maintained asset registry once; normal preparation never creates it. */
+function initializeEvergreenSocialAssets() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (ss.getSheetByName(EVERGREEN_MANUAL_ASSET_SHEET_)) throw new Error('Evergreen Social Assets already exists.');
+  const sheet = ss.insertSheet(EVERGREEN_MANUAL_ASSET_SHEET_);
+  sheet.getRange(1,1,1,EVERGREEN_MANUAL_ASSET_HEADERS_.length).setValues([EVERGREEN_MANUAL_ASSET_HEADERS_]);
+  return {sheet:EVERGREEN_MANUAL_ASSET_SHEET_,columns:EVERGREEN_MANUAL_ASSET_HEADERS_.length,rows:0};
+}
+
+function evergreenIdentity_(key) {
+  const match = /^EVERGREEN\|([A-Z][A-Z0-9-]{1,60})\|([1-9][0-9]{0,8})$/.exec(String(key));
+  return match ? {id:match[1],occurrence:Number(match[2])} : null;
+}
+
+function evergreenContent_(row) {
+  const text = function(value,max) {
+    const s = String(value || '').trim();
+    if (!s || s.length > max || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(s)) throw new Error('Invalid/bounded evergreen copy required.');
+    return s;
+  };
+  const item = {id:text(row[0],61),type:text(row[1],20),title:text(row[2],110),caption:text(row[3],1800),
+    slides:row.slice(4,8).map(function(s) { return text(s,350); }),status:String(row[8] || '').trim(),
+    cooldown:row[9] === '' || row[9] == null ? 120 : Number(row[9]),sources:text(row[10],2000)};
+  if (!/^[A-Z][A-Z0-9-]{1,60}$/.test(item.id) || !['Educational','Comparison','Tip','Brand'].includes(item.type) ||
+      !['Enabled','Disabled'].includes(item.status) || !Number.isInteger(item.cooldown) || item.cooldown < 90 || item.cooldown > 120 ||
+      !item.sources.split(/\s+/).every(function(url) { return /^https:\/\/[^\s]+$/.test(url); })) throw new Error('Invalid evergreen library identity/type/status/cooldown/sources.');
+  return item;
+}
+
+function evergreenReadLibrary_() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(EVERGREEN_SHEET_);
+  if (!sheet) return [];
+  if (sheet.getLastColumn() !== EVERGREEN_HEADERS_.length ||
+      JSON.stringify(sheet.getRange(1,1,1,EVERGREEN_HEADERS_.length).getValues()[0]) !== JSON.stringify(EVERGREEN_HEADERS_)) throw new Error('Evergreen library headers differ; no source mutation permitted.');
+  const seen = new Set();
+  return (sheet.getLastRow() > 1 ? sheet.getRange(2,1,sheet.getLastRow()-1,EVERGREEN_HEADERS_.length).getValues() : [])
+    .filter(function(row) { return row.some(function(x) { return x !== ''; }); }).map(function(row) {
+      const item = evergreenContent_(row);
+      if (seen.has(item.id)) throw new Error('Duplicate evergreen Content ID.');
+      seen.add(item.id); return item;
+    });
+}
+
+function evergreenPlan_(item,occurrence) {
+  if (!Number.isInteger(occurrence) || occurrence < 1 || occurrence > 999999999) throw new Error('Invalid content occurrence.');
+  const renderHash = socialOperationKey_([EVERGREEN_TEMPLATE_,item.id,item.type,item.title,item.caption,item.slides,item.sources,
+    {width:1080,height:1350,brand:'Invicta Home Supply',cta:'invictahomesupply.com | McKinney, TX',palette:'invicta-2026'}]);
+  const hashes = item.slides.map(function(_,index) { return socialOperationKey_([renderHash,index]); });
+  const key = 'EVERGREEN|' + item.id + '|' + occurrence;
+  return {kind:'INVICTA_EVERGREEN_MEDIA_V1',sourceType:item.type,contentId:item.id,occurrence:occurrence,
+    productKey:key,photoIds:[],type:'Carousel',resourceType:'image',templateVersion:EVERGREEN_TEMPLATE_,
+    renderHash:renderHash,sourceHash:socialOperationKey_([key,renderHash]),hashes:hashes,
+    publicIds:hashes.map(function(hash) { return 'invicta-social/' + EVERGREEN_TEMPLATE_ + '/' + hash; })};
+}
+
+function evergreenQueueRows_(queue) {
+  return queue.getLastRow() > 1 ? queue.getRange(2,1,queue.getLastRow()-1,19).getValues() : [];
+}
+
+/** One index over existing receipts, including uncertain durable intents. */
+function evergreenHistory_(queue,rows) {
+  const byId = new Map();
+  rows.forEach(function(row,index) {
+    const identity = evergreenIdentity_(row[0]);
+    if (!identity) return;
+    const state = byId.get(identity.id) || {posted:false,last:0,pending:false,held:false,maxOccurrence:0};
+    state.maxOccurrence = Math.max(state.maxOccurrence,identity.occurrence);
+    if (socialQueueHistory_(queue,index+2,row)) {
+      state.posted = true;
+      let dates = row[15] ? [new Date(row[15]).getTime()] : [];
+      [14,15].forEach(function(col) {
+        const note = queue.getRange(index+2,col).getNote();
+        if (note) { try { dates.push(Date.parse(JSON.parse(note).startedAt)); } catch (_) { dates.push(NaN); } }
+      });
+      // Missing/invalid evidence never makes historical content reusable.
+      state.last = Math.max(state.last,dates.length && dates.every(Number.isFinite) ? Math.max.apply(null,dates) : Infinity);
+    } else if (String(row[12]) !== 'Skip') state.pending = true;
+    else state.held = true; // Intentional owner Skip is not silently requeued.
+    byId.set(identity.id,state);
+  });
+  return byId;
+}
+
+function evergreenCanPrepare_(item,history,library,now) {
+  if (item.status !== 'Enabled') return false;
+  const state = history.get(item.id);
+  if (state && (state.pending || state.held)) return false;
+  if (!state || !state.posted) return true;
+  if (evergreenUnusedAvailable_(library,history)) return false;
+  return now >= state.last + item.cooldown*86400000;
+}
+
+function evergreenUnusedAvailable_(library,history) {
+  return library.some(function(other) {
+    const state = history.get(other.id) || {};
+    return other.status === 'Enabled' && !state.posted && !state.held;
+  });
+}
+
+/** Existing receipts define slots; retry/reconciliation has priority over new work. */
+function evergreenSelectReady_(queue,rows) {
+  const ready = rows.map(function(row,index) { return {row:row,index:index}; }).filter(function(entry) { return String(entry.row[12]).trim() === 'Ready'; });
+  const retry = ready.find(function(entry) { return socialQueueHistory_(queue,entry.index+2,entry.row); });
+  if (retry) return retry.index;
+  // Before the optional library is installed, preserve the PR19 product-only path.
+  if (!SpreadsheetApp.getActiveSpreadsheet().getSheetByName(EVERGREEN_SHEET_)) return ready.length ? ready[0].index : -1;
+  const slot = evergreenNextSlot_(queue,rows).slot;
+  const matches = ready.filter(function(entry) {
+    return evergreenMatchesSlot_(entry.row,slot);
+  });
+  const history = evergreenHistory_(queue,rows), library = evergreenReadLibrary_();
+  const eligible = matches.filter(function(entry) {
+    const identity = evergreenIdentity_(entry.row[0]);
+    if (!identity) return true;
+    const item = library.find(function(content) { return content.id === identity.id; });
+    const state = history.get(identity.id);
+    if (!item || item.status !== 'Enabled') return false;
+    if (state && state.posted) {
+      if (evergreenUnusedAvailable_(library,history)) return false;
+      return Date.now() >= state.last + item.cooldown*86400000;
+    }
+    return true;
+  });
+  eligible.sort(function(a,b) { return String(a.row[0]).localeCompare(String(b.row[0])); });
+  return eligible.length ? eligible[0].index : -1; // Wait for owner approval of this slot; never auto-Ready/fallback flood.
+}
+
+/** Owner-maintained canonical media registry. It is separate from the authored content library. */
+function evergreenApprovedAsset_(contentId) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(EVERGREEN_MANUAL_ASSET_SHEET_);
+  if (!sheet) return null;
+  if (sheet.getLastColumn() !== EVERGREEN_MANUAL_ASSET_HEADERS_.length ||
+      JSON.stringify(sheet.getRange(1,1,1,EVERGREEN_MANUAL_ASSET_HEADERS_.length).getValues()[0]) !== JSON.stringify(EVERGREEN_MANUAL_ASSET_HEADERS_)) {
+    throw new Error('Evergreen Social Assets headers differ; no source mutation permitted.');
+  }
+  const matches = (sheet.getLastRow() > 1 ? sheet.getRange(2,1,sheet.getLastRow()-1,EVERGREEN_MANUAL_ASSET_HEADERS_.length).getValues() : [])
+    .filter(function(row) { return String(row[0]).trim() === contentId && String(row[5]).trim() === 'Approved'; });
+  if (matches.length > 1) throw new Error('Duplicate approved Evergreen asset; manual review required.');
+  if (!matches.length) return null;
+  const row = matches[0], version = String(row[1]).trim(), publicId = String(row[2]).trim(), sourceHash = String(row[3]).trim(), resourceType = String(row[4]).trim();
+  if (!/^evergreen-manual-v[0-9]+$/.test(version) || publicId !== contentId ||
+      !/^[A-Z]+-[0-9]{2}$/.test(publicId) ||
+      !/^[A-Za-z0-9_-]{20,}$/.test(sourceHash) || resourceType !== 'image') {
+    throw new Error('Invalid approved Evergreen asset registry row.');
+  }
+  return {version:version,publicId:publicId,sourceHash:sourceHash,resourceType:resourceType};
+}
+
+function evergreenManualPlan_(item,occurrence,asset) {
+  if (!Number.isInteger(occurrence) || occurrence < 1) throw new Error('Invalid content occurrence.');
+  const renderHash = socialOperationKey_(['evergreen-manual',item.id,item.type,item.title,item.caption,item.slides,item.sources,asset.version,asset.publicId,asset.sourceHash]);
+  const key = 'EVERGREEN|' + item.id + '|' + occurrence;
+  return {kind:'INVICTA_EVERGREEN_MEDIA_MANUAL',sourceType:item.type,contentId:item.id,occurrence:occurrence,
+    productKey:key,photoIds:[],type:'Image',resourceType:'image',templateVersion:asset.version,
+    approvedAssetVersion:asset.version,approvedAssetSourceHash:asset.sourceHash,renderHash:renderHash,
+    sourceHash:socialOperationKey_([key,renderHash]),hashes:[asset.sourceHash],publicIds:[asset.publicId]};
+}
+
+function evergreenPlanForKind_(item,identity,kind) {
+  if (kind === 'INVICTA_EVERGREEN_MEDIA_V21') return evergreenV21Plan_(item,identity.occurrence);
+  if (kind === 'INVICTA_EVERGREEN_MEDIA_V2') return evergreenV2Plan_(item,identity.occurrence);
+  if (kind === 'INVICTA_EVERGREEN_MEDIA_MANUAL') return evergreenManualPlan_(item,identity.occurrence,evergreenApprovedAsset_(item.id));
+  return evergreenPlan_(item,identity.occurrence);
+}
+
+/** Explicit v2 visual-generation contract. V1 identities/assets remain immutable. */
+function evergreenV2Plan_(item,occurrence) {
+  if (!['Educational','Comparison','Tip','Brand'].includes(item.type)) throw new Error('Evergreen v2 supports editorial content only.');
+  const logo = 'assets/brand/derived/invicta-logo-blue-white-wordmark-transparent.png';
+  const family = item.type === 'Tip' ? 'curved-premium' : item.type === 'Educational' ? 'editorial-information' : item.type === 'Comparison' ? 'split-comparison' : 'lifestyle-brand';
+  const renderHash = socialOperationKey_([EVERGREEN_V2_TEMPLATE_,item.id,item.type,item.title,item.caption,item.slides,item.sources,
+    {width:1080,height:1350,brand:'Invicta Home Supply',cta:'invictahomesupply.com | McKinney, TX',palette:'forest-gold',compositionFamily:family,logo:logo}]);
+  const key = 'EVERGREEN|' + item.id + '|' + occurrence;
+  return {kind:'INVICTA_EVERGREEN_MEDIA_V2',sourceType:item.type,contentId:item.id,occurrence:occurrence,
+    productKey:key,photoIds:[],type:'Image',resourceType:'image',templateVersion:EVERGREEN_V2_TEMPLATE_,logoAsset:logo,
+    compositionFamily:family,renderHash:renderHash,sourceHash:socialOperationKey_([key,renderHash]),hashes:[renderHash],
+    publicIds:['invicta-social/' + EVERGREEN_V2_TEMPLATE_ + '/' + renderHash]};
+}
+
+/** v2.1 keeps the AI background separate from the deterministic branded layout.
+ * V1/v2 identities and assets remain immutable. */
+function evergreenV21Plan_(item,occurrence) {
+  if (!['Educational','Comparison','Tip','Brand'].includes(item.type)) throw new Error('Evergreen v2.1 supports editorial content only.');
+  const logo = 'assets/brand/derived/invicta-logo-blue-white-wordmark-transparent.png';
+  const family = item.type === 'Tip' ? 'tip-curved' : item.type === 'Educational' ? 'educational-editorial' : item.type === 'Comparison' ? 'comparison-split' : 'brand-lifestyle';
+  const renderHash = socialOperationKey_([EVERGREEN_V21_TEMPLATE_,item.id,item.type,item.title,item.caption,item.slides,item.sources,
+    {width:1080,height:1350,brand:'Invicta Home Supply',cta:'invictahomesupply.com | McKinney, TX',palette:'forest-gold',compositionFamily:family,
+      logo:logo,promptVersion:'topic-aware-background-v1',overlayVersion:'deterministic-editorial-v1'}]);
+  const key = 'EVERGREEN|' + item.id + '|' + occurrence;
+  return {kind:'INVICTA_EVERGREEN_MEDIA_V21',sourceType:item.type,contentId:item.id,occurrence:occurrence,
+    productKey:key,photoIds:[],type:'Image',resourceType:'image',templateVersion:EVERGREEN_V21_TEMPLATE_,logoAsset:logo,
+    compositionFamily:family,renderHash:renderHash,sourceHash:socialOperationKey_([key,renderHash]),hashes:[renderHash],
+    publicIds:['invicta-social/' + EVERGREEN_V21_TEMPLATE_ + '/' + renderHash]};
+}
+
+/** Shared by the sender and review email; receipt notes count even after a partial send. */
+function evergreenNextSlot_(queue,rows) {
+  if (!SpreadsheetApp.getActiveSpreadsheet().getSheetByName(EVERGREEN_SHEET_)) return {accepted:0,slot:'Product'};
+  let accepted = 0;
+  rows.forEach(function(row,index) {
+    if (row[13] || row[14] || row[15] || queue.getRange(index+2,14).getNote() || queue.getRange(index+2,15).getNote()) accepted++;
+  });
+  return {accepted:accepted,slot:EVERGREEN_ROTATION_[accepted % EVERGREEN_ROTATION_.length]};
+}
+
+function evergreenMatchesSlot_(row,slot) {
+  const identity = evergreenIdentity_(row[0]), type = String(row[7]);
+  return slot === 'Product' ? !identity && ['Post','Reel'].includes(type) :
+    !!identity && (slot === 'Brand/Tip' ? ['Brand','Tip'].includes(type) : type === slot);
+}
+
+function assertEvergreenCurrent_(queue,rowNumber,row,plan) {
+  const identity = evergreenIdentity_(row[0]);
+  const library = evergreenReadLibrary_();
+  const item = identity && library.find(function(content) { return content.id === identity.id; });
+  const fail = function(status,message) {
+    queue.getRange(rowNumber,13).setValue(status);queue.getRange(rowNumber,19).setValue(message);
+    const error = new Error(message);error.socialEligibilityFailure = true;throw error;
+  };
+  if (!item || item.status !== 'Enabled') fail('Skip','Evergreen source missing/disabled; no publication.');
+  const expectedPlan = evergreenPlanForKind_(item,identity,plan.kind);
+  if (row[7] !== item.type || row[5] !== 'Image' || row[9] !== item.caption || row[10] !== item.caption ||
+      row[11] !== '' || row[17] !== plan.sourceHash ||
+      JSON.stringify(expectedPlan) !== JSON.stringify(plan) ||
+      JSON.stringify(socialReadMediaPlan_(queue,rowNumber)) !== JSON.stringify(plan)) fail('Draft','Evergreen source/caption/media changed; prepare and approve again.');
+  const rows = evergreenQueueRows_(queue);
+  const others = rows.map(function(other,index) { return index+2 === rowNumber ? new Array(19).fill('') : other; });
+  const history = evergreenHistory_(queue,others), state = history.get(item.id);
+  if (state && state.pending) fail('Draft','Duplicate pending evergreen content; owner review required.');
+  if (state && state.posted && Date.now() < state.last + item.cooldown*86400000) fail('Draft','Evergreen reuse cooldown active.');
+  if (state && state.posted && evergreenUnusedAvailable_(library,history)) fail('Draft','Unused evergreen topics take priority; review rotation again.');
+  return item;
+}
+
+/** Explicit owner invocation; no triggers, Gemini, Buffer or inventory changes. */
+function evergreenQueueTypeValidation_(queue,rowNumber,type) {
+  const cell = queue.getRange(rowNumber,8), rule = cell.getDataValidation();
+  const supported = ['Post','Reel','Educational','Comparison','Tip','Brand'];
+  // A newly appended physical row can have no cell-level rule even when the
+  // surrounding queue column still enforces the legacy Post/Reel list. Give
+  // this editorial cell the same narrow, explicit supported list before its
+  // first value is written; product-row validation remains untouched.
+  if (!rule) return;
+  if (rule.getCriteriaType() !== SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST) throw new Error('Unexpected queue content-type validation; owner review required.');
+  const criteria = rule.getCriteriaValues(), options = criteria[0];
+  if (!Array.isArray(options) || !options.includes('Post') || !options.includes('Reel') ||
+      options.some(function(value) { return !supported.includes(value); })) throw new Error('Unknown queue content-type options; owner review required.');
+  if (options.includes(type)) return;
+  // The workbook currently applies the legacy list as a column rule. Extend
+  // that same validation consistently so the new editorial value is accepted
+  // without leaving product rows with a conflicting inherited rule.
+  const validationRange = queue.getRange(2,8,Math.max(queue.getMaxRows()-1,rowNumber-1),1);
+  validationRange.setDataValidation(null);
+  validationRange.setDataValidation(rule.copy().requireValueInList(supported,criteria[1]).build());
+  SpreadsheetApp.flush();
+}
+
+function prepareEvergreenSocialQueue() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) throw new Error('Another social/maintenance operation is active.');
+  try {
+    const queue = getSocialQueueSheetOrThrow_(SpreadsheetApp.getActiveSpreadsheet());assertSocialQueueHeaders_(queue);
+    const library = evergreenReadLibrary_(), rows = evergreenQueueRows_(queue), history = evergreenHistory_(queue,rows);
+    const summary = {added:0,refreshed:0,manifests:[]};
+    library.forEach(function(item) {
+      if (item.status !== 'Enabled') return;
+      const asset = evergreenApprovedAsset_(item.id);
+      // Normal preparation is manual-asset-only. Missing artwork remains out of
+      // the queue and never invokes an AI/media worker.
+      if (!asset) return;
+      const pending = rows.map(function(row,index) { return {row:row,index:index}; }).filter(function(entry) {
+        const identity = evergreenIdentity_(entry.row[0]);
+        if (!identity || identity.id !== item.id || socialQueueHistory_(queue,entry.index+2,entry.row) || entry.row[12] === 'Skip') return false;
+        try { return socialReadMediaPlan_(queue,entry.index+2).kind === 'INVICTA_EVERGREEN_MEDIA_MANUAL'; } catch (_) { return false; }
+      });
+      if (pending.length > 1) throw new Error('Duplicate pending evergreen source.');
+      if (!pending.length && !evergreenCanPrepare_(item,history,library,Date.now())) return;
+      const existing = pending[0];
+      const occurrence = existing ? evergreenIdentity_(existing.row[0]).occurrence : (history.get(item.id) || {maxOccurrence:0}).maxOccurrence+1;
+      const plan = evergreenManualPlan_(item,occurrence,asset);
+      const rowNumber = existing ? existing.index+2 : queue.getLastRow()+1;
+      if (rowNumber > queue.getMaxRows()) queue.insertRowsAfter(queue.getMaxRows(),rowNumber-queue.getMaxRows());
+      evergreenQueueTypeValidation_(queue,rowNumber,item.type);
+      const unchanged = existing && existing.row[17] === plan.sourceHash && existing.row[9] === item.caption && existing.row[10] === item.caption &&
+        existing.row[7] === item.type && existing.row[5] === 'Image' && existing.row[11] === '' &&
+        queue.getRange(rowNumber,5).getNote() === JSON.stringify(plan);
+      if (!unchanged) {
+        queue.getRange(rowNumber,1,1,19).setValues([[plan.productKey,item.title,'Evergreen','','','Image',
+          'https://invictahomesupply.com',item.type,item.title,item.caption,item.caption,'','Draft','','','',new Date(),plan.sourceHash,'']]);
+        queue.getRange(rowNumber,5).setNote(JSON.stringify(plan));
+      }
+      summary[existing ? 'refreshed' : 'added']++;
+      summary.manifests.push({contentId:item.id,renderHash:plan.renderHash,assetVersion:asset.version,publicId:asset.publicId});
+    });
+    return summary;
+  } finally { lock.releaseLock(); }
+}
+
+/** Controlled v2 rollout: explicit owner-supplied IDs only, maximum three. */
+function prepareEvergreenV2SocialQueue(contentIds) {
+  if (!Array.isArray(contentIds) || !contentIds.length || contentIds.length > 3 || new Set(contentIds).size !== contentIds.length) {
+    throw new Error('Explicit Evergreen v2 content IDs required; maximum three candidates.');
+  }
+  const lock = LockService.getScriptLock(); if (!lock.tryLock(30000)) throw new Error('Another social/maintenance operation is active.');
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet(), queue = getSocialQueueSheetOrThrow_(ss); assertSocialQueueHeaders_(queue);
+    const library = evergreenReadLibrary_(), rows = evergreenQueueRows_(queue), history = evergreenHistory_(queue,rows), manifests=[];
+    contentIds.forEach(function(id) {
+      const item = library.find(function(value) { return value.id === id; });
+      if (!item || item.status !== 'Enabled' || !['Educational','Comparison','Tip','Brand'].includes(item.type)) throw new Error('Invalid enabled v2 editorial content ID.');
+      const pendingV2 = rows.map(function(row,index) { return {row:row,index:index}; }).filter(function(entry) {
+        const identity = evergreenIdentity_(entry.row[0]);
+        if (!identity || identity.id !== id || socialQueueHistory_(queue,entry.index+2,entry.row) || entry.row[12] === 'Skip') return false;
+        let plan = null;
+        try { plan = socialReadMediaPlan_(queue,entry.index+2); } catch (_) { return false; }
+        return plan && plan.kind === 'INVICTA_EVERGREEN_MEDIA_V2';
+      });
+      if (pendingV2.length > 1) throw new Error('Duplicate pending evergreen v2 source.');
+      // Never rewrite a v1 occurrence. A v2 rollout gets its own occurrence key.
+      const existing = pendingV2[0], occurrence = existing ? evergreenIdentity_(existing.row[0]).occurrence : (history.get(id) || {maxOccurrence:0}).maxOccurrence+1;
+      const plan = evergreenV2Plan_(item,occurrence); evergreenPublishSnapshotV2_(item,plan);
+      const rowNumber = existing ? existing.index+2 : queue.getLastRow()+1;
+      if (rowNumber > queue.getMaxRows()) queue.insertRowsAfter(queue.getMaxRows(),rowNumber-queue.getMaxRows());
+      evergreenQueueTypeValidation_(queue,rowNumber,item.type);
+      queue.getRange(rowNumber,1,1,19).setValues([[plan.productKey,item.title,'Evergreen','','','Image','https://invictahomesupply.com',item.type,item.title,item.caption,item.caption,'','Draft','','','',new Date(),plan.sourceHash,'']]);
+      queue.getRange(rowNumber,5).setNote(JSON.stringify(plan));
+      manifests.push({contentId:id,occurrence:occurrence,renderHash:plan.renderHash,productKey:plan.productKey});
+    });
+    SpreadsheetApp.flush(); return {prepared:manifests.length,manifests:manifests,awaitingApproval:0};
+  } finally { lock.releaseLock(); }
+}
+
+/** Called only after the external v2 worker verifies the immutable Cloudinary asset. */
+function finalizeEvergreenV2Media(contentId,renderHash) {
+  let queue = getSocialQueueSheetOrThrow_(SpreadsheetApp.getActiveSpreadsheet()), rows = evergreenQueueRows_(queue);
+  const findExact = function() {
+    return rows.map(function(row,index) { return {row:row,index:index}; }).filter(function(value) {
+      const identity = evergreenIdentity_(value.row[0]);
+      if (!identity || identity.id !== contentId || value.row[12] !== 'Draft') return false;
+      let plan = null;
+      try { plan = socialReadMediaPlan_(queue,value.index+2); } catch (_) { return false; }
+      return plan && plan.kind === 'INVICTA_EVERGREEN_MEDIA_V2' && plan.renderHash === renderHash &&
+        Array.isArray(plan.publicIds) && plan.publicIds.length === 1 &&
+        /^invicta-social\/evergreen-v2\/[A-Za-z0-9_-]+$/.test(String(plan.publicIds[0]));
+    });
+  };
+  let matches = findExact();
+  if (!matches.length) {
+    // Only v1/historical occurrences exist: allocate a new v2 occurrence; never mutate them.
+    prepareEvergreenV2SocialQueue([contentId]);
+    queue = getSocialQueueSheetOrThrow_(SpreadsheetApp.getActiveSpreadsheet()); rows = evergreenQueueRows_(queue); matches = findExact();
+  }
+  if (matches.length > 1) throw new Error('Duplicate exact Evergreen v2 occurrences; manual review required.');
+  const entry = matches[0];
+  if (!entry) throw new Error('Exact Evergreen v2 occurrence could not be prepared.');
+  const plan = socialReadMediaPlan_(queue,entry.index+2);
+  socialResolveCloudinary_(plan); queue.getRange(entry.index+2,13).setValue('Awaiting Approval'); queue.getRange(entry.index+2,19).clearContent(); SpreadsheetApp.flush();
+  return {productKey:plan.productKey,status:'Awaiting Approval'};
+}
+
+/** Controlled v2.1 rollout. Explicit IDs only; prepares Draft rows and never Ready. */
+function prepareEvergreenV21SocialQueue(contentIds) {
+  if(!Array.isArray(contentIds)||!contentIds.length||contentIds.length>3||new Set(contentIds).size!==contentIds.length) throw new Error('Explicit Evergreen v2.1 content IDs required; maximum three candidates.');
+  const lock=LockService.getScriptLock();if(!lock.tryLock(30000))throw new Error('Another social/maintenance operation is active.');
+  try {
+    const ss=SpreadsheetApp.getActiveSpreadsheet(),queue=getSocialQueueSheetOrThrow_(ss);assertSocialQueueHeaders_(queue),library=evergreenReadLibrary_(),rows=evergreenQueueRows_(queue),history=evergreenHistory_(queue,rows),manifests=[];
+    contentIds.forEach(function(id){
+      const item=library.find(function(value){return value.id===id;});
+      if(!item||item.status!=='Enabled'||!['Educational','Comparison','Tip','Brand'].includes(item.type))throw new Error('Invalid enabled v2.1 editorial content ID.');
+      const pending=rows.map(function(row,index){return {row:row,index:index};}).filter(function(entry){const identity=evergreenIdentity_(entry.row[0]);if(!identity||identity.id!==id||socialQueueHistory_(queue,entry.index+2,entry.row)||entry.row[12]==='Skip')return false;try{return socialReadMediaPlan_(queue,entry.index+2).kind==='INVICTA_EVERGREEN_MEDIA_V21';}catch(_){return false;}});
+      if(pending.length>1)throw new Error('Duplicate pending Evergreen v2.1 source.');
+      const existing=pending[0],occurrence=existing?evergreenIdentity_(existing.row[0]).occurrence:(history.get(id)||{maxOccurrence:0}).maxOccurrence+1,plan=evergreenV21Plan_(item,occurrence);
+      evergreenPublishSnapshotV21_(item,plan);const rowNumber=existing?existing.index+2:queue.getLastRow()+1;
+      if(rowNumber>queue.getMaxRows())queue.insertRowsAfter(queue.getMaxRows(),rowNumber-queue.getMaxRows());
+      evergreenQueueTypeValidation_(queue,rowNumber,item.type);
+      queue.getRange(rowNumber,1,1,19).setValues([[plan.productKey,item.title,'Evergreen','','','Image','https://invictahomesupply.com',item.type,item.title,item.caption,item.caption,'','Draft','','','',new Date(),plan.sourceHash,'']]);
+      queue.getRange(rowNumber,5).setNote(JSON.stringify(plan));manifests.push({contentId:id,occurrence:occurrence,renderHash:plan.renderHash,productKey:plan.productKey});
+    });
+    SpreadsheetApp.flush();return {prepared:manifests.length,manifests:manifests,awaitingApproval:0};
+  } finally {lock.releaseLock();}
+}
+
+/** Promote exactly one verified v2.1 Draft to Awaiting Approval; never Ready. */
+function finalizeEvergreenV21Media(contentId,renderHash) {
+  const queue=getSocialQueueSheetOrThrow_(SpreadsheetApp.getActiveSpreadsheet()),rows=evergreenQueueRows_(queue),matches=rows.map(function(row,index){return {row:row,index:index};}).filter(function(value){const identity=evergreenIdentity_(value.row[0]);if(!identity||identity.id!==contentId||value.row[12]!=='Draft')return false;try{const plan=socialReadMediaPlan_(queue,value.index+2);return plan&&plan.kind==='INVICTA_EVERGREEN_MEDIA_V21'&&plan.renderHash===renderHash&&plan.publicIds.length===1&&/^invicta-social\/evergreen-v2-1\/[A-Za-z0-9_-]+$/.test(plan.publicIds[0]);}catch(_){return false;}});
+  if(matches.length!==1)throw new Error(matches.length?'Duplicate exact Evergreen v2.1 occurrences; manual review required.':'Exact Evergreen v2.1 occurrence not prepared.');
+  const entry=matches[0],plan=socialReadMediaPlan_(queue,entry.index+2);socialResolveCloudinary_(plan);queue.getRange(entry.index+2,13).setValue('Awaiting Approval');queue.getRange(entry.index+2,19).clearContent();SpreadsheetApp.flush();return {productKey:plan.productKey,status:'Awaiting Approval'};
+}
+
+/** Only provably owned earlier occurrence receipts may be excluded on intentional reuse.
+ * Unrecognized remote matches still block; product V1/V2 reconciliation is unchanged.
+ */
+function evergreenPriorReceipts_(plan) {
+  const queue = getSocialQueueSheetOrThrow_(SpreadsheetApp.getActiveSpreadsheet()), ids = new Set();
+  evergreenQueueRows_(queue).forEach(function(row,index) {
+    const identity = evergreenIdentity_(row[0]);
+    if (!identity || identity.id !== plan.contentId || identity.occurrence >= plan.occurrence) return;
+    [14,15].forEach(function(column) {
+      const value = row[column-1];if (value) ids.add(String(value));
+      const intent = readSocialBufferIntent_(queue.getRange(index+2,column));
+      if (intent && intent.remoteId) ids.add(String(intent.remoteId));
+    });
+  });
+  return Array.from(ids).sort();
+}
+
+/** Signed immutable raw JSON; contains only reviewed public copy, never workbook data/secrets. */
+function evergreenPublishSnapshot_(item,plan) {
+  try { return evergreenUploadSnapshot_(item,plan); }
+  catch (_) { throw new Error('Evergreen immutable snapshot preparation failed; inspect configuration/source without exposing API responses.'); }
+}
+
+function evergreenUploadSnapshot_(item,plan) {
+  const props = PropertiesService.getScriptProperties();
+  const cloud = props.getProperty('CLOUDINARY_CLOUD_NAME'), key = props.getProperty('CLOUDINARY_API_KEY'), secret = props.getProperty('CLOUDINARY_API_SECRET');
+  if (!cloud || !/^[a-z0-9_-]+$/i.test(cloud) || !key || !secret) throw new Error('Secure Cloudinary configuration required.');
+  const id = 'invicta-social/evergreen-sources-v1/' + plan.renderHash + '.json';
+  const lookup = function() {
+    const r = UrlFetchApp.fetch('https://api.cloudinary.com/v1_1/'+cloud+'/resources/raw/upload/'+encodeURIComponent(id)+'?context=true',
+      {headers:{Authorization:'Basic '+Utilities.base64Encode(key+':'+secret)},muteHttpExceptions:true});
+    if (r.getResponseCode() === 404) return null;
+    if (r.getResponseCode() !== 200) throw new Error('Evergreen snapshot lookup failed.');
+    const asset = JSON.parse(r.getContentText());
+    if (asset.public_id !== id || asset.resource_type !== 'raw' || asset.type !== 'upload' ||
+        !asset.context || !asset.context.custom || asset.context.custom.source_hash !== plan.renderHash ||
+        !Number.isInteger(asset.version) || asset.version < 1 || !(asset.bytes > 0 && asset.bytes < 20000)) throw new Error('Snapshot identity conflict.');
+    return asset;
+  };
+  if (lookup()) return;
+  const params = {public_id:id,overwrite:'false',context:'source_hash='+plan.renderHash,timestamp:String(Math.floor(Date.now()/1000))};
+  const signing = Object.keys(params).sort().map(function(name) { return name+'='+params[name]; }).join('&')+secret;
+  const signature = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,signing,Utilities.Charset.UTF_8)
+    .map(function(b) { return ('0'+((b+256)%256).toString(16)).slice(-2); }).join('');
+  const body = JSON.stringify({kind:'INVICTA_EVERGREEN_SOURCE_V1',templateVersion:EVERGREEN_TEMPLATE_,renderHash:plan.renderHash,
+    content:{id:item.id,type:item.type,title:item.title,caption:item.caption,slides:item.slides,sources:item.sources}});
+  const response = UrlFetchApp.fetch('https://api.cloudinary.com/v1_1/'+cloud+'/raw/upload',
+    {method:'post',payload:Object.assign({},params,{api_key:key,signature:signature,file:Utilities.newBlob(body,'application/json','content.json')}),muteHttpExceptions:true});
+  if (response.getResponseCode() !== 200 || !lookup()) throw new Error('Snapshot upload not verified; no queue approval.');
+}
+
+function evergreenPublishSnapshotV2_(item,plan) {
+  try {
+    const props = PropertiesService.getScriptProperties(), cloud=props.getProperty('CLOUDINARY_CLOUD_NAME'), key=props.getProperty('CLOUDINARY_API_KEY'), secret=props.getProperty('CLOUDINARY_API_SECRET');
+    if (!cloud || !/^[a-z0-9_-]+$/i.test(cloud) || !key || !secret) throw new Error('Secure Cloudinary configuration required.');
+    const id='invicta-social/evergreen-sources-v2/'+plan.renderHash+'.json';
+    const lookup = function() {
+      const r=UrlFetchApp.fetch('https://api.cloudinary.com/v1_1/'+cloud+'/resources/raw/upload/'+encodeURIComponent(id)+'?context=true',
+        {headers:{Authorization:'Basic '+Utilities.base64Encode(key+':'+secret)},muteHttpExceptions:true});
+      if (r.getResponseCode() === 404) return null;
+      if (r.getResponseCode() !== 200) throw new Error('Evergreen v2 snapshot lookup failed.');
+      const asset=JSON.parse(r.getContentText());
+      if (asset.public_id !== id || asset.resource_type !== 'raw' || asset.type !== 'upload' ||
+          !asset.context || !asset.context.custom || asset.context.custom.source_hash !== plan.renderHash ||
+          !Number.isInteger(asset.version) || asset.version < 1 || !(asset.bytes > 0 && asset.bytes < 20000)) throw new Error('Snapshot identity conflict.');
+      return asset;
+    };
+    if (lookup()) return;
+    const params={public_id:id,overwrite:'false',context:'source_hash='+plan.renderHash,timestamp:String(Math.floor(Date.now()/1000))};
+    const signing=Object.keys(params).sort().map(function(name){return name+'='+params[name];}).join('&')+secret;
+    const signature=Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,signing,Utilities.Charset.UTF_8).map(function(b){return ('0'+((b+256)%256).toString(16)).slice(-2);}).join('');
+    const body=JSON.stringify({kind:'INVICTA_EVERGREEN_SOURCE_V2',templateVersion:EVERGREEN_V2_TEMPLATE_,renderHash:plan.renderHash,content:{id:item.id,type:item.type,title:item.title,caption:item.caption,slides:item.slides,sources:item.sources}});
+    const response=UrlFetchApp.fetch('https://api.cloudinary.com/v1_1/'+cloud+'/raw/upload',{method:'post',payload:Object.assign({},params,{api_key:key,signature:signature,file:Utilities.newBlob(body,'application/json','content.json')}),muteHttpExceptions:true});
+    if(response.getResponseCode() !== 200 || !lookup()) throw new Error('Snapshot upload not verified; no queue approval.');
+  } catch (_) {
+    throw new Error('Evergreen v2 immutable snapshot preparation failed; inspect configuration/source without exposing API responses.');
+  }
+}
+
+function evergreenPublishSnapshotV21_(item,plan) {
+  try {
+    const props=PropertiesService.getScriptProperties(),cloud=props.getProperty('CLOUDINARY_CLOUD_NAME'),key=props.getProperty('CLOUDINARY_API_KEY'),secret=props.getProperty('CLOUDINARY_API_SECRET');
+    if(!cloud||!/^[a-z0-9_-]+$/i.test(cloud)||!key||!secret) throw new Error('Secure Cloudinary configuration required.');
+    const id='invicta-social/evergreen-sources-v2-1/'+plan.renderHash+'.json';
+    const lookup=function(){
+      const r=UrlFetchApp.fetch('https://api.cloudinary.com/v1_1/'+cloud+'/resources/raw/upload/'+encodeURIComponent(id)+'?context=true',{headers:{Authorization:'Basic '+Utilities.base64Encode(key+':'+secret)},muteHttpExceptions:true});
+      if(r.getResponseCode()===404)return null;if(r.getResponseCode()!==200)throw new Error('Evergreen v2.1 snapshot lookup failed.');
+      const asset=JSON.parse(r.getContentText());
+      if(asset.public_id!==id||asset.resource_type!=='raw'||asset.type!=='upload'||!asset.context||!asset.context.custom||asset.context.custom.source_hash!==plan.renderHash||!Number.isInteger(asset.version)||asset.version<1||!(asset.bytes>0&&asset.bytes<20000))throw new Error('Snapshot identity conflict.');
+      return asset;
+    };
+    if(lookup())return;
+    const params={public_id:id,overwrite:'false',context:'source_hash='+plan.renderHash,timestamp:String(Math.floor(Date.now()/1000))};
+    const signing=Object.keys(params).sort().map(function(name){return name+'='+params[name];}).join('&')+secret;
+    const signature=Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,signing,Utilities.Charset.UTF_8).map(function(b){return ('0'+((b+256)%256).toString(16)).slice(-2);}).join('');
+    const body=JSON.stringify({kind:'INVICTA_EVERGREEN_SOURCE_V21',templateVersion:EVERGREEN_V21_TEMPLATE_,renderHash:plan.renderHash,content:{id:item.id,type:item.type,title:item.title,caption:item.caption,slides:item.slides,sources:item.sources}});
+    const response=UrlFetchApp.fetch('https://api.cloudinary.com/v1_1/'+cloud+'/raw/upload',{method:'post',payload:Object.assign({},params,{api_key:key,signature:signature,file:Utilities.newBlob(body,'application/json','content.json')}),muteHttpExceptions:true});
+    if(response.getResponseCode()!==200||!lookup())throw new Error('Snapshot upload not verified; no queue approval.');
+  } catch (_) { throw new Error('Evergreen v2.1 immutable snapshot preparation failed; inspect configuration/source without exposing API responses.'); }
+}
+
+/** Manual, additive seed; never overwrites an existing library. Not an activation function. */
+function initializeEvergreenSocialLibrary() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (ss.getSheetByName(EVERGREEN_SHEET_)) throw new Error('Evergreen library exists; edit intentionally, never reseed/overwrite.');
+  const sheet = ss.insertSheet(EVERGREEN_SHEET_), rows = evergreenSeedRows_();
+  if (sheet.getMaxRows() < rows.length+1) sheet.insertRowsAfter(sheet.getMaxRows(),rows.length+1-sheet.getMaxRows());
+  sheet.getRange(1,1,rows.length+1,EVERGREEN_HEADERS_.length).setValues([EVERGREEN_HEADERS_].concat(rows));
+  evergreenFormatLibrary_(sheet,rows.length+1);
+  return {sheet:EVERGREEN_SHEET_,topics:rows.length,queueRowsAdded:0,publishingEnabled:false};
+}
+
+/** Readable owner review area only; no inventory/queue formatting changes. */
+function evergreenFormatLibrary_(sheet,rowCount) {
+  sheet.getRange(1,1,rowCount,11).setWrap(true).setVerticalAlignment('top');
+  sheet.getRange(1,1,1,11).setFontWeight('bold').setBackground('#eeeeee');
+  [110,140,220,360,260,260,260,260,100,140,300].forEach(function(width,index) {
+    sheet.setColumnWidth(index+1,width);
+  });
+  sheet.setFrozenRows(1);
+  sheet.autoResizeRows(1,rowCount);
+}
+/** Content source only. Uses the existing 19-column queue and Buffer publisher. */
+const EVERGREEN_SHEET_ = 'Evergreen Social Content';
+const EVERGREEN_HEADERS_ = ['CONTENT ID','CONTENT TYPE','TITLE','CAPTION','SLIDE 1','SLIDE 2','SLIDE 3','SLIDE 4','STATUS','COOLDOWN DAYS','SOURCES'];
+const EVERGREEN_TEMPLATE_ = 'evergreen-v1';
 const EVERGREEN_ROTATION_ = ['Product','Educational','Product','Comparison','Product','Educational','Product','Brand/Tip'];
 
 function evergreenIdentity_(key) {
