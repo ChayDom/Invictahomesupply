@@ -10,6 +10,7 @@ const headers=['PRODUCT KEY','PRODUCT NAME','CATEGORY','PRICE','MEDIA URL','MEDI
   'HOOK','FACEBOOK CAPTION','INSTAGRAM CAPTION','HASHTAGS','SOCIAL STATUS','FB BUFFER POST ID','IG BUFFER POST ID',
   'LAST POSTED AT','GENERATED AT','SOURCE HASH','ERROR'];
 const libraryHeaders=['CONTENT ID','CONTENT TYPE','TITLE','CAPTION','SLIDE 1','SLIDE 2','SLIDE 3','SLIDE 4','STATUS','COOLDOWN DAYS','SOURCES'];
+const assetHeaders=['CONTENT ID','MEDIA VERSION','CLOUDINARY PUBLIC ID','SOURCE HASH','RESOURCE TYPE','STATUS'];
 let pass=0,fail=0;
 async function test(name,fn){try{await fn();pass++;console.log('ok - '+name);}catch(error){fail++;console.log('NOT OK - '+name);console.error(error);}}
 function notesFor(sheet) {
@@ -21,7 +22,11 @@ function notesFor(sheet) {
 function fixture({libraryRows,history=true}={}) {
   const t=createRuntime({quantity:10}),seed=plain(t.ctx.evergreenSeedRows_());
   t.sheets['Evergreen Social Content']=new Sheet('Evergreen Social Content',libraryHeaders,libraryRows||seed);
+  const assetRows=(libraryRows || seed).map(row=>[row[0],'evergreen-manual-v1',row[0],'source-hash-'+row[0]+'-approved-2026','image','Approved']);
+  t.sheets['Evergreen Social Assets']=new Sheet('Evergreen Social Assets',assetHeaders,assetRows);
   t.queue=new Sheet('Social Queue',headers);t.sheets['Social Queue']=t.queue;t.notes=notesFor(t.queue);
+  t.queue.getSheetId=()=>1;
+  t.ss.getUrl=()=> 'https://docs.google.com/spreadsheets/d/isolated-test-workbook/edit';
   Object.assign(t.properties,{SOCIAL_PUBLISHING_ENABLED:'true',BUFFER_API_KEY:'test-only',BUFFER_ORGANIZATION_ID:'org',
     BUFFER_FACEBOOK_CHANNEL_ID:'fb',BUFFER_INSTAGRAM_CHANNEL_ID:'ig'});
   if(history){const row=new Array(19).fill('');Object.assign(row,{0:'PRODUCT-HISTORY',7:'Post',12:'Queued',13:'historical-fb',14:'historical-ig',15:new Date(Date.now()-200*86400000)});t.queue.data.push(row);}
@@ -42,27 +47,46 @@ function fixture({libraryRows,history=true}={}) {
   return t;
 }
 
-await test('library has 20 complete educational drafts, six comparisons, four tips/brand items',()=>{
+await test('library has 20 educational, six comparison, five tip, and five brand items',()=>{
   const t=fixture(),rows=t.sheets['Evergreen Social Content'].data.slice(1);
-  assert.equal(rows.length,30);assert.equal(rows.filter(r=>r[1]==='Educational').length,20);
-  assert.equal(rows.filter(r=>r[1]==='Comparison').length,6);assert.equal(rows.filter(r=>['Tip','Brand'].includes(r[1])).length,4);
+  assert.equal(rows.length,36);assert.equal(rows.filter(r=>r[1]==='Educational').length,20);
+  assert.equal(rows.filter(r=>r[1]==='Comparison').length,6);assert.equal(rows.filter(r=>r[1]==='Tip').length,5);assert.equal(rows.filter(r=>r[1]==='Brand').length,5);
   for(const row of rows){assert.equal(row[8],'Enabled');assert.equal(row[9],120);assert.match(row[3],/Invicta Home Supply/);for(const slide of row.slice(4,8))graphicText(slide,30,14);graphicText(row[2],45,3);}
 });
 await test('manual initializer is additive, writes only the content source and refuses overwrite',()=>{
   const t=fixture();delete t.sheets['Evergreen Social Content'];
   const before=plain(t.catalog.data),queue=plain(t.queue.data),result=t.ctx.initializeEvergreenSocialLibrary();
-  assert.equal(result.topics,30);assert.equal(result.queueRowsAdded,0);assert.deepEqual(plain(t.catalog.data),before);assert.deepEqual(plain(t.queue.data),queue);
+  assert.equal(result.topics,36);assert.equal(result.queueRowsAdded,0);assert.deepEqual(plain(t.catalog.data),before);assert.deepEqual(plain(t.queue.data),queue);
   assert.throws(()=>t.ctx.initializeEvergreenSocialLibrary(),/exists/);
 });
-await test('preparation enters the existing 19-column queue as Draft, with no inventory identity',()=>{
-  const t=fixture(),result=t.prepare();assert.equal(result.added,30);assert.equal(t.queue.data[0].length,19);
+await test('preparation reuses the manual registry, enters the existing 19-column queue as Draft, and never calls AI',()=>{
+  const t=fixture({history:false}),result=t.prepare();assert.equal(result.added,36);assert.equal(t.queue.data[0].length,19);
   const row=t.row('EDU-01');assert.equal(row[0],'EVERGREEN|EDU-01|1');assert.equal(row[7],'Educational');assert.equal(row[12],'Draft');
-  assert.equal(t.inputs.length,0);assert.equal(t.snapshots.length,30);
+  assert.equal(t.inputs.length,0);assert.equal(t.snapshots.length,0);
+});
+await test('manual registry uses bare matching public IDs and rejects a mismatch',()=>{
+  const t=fixture();assert.equal(t.ctx.evergreenApprovedAsset_('EDU-01').publicId,'EDU-01');
+  t.sheets['Evergreen Social Assets'].data[1][2]='CMP-01';assert.throws(()=>t.ctx.evergreenApprovedAsset_('EDU-01'),/Invalid approved Evergreen asset/);
+});
+await test('missing manual artwork is skipped without generation or queue mutation',()=>{
+  const t=fixture();t.sheets['Evergreen Social Assets'].data=t.sheets['Evergreen Social Assets'].data.filter(row=>row[0]!=='EDU-01');
+  const result=t.prepare();assert.equal(result.added,35);assert.equal(t.row('EDU-01'),undefined);assert.equal(t.inputs.length,0);assert.equal(t.snapshots.length,0);
+});
+await test('verified manual artwork is promoted only to Awaiting Approval',()=>{
+  const t=fixture();t.prepare();const row=t.row('EDU-01');
+  const original=t.queue.getRange.bind(t.queue);
+  t.queue.getRange=(r,c,n=1,m=1)=>Object.assign(original(r,c,n,m),c===13?{
+    getDataValidations:()=>Array.from({length:n},()=>[null]),
+    setDataValidations:()=>{}
+  }:{});
+  t.ctx.socialResolveCloudinary_=p=>({plan:p,cloud:'test-cloud',urls:['https://res.cloudinary.com/test-cloud/image/upload/v1/'+p.publicIds[0]+'.png']});
+  t.ctx.prepareSocialApprovalCandidates_(new Date(0));
+  assert.equal(row[12],'Awaiting Approval');assert.equal(t.inputs.length,0);
 });
 await test('initializer makes only the new authored library readable and leaves inventory/queue formats alone',()=>{
-  const t=fixture();delete t.sheets['Evergreen Social Content'];t.ctx.initializeEvergreenSocialLibrary();
+  const t=fixture();delete t.sheets['Evergreen Social Content'];delete t.sheets['Evergreen Social Assets'];t.ctx.initializeEvergreenSocialLibrary();
   const formats=t.sheets['Evergreen Social Content'].formats;
-  assert.ok(formats.some(f=>f.wrap===true&&f.r===1&&f.n===31&&f.m===11));
+  assert.ok(formats.some(f=>f.wrap===true&&f.r===1&&f.n===37&&f.m===11));
   assert.ok(formats.some(f=>f.frozenRows===1));assert.ok(formats.some(f=>f.column===4&&f.width===360));
   assert.equal(t.catalog.formats.length,0);assert.equal(t.queue.formats.length,0);
 });
@@ -72,9 +96,9 @@ await test('legacy strict Post/Reel validation is extended only on the appended 
   const rule={getCriteriaType:()=>kind,getCriteriaValues:()=>[['Post','Reel'],true],copy:()=>({
     requireValueInList(options,show){assert.deepEqual(plain(options),['Post','Reel','Educational','Comparison','Tip','Brand']);assert.equal(show,true);return this;},build:()=>({strict:true})})};
   t.queue.getRange=(r,c,n=1,m=1)=>Object.assign(original(r,c,n,m),c===8?{
-    getDataValidation:()=>rule,setDataValidation:value=>{assert.equal(value.strict,true);calls.push([r,c]);}
+    getDataValidation:()=>rule,setDataValidation:value=>{if(value){assert.equal(value.strict,true);calls.push([r,c]);}}
   }:{});
-  t.prepare();assert.equal(calls.length,30);assert.ok(calls.every(([r,c])=>r>=3&&c===8));
+  t.prepare();assert.equal(calls.length,36);assert.ok(calls.every(([r,c])=>r>=2&&c===8));
   assert.equal(t.row('EDU-01')[7],'Educational');assert.equal(t.row('EDU-01')[12],'Draft');
 });
 await test('unexpected content validation fails closed without clearing validation or writing approval',()=>{
@@ -119,16 +143,16 @@ await test('seven receipt-bearing rows start Brand/Tip and preserve the live his
     chosen[12]='Queued';chosen[13]='new-receipt-'+i;chosen[15]=new Date(t.ctx.Date.now()-72*3600000);
   }
 });
-await test('a partially written first editorial row is repaired as Draft without duplicating its identity',()=>{
+await test('a partially written editorial row fails closed without creating a second pending identity',()=>{
   const t=fixture(),row=new Array(19).fill('');Object.assign(row,{0:'EVERGREEN|EDU-01|1',1:'Wear layer: 6, 12 or 22 MIL?',2:'Evergreen',5:'Image',6:'https://invictahomesupply.com'});t.queue.data.push(row);
-  const result=t.prepare();assert.equal(result.refreshed,1);assert.equal(result.added,29);assert.equal(t.queue.data.filter(r=>r[0]==='EVERGREEN|EDU-01|1').length,1);assert.equal(t.row('EDU-01')[12],'Draft');
+  const result=t.prepare(),partial=t.queue.data.find(r=>r[0]==='EVERGREEN|EDU-01|1');assert.equal(result.refreshed,0);assert.equal(result.added,35);assert.equal(t.queue.data.filter(r=>r[0]==='EVERGREEN|EDU-01|1').length,1);assert.equal(partial[12],'');
 });
 await test('educational slot waits for manual approval, never falls back to product flooding',()=>{
   const t=fixture();t.prepare();assert.equal(t.run().queued,0);assert.equal(t.inputs.length,0);
 });
-await test('Ready educational carousel uses the SAME publisher and shareNow without inventory reads',()=>{
+await test('Ready educational manual image uses the SAME publisher and shareNow without inventory reads',()=>{
   const t=fixture();t.prepare();t.approve('EDU-01');assert.equal(t.run().queued,1,t.row('EDU-01')[18]);assert.equal(t.inputs.length,2);
-  for(const input of t.inputs){assert.equal(input.mode,'shareNow');assert.equal(input.assets.length,4);assert.equal(input.saveToDraft,undefined);}
+  for(const input of t.inputs){assert.equal(input.mode,'shareNow');assert.equal(input.assets.length,1);assert.equal(input.saveToDraft,undefined);}
 });
 await test('global publishing flag blocks approved educational content',()=>{
   const t=fixture();t.prepare();t.approve('EDU-01');delete t.properties.SOCIAL_PUBLISHING_ENABLED;
@@ -149,7 +173,7 @@ for(const [label,change,status] of [
   ['missing source',t=>{t.sheets['Evergreen Social Content'].data.splice(1,1);},null],
   ['changed slides',t=>{t.sheets['Evergreen Social Content'].data[1][6]='Changed explanation';},'Draft'],
   ['changed caption',t=>{t.row('EDU-01')[9]='Unapproved edit';},'Draft'],
-  ['changed manifest',t=>{const n=t.queue.data.indexOf(t.row('EDU-01'))+1,p=JSON.parse(t.notes.get(n+':5'));p.publicIds.reverse();t.notes.set(n+':5',JSON.stringify(p));},'Draft'],
+  ['changed manifest',t=>{const n=t.queue.data.indexOf(t.row('EDU-01'))+1,p=JSON.parse(t.notes.get(n+':5'));p.publicIds=['CMP-01'];t.notes.set(n+':5',JSON.stringify(p));},'Draft'],
   ['wrong content type',t=>{t.row('EDU-01')[7]='Comparison';},null]
 ])await test(label+' causes ZERO Buffer creates',()=>{
   const t=fixture();t.prepare();t.approve('EDU-01');change(t);t.run();assert.equal(t.inputs.length,0);if(status)assert.equal(t.row('EDU-01')[12],status);

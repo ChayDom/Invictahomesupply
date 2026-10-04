@@ -27,9 +27,10 @@ The source has 11 columns:
 | SOURCES | HTTPS primary references, separated by whitespace |
 
 Post history, counts and reuse eligibility derive from existing queue receipts;
-they are not separately mutable counters in the library. Cloudinary identities
-derive from copy/template hashes and live in the existing MEDIA URL cell note.
-No second publishing queue, scheduling service, AI writer or new credential scope.
+they are not separately mutable counters in the library. The approved manual
+Cloudinary public ID is stored in the separate registry and the exact manifest
+lives in the existing MEDIA URL cell note. No second publishing queue,
+scheduling service, AI writer, or new credential scope is introduced.
 
 Invoke `prepareEvergreenSocialQueue()` manually. It appends **Draft only** to the
 existing 19-column Social Queue. CONTENT TYPE explicitly identifies editorial
@@ -39,19 +40,22 @@ never written to Airtable/Product Catalog, and cannot bypass the product guard.
 Caption changes belong in the library, followed by preparation and reapproval.
 Editing the queue caption alone blocks publication.
 
-Preparation uploads/reuses immutable raw JSON snapshots containing **only public
-editorial copy**, using existing Cloudinary credentials. This bridges the private
-workbook to the existing GitHub media worker without publishing the workbook,
-adding Google OAuth/service-account credentials to GitHub, or exposing inventory.
-The function returns content IDs and render hashes (not credentials).
+Normal production preparation is now manual-asset-only. The separate
+**Evergreen Social Assets** registry is the authority for approved artwork:
+`CONTENT ID -> evergreen-manual-vN -> bare Cloudinary public ID -> source hash`.
+The initial registry uses `CONTENT ID == Cloudinary public ID` for all 36 approved
+PNG graphics. Preparation verifies the approved image through Cloudinary, writes
+the exact occurrence manifest, and never calls OpenAI, Gemini image generation,
+FFmpeg, or a replacement v1/v2/v2.1 worker. Missing or invalid artwork is logged
+and skipped so another eligible topic may be selected; it never silently falls
+back to generated artwork.
 
-In the existing manual **Social media preparation (never publishes)** workflow:
-
-1. Leave `product_key` blank and `reel` false.
-2. Enter one `content_id` and its returned `content_hash`.
-3. Run preparation; inspect all four version-pinned Cloudinary graphics.
-4. Review claims, slides, caption and source references.
-5. Manually change that queue item to **Ready** only after review.
+Every enabled Educational, Comparison, Tip, and Brand topic uses the existing
+rotation/cooldown logic and reuses its approved registry asset across occurrence
+numbers. A content edit or intentional registry version change creates a new
+manual render/source identity. Verified preparation may move a current Draft to
+**Awaiting Approval**; it never sets **Ready**. The owner must manually change
+Awaiting Approval to Ready after reviewing the compact approval email.
 
 The product workflow remains unchanged. The evergreen worker uses only the
 existing Cloudinary cloud/key/secret variables; no Airtable or Buffer access is
@@ -93,14 +97,13 @@ copy, bounded column widths, a light gray bold header and one frozen row. It doe
 not format inventory or product queue rows. Preparation preserves existing strict
 Post/Reel validation on product rows and extends that validation only on each
 editorial CONTENT TYPE cell, keeping strictness and dropdown UI. Unexpected
-validation fails closed. An interrupted partial editorial row is repaired in
-place as Draft; no second occurrence is created.
+validation fails closed. An interrupted partial editorial row is left for owner
+review; no second occurrence is created and no incomplete identity is silently
+rewritten.
 
-FFmpeg creates four 1080×1350 JPEG slides with the site's charcoal/cream/terracotta
-colors, Invicta branding and website/McKinney CTA. No fake product images, external
-retailer imagery, Canva or paid rendering. The Ubuntu runner uses DejaVu Sans Mono.
-Text is written to files with `expansion=none`, never interpolated into FFmpeg
-filters. Overflow fails preparation rather than silently truncating a claim.
+Historical v1/v2/v2.1 generation code and assets remain intact for audit and
+backward compatibility, but are not selected by the normal new Evergreen path.
+Product posts are unaffected and continue to use the real-product Photos pipeline.
 
 `evergreen-v1 + content ID/type/title/caption/ordered slides/sources + layout`
 defines the render hash; each slide has an ordered derived hash/public ID.
@@ -128,7 +131,7 @@ only IDs/hash/counts or generic failures, never credentials or raw API errors.
 
 ## Initial editorial drafts
 
-30 complete topics: **20 Educational, 6 Comparison, 2 Tip, 2 Brand**. Examples:
+36 complete topics: **20 Educational, 6 Comparison, 5 Tip, 5 Brand**. Examples:
 
 - Wear layer: 6, 12 or 22 MIL? — distinguishes MIL from mm; does not promise scratch-proof flooring.
 - Does thicker always mean better? — compare core, finish, pad and permitted use.
@@ -156,11 +159,12 @@ Local Windows font override is QA-only; production rendering remains on the
 existing Linux runner. Existing product-safety tests remain maintained.
 
 Before activation: approve/merge backend-only PR with skip marker, deploy reviewed
-Apps Script source through the existing process, review the already installed
-library (do not reseed), prepare remaining media using Cloudinary/GitHub and
-manually approve enough topics for the rotation. Final non-publishing acceptance
-is recorded below; deployment and activation remain separate approvals. **Do not enable
-publishing or cleanup as part of this implementation.**
+Apps Script source through the existing process, verify the already installed
+library and 36-row manual registry (do not reseed), and run one scoped,
+non-publishing preparation cycle. Final acceptance must confirm current assets,
+Draft → Awaiting Approval only, no OpenAI/media uploads, and no Buffer calls.
+Deployment and activation remain separate approvals. **Do not enable publishing or
+cleanup as part of this implementation.**
 
 ### Final live, non-publishing acceptance (2026-09-28)
 

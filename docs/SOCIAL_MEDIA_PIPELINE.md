@@ -1,8 +1,27 @@
 # Photos-only social media pipeline (publishing OFF)
 
-This is a backend-only review candidate. Do not deploy Netlify, turn on social
+This is the shared backend pipeline. Do not deploy Netlify, turn on social
 triggers, enable cleanup, merge blindly, or publish real Facebook/Instagram content
-as part of its acceptance. Production Apps Script source has not been replaced.
+as part of acceptance.
+
+## Evergreen manual-asset path
+
+Educational, Comparison, Tip, and Brand posts use the production
+`Evergreen Social Assets` registry as their current artwork authority. Each
+approved row maps a Content ID to one bare Cloudinary public ID (the initial
+36-row library uses `CONTENT ID == public ID`) and an explicit manual media
+version. `prepareEvergreenSocialQueue()` verifies that registry entry and
+reuses the same approved image for every occurrence of that Content ID; an
+occurrence-number change does not trigger image generation or an upload.
+
+Normal Evergreen preparation does not call OpenAI, Gemini, or an image worker,
+does not fall back to historical v1/v2/v2.1 generated artwork, and skips a
+missing or invalid manual asset without failing the whole run. A verified Draft
+may be promoted only to `Awaiting Approval`. Owner review is still required to
+change it to `Ready`; the Buffer sender remains unchanged and only processes
+explicitly Ready rows. Historical generated assets and manifests remain intact
+for audit/backward compatibility, but are not selected for new manual Evergreen
+preparation. Product media continues to use the separate real-Photos path below.
 
 ## Architecture and cadence
 
